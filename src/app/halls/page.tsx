@@ -83,6 +83,7 @@ export default function HallsPage() {
   
   // Mutations
   const createHall = useCreateMutation<Hall>('halls')
+  const deleteHall = useDeleteMutation('halls')
   const createTable = useCreateMutation<Table>('tables')
   const updateTable = useUpdateMutation<Table>('tables')
   const deleteTable = useDeleteMutation('tables')
@@ -184,11 +185,33 @@ export default function HallsPage() {
                   >
                     {/* Hall Info */}
                     <Card>
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                          <MapPin className="h-5 w-5 text-amber-600" />
-                          {hall.name}
-                        </CardTitle>
+                      <CardHeader className="flex flex-col gap-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <CardTitle className="flex items-center gap-2">
+                            <MapPin className="h-5 w-5 text-amber-600" />
+                            {hall.name}
+                          </CardTitle>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-stone-400 hover:text-rose-600"
+                            onClick={async () => {
+                              if (!confirm('Удалить этот зал и его столы?')) return
+                              const deleted = await deleteHall.mutate(hall.id)
+                              if (deleted) {
+                                // сброс выбора, если удалён выбранный зал
+                                if (selectedHallId === hall.id) {
+                                  const nextHall = halls.find(h => h.id !== hall.id)
+                                  setSelectedHallId(nextHall?.id ?? null)
+                                }
+                              }
+                            }}
+                            disabled={deleteHall.loading}
+                            title="Удалить зал"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </CardHeader>
                       <CardContent className="space-y-4">
                         <div className="flex items-center gap-3 text-stone-600">

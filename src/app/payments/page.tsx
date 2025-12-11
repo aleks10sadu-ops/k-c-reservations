@@ -12,7 +12,8 @@ import {
   TrendingUp,
   CheckCircle,
   Clock,
-  Loader2
+  Loader2,
+  Trash2
 } from 'lucide-react'
 import { PageTransition } from '@/components/layout/PageTransition'
 import { Button } from '@/components/ui/button'
@@ -36,7 +37,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { useReservations, useCreateMutation } from '@/hooks/useSupabase'
+import { useReservations, useCreateMutation, useDeleteMutation } from '@/hooks/useSupabase'
 import { formatCurrency, formatDate, cn } from '@/lib/utils'
 import { RESERVATION_STATUS_CONFIG, Payment } from '@/types'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -56,6 +57,7 @@ export default function PaymentsPage() {
   
   // Mutations
   const createPayment = useCreateMutation<Payment>('payments')
+  const deletePayment = useDeleteMutation('payments')
 
   // Calculate stats
   const totalRevenue = reservations.reduce((sum, r) => sum + (r.prepaid_amount || 0), 0)
@@ -88,6 +90,15 @@ export default function PaymentsPage() {
       case 'card': return 'Картой'
       case 'transfer': return 'Перевод'
       default: return method
+    }
+  }
+
+  const handleDeletePayment = async (paymentId: string) => {
+    if (!paymentId) return
+    if (!confirm('Удалить эту оплату?')) return
+    const result = await deletePayment.mutate(paymentId)
+    if (result) {
+      refetch()
     }
   }
 
@@ -481,7 +492,7 @@ export default function PaymentsPage() {
                           initial={{ opacity: 0, x: -20 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: index * 0.05 }}
-                          className="py-4 first:pt-0 last:pb-0 flex items-center justify-between"
+                          className="py-4 first:pt-0 last:pb-0 flex items-center justify-between gap-4"
                         >
                           <div className="flex items-center gap-4">
                             <div className={cn(
@@ -505,13 +516,23 @@ export default function PaymentsPage() {
                             </div>
                           </div>
                           
-                          <div className="text-right">
-                            <p className="text-xl font-bold text-green-600">
-                              +{formatCurrency(payment.amount)}
-                            </p>
-                            <p className="text-sm text-stone-500">
-                              Бронь на {formatDate(payment.reservation.date)}
-                            </p>
+                          <div className="flex items-center gap-4">
+                            <div className="text-right">
+                              <p className="text-xl font-bold text-green-600">
+                                +{formatCurrency(payment.amount)}
+                              </p>
+                              <p className="text-sm text-stone-500">
+                                Бронь на {formatDate(payment.reservation.date)}
+                              </p>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-stone-400 hover:text-rose-600"
+                              onClick={() => handleDeletePayment(payment.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </div>
                         </motion.div>
                       ))}
