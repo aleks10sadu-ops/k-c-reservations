@@ -11,7 +11,8 @@ import {
   Calendar,
   TrendingUp,
   CheckCircle,
-  Clock
+  Clock,
+  Loader2
 } from 'lucide-react'
 import { PageTransition } from '@/components/layout/PageTransition'
 import { Button } from '@/components/ui/button'
@@ -35,30 +36,42 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { mockReservations, mockPayments } from '@/store/mockData'
+import { useReservations, useCreateMutation } from '@/hooks/useSupabase'
 import { formatCurrency, formatDate, cn } from '@/lib/utils'
-import { RESERVATION_STATUS_CONFIG } from '@/types'
+import { RESERVATION_STATUS_CONFIG, Payment } from '@/types'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 export default function PaymentsPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false)
+  const [selectedReservationId, setSelectedReservationId] = useState('')
+  const [paymentForm, setPaymentForm] = useState({
+    amount: 0,
+    payment_method: 'card' as 'cash' | 'card' | 'transfer',
+    notes: ''
+  })
+
+  // Fetch data
+  const { data: reservations, loading, refetch } = useReservations()
+  
+  // Mutations
+  const createPayment = useCreateMutation<Payment>('payments')
 
   // Calculate stats
-  const totalRevenue = mockReservations.reduce((sum, r) => sum + r.prepaid_amount, 0)
-  const totalExpected = mockReservations.reduce((sum, r) => sum + r.total_amount, 0)
+  const totalRevenue = reservations.reduce((sum, r) => sum + (r.prepaid_amount || 0), 0)
+  const totalExpected = reservations.reduce((sum, r) => sum + r.total_amount, 0)
   const totalRemaining = totalExpected - totalRevenue
   
-  const paidReservations = mockReservations.filter(r => r.status === 'paid')
-  const pendingPayments = mockReservations.filter(r => r.status !== 'paid' && r.total_amount > r.prepaid_amount)
+  const paidReservations = reservations.filter(r => r.status === 'paid')
+  const pendingPayments = reservations.filter(r => r.status !== 'paid' && r.total_amount > (r.prepaid_amount || 0))
 
   // Get all payments with reservation info
-  const allPayments = mockReservations.flatMap(reservation => 
-    reservation.payments.map(payment => ({
+  const allPayments = reservations.flatMap(reservation => 
+    (reservation.payments || []).map(payment => ({
       ...payment,
       reservation
     }))
-  )
+  ).sort((a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime())
 
   const getPaymentMethodIcon = (method: string) => {
     switch (method) {
@@ -76,6 +89,32 @@ export default function PaymentsPage() {
       case 'transfer': return 'Перевод'
       default: return method
     }
+  }
+
+  const handleAddPayment = async () => {
+    if (!selectedReservationId || !paymentForm.amount) return
+
+    const result = await createPayment.mutate({
+      reservation_id: selectedReservationId,
+      amount: paymentForm.amount,
+      payment_method: paymentForm.payment_method,
+      notes: paymentForm.notes || null
+    })
+
+    if (result) {
+      setIsAddPaymentOpen(false)
+      setPaymentForm({ amount: 0, payment_method: 'card', notes: '' })
+      setSelectedReservationId('')
+      refetch()
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-amber-600" />
+      </div>
+    )
   }
 
   return (
@@ -205,8 +244,8 @@ export default function PaymentsPage() {
                     <div className="divide-y divide-stone-100">
                       {pendingPayments.map((reservation, index) => {
                         const statusConfig = RESERVATION_STATUS_CONFIG[reservation.status]
-                        const remaining = reservation.total_amount - reservation.prepaid_amount
-                        const progress = (reservation.prepaid_amount / reservation.total_amount) * 100
+                        const remaining = reservation.total_amount - (reservation.prepaid_amount || 0)
+                        const progress = ((reservation.prepaid_amount || 0) / reservation.total_amount) * 100
 
                         return (
                           <motion.div
@@ -249,7 +288,7 @@ export default function PaymentsPage() {
                             <div className="mb-2">
                               <div className="flex justify-between text-sm mb-1">
                                 <span className="text-green-600">
-                                  Внесено: {formatCurrency(reservation.prepaid_amount)}
+                                  Внесено: {formatCurrency(reservation.prepaid_amount || 0)}
                                 </span>
                                 <span className="text-amber-600">
                                   Осталось: {formatCurrency(remaining)}
@@ -269,7 +308,10 @@ export default function PaymentsPage() {
                               <Button 
                                 size="sm" 
                                 className="gap-2"
-                                onClick={() => setIsAddPaymentOpen(true)}
+                                onClick={() => {
+                                  setSelectedReservationId(reservation.id)
+                                  setIsAddPaymentOpen(true)
+                                }}
                               >
                                 <Plus className="h-4 w-4" />
                                 Добавить оплату
@@ -430,7 +472,10 @@ export default function PaymentsPage() {
             <div className="space-y-4">
               <div>
                 <Label>Бронирование</Label>
-                <Select>
+                <Select 
+                  value={selectedReservationId}
+                  onValueChange={setSelectedReservationId}
+                >
                   <SelectTrigger className="mt-1">
                     <SelectValue placeholder="Выберите бронирование" />
                   </SelectTrigger>
@@ -446,12 +491,21 @@ export default function PaymentsPage() {
               
               <div>
                 <Label>Сумма (₽)</Label>
-                <Input type="number" placeholder="10000" className="mt-1" />
+                <Input 
+                  type="number" 
+                  placeholder="10000" 
+                  className="mt-1" 
+                  value={paymentForm.amount || ''}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, amount: parseFloat(e.target.value) || 0 })}
+                />
               </div>
               
               <div>
                 <Label>Способ оплаты</Label>
-                <Select defaultValue="card">
+                <Select 
+                  value={paymentForm.payment_method}
+                  onValueChange={(v: 'cash' | 'card' | 'transfer') => setPaymentForm({ ...paymentForm, payment_method: v })}
+                >
                   <SelectTrigger className="mt-1">
                     <SelectValue />
                   </SelectTrigger>
@@ -480,7 +534,12 @@ export default function PaymentsPage() {
               
               <div>
                 <Label>Комментарий</Label>
-                <Textarea placeholder="Например: Первый взнос" className="mt-1" />
+                <Textarea 
+                  placeholder="Например: Первый взнос" 
+                  className="mt-1" 
+                  value={paymentForm.notes}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })}
+                />
               </div>
             </div>
             
@@ -488,7 +547,11 @@ export default function PaymentsPage() {
               <Button variant="outline" onClick={() => setIsAddPaymentOpen(false)}>
                 Отмена
               </Button>
-              <Button onClick={() => setIsAddPaymentOpen(false)}>
+              <Button 
+                onClick={handleAddPayment}
+                disabled={createPayment.loading || !selectedReservationId || !paymentForm.amount}
+              >
+                {createPayment.loading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                 Добавить
               </Button>
             </DialogFooter>
@@ -498,4 +561,3 @@ export default function PaymentsPage() {
     </PageTransition>
   )
 }
-

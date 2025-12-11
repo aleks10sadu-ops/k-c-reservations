@@ -9,12 +9,13 @@ import {
   Phone, 
   Mail,
   Calendar,
-  CreditCard,
   MessageSquare,
   Star,
   Crown,
   Pencil,
-  History
+  History,
+  Loader2,
+  Trash2
 } from 'lucide-react'
 import { PageTransition } from '@/components/layout/PageTransition'
 import { Button } from '@/components/ui/button'
@@ -39,7 +40,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { mockGuests, mockReservations } from '@/store/mockData'
+import { useGuests, useReservations, useCreateMutation, useUpdateMutation, useDeleteMutation } from '@/hooks/useSupabase'
 import { formatCurrency, formatPhone, formatDate, cn } from '@/lib/utils'
 import { Guest, GUEST_STATUS_CONFIG, GuestStatus, RESERVATION_STATUS_CONFIG } from '@/types'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -50,8 +51,29 @@ export default function GuestsPage() {
   const [statusFilter, setStatusFilter] = useState<GuestStatus | 'all'>('all')
   const [selectedGuest, setSelectedGuest] = useState<Guest | null>(null)
   const [isAddGuestOpen, setIsAddGuestOpen] = useState(false)
+  const [isEditMode, setIsEditMode] = useState(false)
+  
+  // Form state
+  const [formData, setFormData] = useState({
+    first_name: '',
+    last_name: '',
+    middle_name: '',
+    phone: '',
+    email: '',
+    status: 'regular' as GuestStatus,
+    notes: ''
+  })
 
-  const filteredGuests = mockGuests.filter(guest => {
+  // Fetch data from Supabase
+  const { data: guests, loading, error } = useGuests()
+  const { data: allReservations } = useReservations()
+  
+  // Mutations
+  const createGuest = useCreateMutation<Guest>('guests')
+  const updateGuest = useUpdateMutation<Guest>('guests')
+  const deleteGuest = useDeleteMutation('guests')
+
+  const filteredGuests = guests.filter(guest => {
     const matchesSearch = searchQuery === '' ||
       guest.first_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       guest.last_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -63,14 +85,80 @@ export default function GuestsPage() {
   })
 
   const getGuestReservations = (guestId: string) => {
-    return mockReservations.filter(r => r.guest_id === guestId)
+    return allReservations.filter(r => r.guest_id === guestId)
   }
 
   const stats = {
-    total: mockGuests.length,
-    regular: mockGuests.filter(g => g.status === 'regular').length,
-    frequent: mockGuests.filter(g => g.status === 'frequent').length,
-    vip: mockGuests.filter(g => g.status === 'vip').length,
+    total: guests.length,
+    regular: guests.filter(g => g.status === 'regular').length,
+    frequent: guests.filter(g => g.status === 'frequent').length,
+    vip: guests.filter(g => g.status === 'vip').length,
+  }
+
+  const resetForm = () => {
+    setFormData({
+      first_name: '',
+      last_name: '',
+      middle_name: '',
+      phone: '',
+      email: '',
+      status: 'regular',
+      notes: ''
+    })
+  }
+
+  const handleOpenAdd = () => {
+    resetForm()
+    setIsEditMode(false)
+    setIsAddGuestOpen(true)
+  }
+
+  const handleOpenEdit = (guest: Guest) => {
+    setFormData({
+      first_name: guest.first_name,
+      last_name: guest.last_name,
+      middle_name: guest.middle_name || '',
+      phone: guest.phone,
+      email: guest.email || '',
+      status: guest.status,
+      notes: guest.notes || ''
+    })
+    setIsEditMode(true)
+    setIsAddGuestOpen(true)
+  }
+
+  const handleSave = async () => {
+    if (isEditMode && selectedGuest) {
+      await updateGuest.mutate(selectedGuest.id, formData)
+      setSelectedGuest(null)
+    } else {
+      await createGuest.mutate(formData)
+    }
+    setIsAddGuestOpen(false)
+    resetForm()
+  }
+
+  const handleDelete = async (id: string) => {
+    if (confirm('Вы уверены что хотите удалить этого гостя?')) {
+      await deleteGuest.mutate(id)
+      setSelectedGuest(null)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-amber-600" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px] text-red-500">
+        Ошибка загрузки данных: {error}
+      </div>
+    )
   }
 
   return (
@@ -91,7 +179,7 @@ export default function GuestsPage() {
             <Button 
               size="lg" 
               className="gap-2 shadow-lg shadow-amber-500/25"
-              onClick={() => setIsAddGuestOpen(true)}
+              onClick={handleOpenAdd}
             >
               <Plus className="h-5 w-5" />
               Добавить гостя
@@ -237,11 +325,11 @@ export default function GuestsPage() {
                           <div className="flex items-center gap-4">
                             <div>
                               <p className="text-sm text-stone-500">Визитов</p>
-                              <p className="font-semibold text-stone-900">{guest.total_visits}</p>
+                              <p className="font-semibold text-stone-900">{guest.total_visits || 0}</p>
                             </div>
                             <div>
                               <p className="text-sm text-stone-500">Потрачено</p>
-                              <p className="font-semibold text-green-600">{formatCurrency(guest.total_spent)}</p>
+                              <p className="font-semibold text-green-600">{formatCurrency(guest.total_spent || 0)}</p>
                             </div>
                           </div>
                         </div>
@@ -268,7 +356,7 @@ export default function GuestsPage() {
         </motion.div>
 
         {/* Guest Detail Dialog */}
-        <Dialog open={!!selectedGuest} onOpenChange={() => setSelectedGuest(null)}>
+        <Dialog open={!!selectedGuest && !isAddGuestOpen} onOpenChange={() => setSelectedGuest(null)}>
           <DialogContent className="max-w-2xl">
             {selectedGuest && (
               <>
@@ -326,11 +414,11 @@ export default function GuestsPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="p-4 rounded-xl bg-amber-50 border border-amber-200">
                       <p className="text-sm text-amber-700">Всего визитов</p>
-                      <p className="text-3xl font-bold text-amber-900">{selectedGuest.total_visits}</p>
+                      <p className="text-3xl font-bold text-amber-900">{selectedGuest.total_visits || 0}</p>
                     </div>
                     <div className="p-4 rounded-xl bg-green-50 border border-green-200">
                       <p className="text-sm text-green-700">Потрачено всего</p>
-                      <p className="text-3xl font-bold text-green-900">{formatCurrency(selectedGuest.total_spent)}</p>
+                      <p className="text-3xl font-bold text-green-900">{formatCurrency(selectedGuest.total_spent || 0)}</p>
                     </div>
                   </div>
 
@@ -402,8 +490,16 @@ export default function GuestsPage() {
                   </div>
                 </div>
 
-                <DialogFooter>
-                  <Button variant="outline" className="gap-2">
+                <DialogFooter className="gap-2">
+                  <Button 
+                    variant="destructive" 
+                    onClick={() => handleDelete(selectedGuest.id)}
+                    disabled={deleteGuest.loading}
+                  >
+                    {deleteGuest.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    Удалить
+                  </Button>
+                  <Button variant="outline" className="gap-2" onClick={() => handleOpenEdit(selectedGuest)}>
                     <Pencil className="h-4 w-4" />
                     Редактировать
                   </Button>
@@ -413,46 +509,75 @@ export default function GuestsPage() {
           </DialogContent>
         </Dialog>
 
-        {/* Add Guest Dialog */}
+        {/* Add/Edit Guest Dialog */}
         <Dialog open={isAddGuestOpen} onOpenChange={setIsAddGuestOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Новый гость</DialogTitle>
+              <DialogTitle>{isEditMode ? 'Редактировать гостя' : 'Новый гость'}</DialogTitle>
               <DialogDescription>
-                Добавьте нового гостя в базу данных
+                {isEditMode ? 'Измените информацию о госте' : 'Добавьте нового гостя в базу данных'}
               </DialogDescription>
             </DialogHeader>
             
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Фамилия</Label>
-                  <Input placeholder="Иванов" className="mt-1" />
+                  <Label>Фамилия *</Label>
+                  <Input 
+                    placeholder="Иванов" 
+                    className="mt-1" 
+                    value={formData.last_name}
+                    onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+                  />
                 </div>
                 <div>
-                  <Label>Имя</Label>
-                  <Input placeholder="Иван" className="mt-1" />
+                  <Label>Имя *</Label>
+                  <Input 
+                    placeholder="Иван" 
+                    className="mt-1" 
+                    value={formData.first_name}
+                    onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+                  />
                 </div>
               </div>
               
               <div>
                 <Label>Отчество</Label>
-                <Input placeholder="Иванович" className="mt-1" />
+                <Input 
+                  placeholder="Иванович" 
+                  className="mt-1" 
+                  value={formData.middle_name}
+                  onChange={(e) => setFormData({ ...formData, middle_name: e.target.value })}
+                />
               </div>
               
               <div>
-                <Label>Телефон</Label>
-                <Input placeholder="+380 (50) 123-45-67" className="mt-1" />
+                <Label>Телефон *</Label>
+                <Input 
+                  placeholder="+7 (900) 123-45-67" 
+                  className="mt-1" 
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                />
               </div>
               
               <div>
                 <Label>Email</Label>
-                <Input type="email" placeholder="email@example.com" className="mt-1" />
+                <Input 
+                  type="email" 
+                  placeholder="email@example.com" 
+                  className="mt-1" 
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                />
               </div>
               
               <div>
                 <Label>Статус</Label>
-                <Select defaultValue="regular">
+                <Select 
+                  value={formData.status} 
+                  onValueChange={(v: GuestStatus) => setFormData({ ...formData, status: v })}
+                >
                   <SelectTrigger className="mt-1">
                     <SelectValue />
                   </SelectTrigger>
@@ -468,7 +593,12 @@ export default function GuestsPage() {
               
               <div>
                 <Label>Заметки</Label>
-                <Textarea placeholder="Особые предпочтения, аллергии..." className="mt-1" />
+                <Textarea 
+                  placeholder="Особые предпочтения, аллергии..." 
+                  className="mt-1" 
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                />
               </div>
             </div>
             
@@ -476,8 +606,12 @@ export default function GuestsPage() {
               <Button variant="outline" onClick={() => setIsAddGuestOpen(false)}>
                 Отмена
               </Button>
-              <Button onClick={() => setIsAddGuestOpen(false)}>
-                Добавить
+              <Button 
+                onClick={handleSave}
+                disabled={createGuest.loading || updateGuest.loading || !formData.first_name || !formData.last_name || !formData.phone}
+              >
+                {(createGuest.loading || updateGuest.loading) && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                {isEditMode ? 'Сохранить' : 'Добавить'}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -486,4 +620,3 @@ export default function GuestsPage() {
     </PageTransition>
   )
 }
-

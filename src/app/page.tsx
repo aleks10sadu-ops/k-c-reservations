@@ -1,51 +1,85 @@
 "use client"
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Filter, Search } from 'lucide-react'
+import { Plus, Filter, Search, Loader2 } from 'lucide-react'
 import { PageTransition } from '@/components/layout/PageTransition'
 import { Calendar } from '@/components/reservations/Calendar'
 import { ReservationModal } from '@/components/reservations/ReservationModal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Reservation, RESERVATION_STATUS_CONFIG, ReservationStatus } from '@/types'
-import { mockReservations } from '@/store/mockData'
+import { useReservations } from '@/hooks/useSupabase'
 import { Badge } from '@/components/ui/badge'
+import { startOfMonth, endOfMonth, format } from 'date-fns'
 
 export default function HomePage() {
   const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [modalMode, setModalMode] = useState<'view' | 'edit' | 'create'>('view')
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<ReservationStatus | 'all'>('all')
+  const [currentMonth, setCurrentMonth] = useState(new Date())
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null)
 
-  const filteredReservations = mockReservations.filter(reservation => {
-    const matchesSearch = searchQuery === '' || 
-      reservation.guest?.last_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      reservation.guest?.first_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      reservation.guest?.phone?.includes(searchQuery)
-    
-    const matchesStatus = statusFilter === 'all' || reservation.status === statusFilter
-
-    return matchesSearch && matchesStatus
+  // Fetch reservations for current month
+  const { data: reservations, loading, error, refetch } = useReservations({
+    startDate: format(startOfMonth(currentMonth), 'yyyy-MM-dd'),
+    endDate: format(endOfMonth(currentMonth), 'yyyy-MM-dd')
   })
+
+  const filteredReservations = useMemo(() => {
+    return reservations.filter(reservation => {
+      const matchesSearch = searchQuery === '' || 
+        reservation.guest?.last_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        reservation.guest?.first_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        reservation.guest?.phone?.includes(searchQuery)
+      
+      const matchesStatus = statusFilter === 'all' || reservation.status === statusFilter
+
+      return matchesSearch && matchesStatus
+    })
+  }, [reservations, searchQuery, statusFilter])
 
   const handleReservationClick = (reservation: Reservation) => {
     setSelectedReservation(reservation)
+    setModalMode('view')
     setIsModalOpen(true)
   }
 
-  const handleAddReservation = (date: Date) => {
-    // Create a new reservation template
-    console.log('Add reservation for:', date)
+  const handleAddReservation = (date?: Date) => {
+    setSelectedReservation(null)
+    setSelectedDate(date || null)
+    setModalMode('create')
+    setIsModalOpen(true)
+  }
+
+  const handleModalClose = () => {
+    setIsModalOpen(false)
+    setSelectedReservation(null)
+    setSelectedDate(null)
+  }
+
+  const handleSaveSuccess = () => {
+    handleModalClose()
+    refetch()
   }
 
   // Stats
-  const stats = {
-    total: mockReservations.length,
-    new: mockReservations.filter(r => r.status === 'new').length,
-    inProgress: mockReservations.filter(r => r.status === 'in_progress').length,
-    prepaid: mockReservations.filter(r => r.status === 'prepaid').length,
-    paid: mockReservations.filter(r => r.status === 'paid').length,
+  const stats = useMemo(() => ({
+    total: reservations.length,
+    new: reservations.filter(r => r.status === 'new').length,
+    inProgress: reservations.filter(r => r.status === 'in_progress').length,
+    prepaid: reservations.filter(r => r.status === 'prepaid').length,
+    paid: reservations.filter(r => r.status === 'paid').length,
+  }), [reservations])
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px] text-red-500">
+        Ошибка загрузки данных: {error}
+      </div>
+    )
   }
 
   return (
@@ -63,7 +97,11 @@ export default function HomePage() {
               <p className="mt-1 text-stone-500">Управляйте бронированиями ресторана</p>
             </div>
             
-            <Button size="lg" className="gap-2 shadow-lg shadow-amber-500/25">
+            <Button 
+              size="lg" 
+              className="gap-2 shadow-lg shadow-amber-500/25"
+              onClick={() => handleAddReservation()}
+            >
               <Plus className="h-5 w-5" />
               Новое бронирование
             </Button>
@@ -82,7 +120,9 @@ export default function HomePage() {
             className="rounded-2xl bg-white border border-stone-200 p-4 shadow-sm"
           >
             <p className="text-sm text-stone-500">Всего</p>
-            <p className="text-3xl font-bold text-stone-900">{stats.total}</p>
+            <p className="text-3xl font-bold text-stone-900">
+              {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : stats.total}
+            </p>
           </motion.div>
           
           {(Object.entries(RESERVATION_STATUS_CONFIG) as [ReservationStatus, typeof RESERVATION_STATUS_CONFIG[ReservationStatus]][]).map(([status, config]) => (
@@ -100,7 +140,8 @@ export default function HomePage() {
             >
               <p className="text-sm" style={{ color: config.color }}>{config.label}</p>
               <p className="text-3xl font-bold" style={{ color: config.color }}>
-                {status === 'new' ? stats.new :
+                {loading ? <Loader2 className="h-6 w-6 animate-spin" /> :
+                 status === 'new' ? stats.new :
                  status === 'in_progress' ? stats.inProgress :
                  status === 'prepaid' ? stats.prepaid : stats.paid}
               </p>
@@ -149,21 +190,28 @@ export default function HomePage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
         >
-          <Calendar 
-            reservations={filteredReservations}
-            onReservationClick={handleReservationClick}
-            onAddReservation={handleAddReservation}
-          />
+          {loading ? (
+            <div className="flex items-center justify-center min-h-[400px]">
+              <Loader2 className="h-8 w-8 animate-spin text-amber-600" />
+            </div>
+          ) : (
+            <Calendar 
+              reservations={filteredReservations}
+              onReservationClick={handleReservationClick}
+              onAddReservation={handleAddReservation}
+              onMonthChange={setCurrentMonth}
+            />
+          )}
         </motion.div>
 
         {/* Reservation Modal */}
         <ReservationModal
           reservation={selectedReservation}
           isOpen={isModalOpen}
-          onClose={() => {
-            setIsModalOpen(false)
-            setSelectedReservation(null)
-          }}
+          onClose={handleModalClose}
+          onSaveSuccess={handleSaveSuccess}
+          mode={modalMode}
+          initialDate={selectedDate}
         />
       </div>
     </PageTransition>

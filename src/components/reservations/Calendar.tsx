@@ -32,6 +32,7 @@ interface CalendarProps {
   onDateSelect?: (date: Date) => void
   onReservationClick?: (reservation: Reservation) => void
   onAddReservation?: (date: Date) => void
+  onMonthChange?: (date: Date) => void
 }
 
 const weekDays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
@@ -40,7 +41,8 @@ export function Calendar({
   reservations, 
   onDateSelect, 
   onReservationClick,
-  onAddReservation 
+  onAddReservation,
+  onMonthChange
 }: CalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
@@ -61,11 +63,21 @@ export function Calendar({
     })
   }
 
-  const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1))
-  const handleNextMonth = () => setCurrentDate(addMonths(currentDate, 1))
+  const handlePrevMonth = () => {
+    const newDate = subMonths(currentDate, 1)
+    setCurrentDate(newDate)
+    onMonthChange?.(newDate)
+  }
+  const handleNextMonth = () => {
+    const newDate = addMonths(currentDate, 1)
+    setCurrentDate(newDate)
+    onMonthChange?.(newDate)
+  }
   const handleToday = () => {
-    setCurrentDate(new Date())
-    setSelectedDate(new Date())
+    const today = new Date()
+    setCurrentDate(today)
+    setSelectedDate(today)
+    onMonthChange?.(today)
   }
 
   const handleDateClick = (date: Date) => {

@@ -1,15 +1,13 @@
 "use client"
 
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
-  X, 
   Calendar, 
   Clock, 
   Users, 
   MapPin, 
-  Phone, 
-  Mail,
+  Phone,
   Pencil,
   Save,
   Trash2,
@@ -18,9 +16,10 @@ import {
   MessageSquare,
   ChefHat,
   User,
-  Baby
+  Baby,
+  Loader2
 } from 'lucide-react'
-import { Reservation, ReservationStatus, RESERVATION_STATUS_CONFIG, MENU_ITEM_TYPE_CONFIG, MenuItemType } from '@/types'
+import { Reservation, ReservationStatus, RESERVATION_STATUS_CONFIG, MENU_ITEM_TYPE_CONFIG, MenuItemType, Guest } from '@/types'
 import { cn, formatCurrency, formatDate, calculatePlates, calculateTotalWeight } from '@/lib/utils'
 import { 
   Dialog, 
@@ -43,63 +42,191 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { mockMenus, mockHalls, mockMenuItems } from '@/store/mockData'
+import { useHalls, useMenus, useMenuItems, useGuests, useCreateMutation, useUpdateMutation, useDeleteMutation } from '@/hooks/useSupabase'
+import { format } from 'date-fns'
 
 interface ReservationModalProps {
   reservation: Reservation | null
   isOpen: boolean
   onClose: () => void
-  onSave?: (reservation: Reservation) => void
-  onDelete?: (id: string) => void
+  onSaveSuccess?: () => void
   mode?: 'view' | 'edit' | 'create'
+  initialDate?: Date | null
 }
 
 export function ReservationModal({ 
   reservation, 
   isOpen, 
   onClose,
-  onSave,
-  onDelete,
-  mode: initialMode = 'view'
+  onSaveSuccess,
+  mode: initialMode = 'view',
+  initialDate
 }: ReservationModalProps) {
   const [mode, setMode] = useState(initialMode)
-  const [editedReservation, setEditedReservation] = useState<Partial<Reservation>>(reservation || {})
-  const [selectedSalads, setSelectedSalads] = useState<string[]>([])
   const [showMenuEdit, setShowMenuEdit] = useState(false)
+  const [selectedSalads, setSelectedSalads] = useState<string[]>([])
+
+  // Form state
+  const [formData, setFormData] = useState({
+    date: '',
+    time: '18:00',
+    hall_id: '',
+    table_id: '',
+    guest_id: '',
+    guests_count: 10,
+    children_count: 0,
+    menu_id: '',
+    status: 'new' as ReservationStatus,
+    total_amount: 0,
+    prepaid_amount: 0,
+    comments: ''
+  })
+
+  // New guest form
+  const [showNewGuest, setShowNewGuest] = useState(false)
+  const [newGuestData, setNewGuestData] = useState({
+    first_name: '',
+    last_name: '',
+    phone: ''
+  })
+
+  // Fetch data
+  const { data: halls } = useHalls()
+  const { data: menus } = useMenus()
+  const { data: menuItems } = useMenuItems()
+  const { data: guests } = useGuests()
+
+  // Mutations
+  const createReservation = useCreateMutation<Reservation>('reservations')
+  const updateReservation = useUpdateMutation<Reservation>('reservations')
+  const deleteReservation = useDeleteMutation('reservations')
+  const createGuest = useCreateMutation<Guest>('guests')
+  const createPayment = useCreateMutation<any>('payments')
+
+  // Reset form when modal opens
+  useEffect(() => {
+    setMode(initialMode)
+    
+    if (reservation && initialMode !== 'create') {
+      setFormData({
+        date: reservation.date,
+        time: reservation.time,
+        hall_id: reservation.hall_id,
+        table_id: reservation.table_id || '',
+        guest_id: reservation.guest_id,
+        guests_count: reservation.guests_count,
+        children_count: reservation.children_count,
+        menu_id: reservation.menu_id || '',
+        status: reservation.status,
+        total_amount: reservation.total_amount,
+        prepaid_amount: reservation.prepaid_amount,
+        comments: reservation.comments || ''
+      })
+    } else if (initialMode === 'create') {
+      setFormData({
+        date: initialDate ? format(initialDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
+        time: '18:00',
+        hall_id: halls[0]?.id || '',
+        table_id: '',
+        guest_id: '',
+        guests_count: 10,
+        children_count: 0,
+        menu_id: menus[0]?.id || '',
+        status: 'new',
+        total_amount: 0,
+        prepaid_amount: 0,
+        comments: ''
+      })
+    }
+  }, [reservation, initialMode, isOpen, initialDate, halls, menus])
+
+  // Calculate total amount when guests or menu changes
+  useEffect(() => {
+    const selectedMenu = menus.find(m => m.id === formData.menu_id)
+    if (selectedMenu) {
+      setFormData(prev => ({
+        ...prev,
+        total_amount: selectedMenu.price_per_person * prev.guests_count
+      }))
+    }
+  }, [formData.guests_count, formData.menu_id, menus])
 
   const statusOptions: ReservationStatus[] = ['new', 'in_progress', 'prepaid', 'paid']
   
   const currentMenu = useMemo(() => {
-    return mockMenus.find(m => m.id === (editedReservation.menu_id || reservation?.menu_id))
-  }, [editedReservation.menu_id, reservation?.menu_id])
+    return menus.find(m => m.id === formData.menu_id)
+  }, [formData.menu_id, menus])
 
-  const menuItemsByType = useMemo((): Partial<Record<MenuItemType, typeof mockMenuItems>> => {
+  const menuItemsByType = useMemo((): Partial<Record<MenuItemType, typeof menuItems>> => {
     if (!currentMenu) return {}
-    const items = mockMenuItems.filter(i => i.menu_id === currentMenu.id)
+    const items = menuItems.filter(i => i.menu_id === currentMenu.id)
     return items.reduce((acc, item) => {
       if (!acc[item.type]) acc[item.type] = []
       acc[item.type]!.push(item)
       return acc
     }, {} as Partial<Record<MenuItemType, typeof items>>)
-  }, [currentMenu])
+  }, [currentMenu, menuItems])
 
-  const guestsCount = editedReservation.guests_count || reservation?.guests_count || 1
+  const remainingAmount = formData.total_amount - formData.prepaid_amount
 
-  const remainingAmount = (editedReservation.total_amount || reservation?.total_amount || 0) - 
-                          (editedReservation.prepaid_amount || reservation?.prepaid_amount || 0)
+  const handleStatusChange = (status: ReservationStatus) => {
+    setFormData(prev => ({ ...prev, status }))
+  }
 
-  if (!reservation && mode !== 'create') return null
+  const handleSave = async () => {
+    let guestId = formData.guest_id
+
+    // Create new guest if needed
+    if (showNewGuest && newGuestData.first_name && newGuestData.last_name && newGuestData.phone) {
+      const newGuest = await createGuest.mutate(newGuestData)
+      if (newGuest) {
+        guestId = newGuest.id
+      } else {
+        return // Failed to create guest
+      }
+    }
+
+    if (!guestId) {
+      alert('Выберите гостя')
+      return
+    }
+
+    const dataToSave = {
+      ...formData,
+      guest_id: guestId,
+      table_id: formData.table_id || null
+    }
+
+    if (mode === 'create') {
+      const result = await createReservation.mutate(dataToSave)
+      if (result) {
+        onSaveSuccess?.()
+      }
+    } else if (reservation) {
+      const result = await updateReservation.mutate(reservation.id, dataToSave)
+      if (result) {
+        onSaveSuccess?.()
+      }
+    }
+  }
+
+  const handleDelete = async () => {
+    if (reservation && confirm('Вы уверены что хотите удалить это бронирование?')) {
+      const result = await deleteReservation.mutate(reservation.id)
+      if (result) {
+        onSaveSuccess?.()
+      }
+    }
+  }
 
   const statusVariant = {
     new: 'new' as const,
     in_progress: 'inProgress' as const,
     prepaid: 'prepaid' as const,
     paid: 'paid' as const,
-  }[editedReservation.status || reservation?.status || 'new']
+  }[formData.status]
 
-  const handleStatusChange = (status: ReservationStatus) => {
-    setEditedReservation(prev => ({ ...prev, status }))
-  }
+  const isLoading = createReservation.loading || updateReservation.loading || deleteReservation.loading || createGuest.loading
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -110,7 +237,7 @@ export function ReservationModal({
               <DialogTitle className="text-xl font-bold text-stone-900">
                 {mode === 'create' ? 'Новое бронирование' : 'Бронирование'}
               </DialogTitle>
-              {reservation && (
+              {reservation && mode !== 'create' && (
                 <p className="text-sm text-stone-500 mt-1">
                   {formatDate(reservation.date)} в {reservation.time}
                 </p>
@@ -141,7 +268,7 @@ export function ReservationModal({
               <div className="flex flex-wrap gap-2">
                 {statusOptions.map((status) => {
                   const config = RESERVATION_STATUS_CONFIG[status]
-                  const isSelected = (editedReservation.status || reservation?.status) === status
+                  const isSelected = formData.status === status
                   return (
                     <motion.button
                       key={status}
@@ -171,102 +298,152 @@ export function ReservationModal({
 
             <Separator />
 
-            {/* Guest Info */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <h3 className="font-semibold text-stone-900 flex items-center gap-2">
-                  <User className="h-4 w-4" />
-                  Информация о госте
-                </h3>
-                
+            {/* Guest Selection */}
+            <div className="space-y-4">
+              <h3 className="font-semibold text-stone-900 flex items-center gap-2">
+                <User className="h-4 w-4" />
+                Информация о госте
+              </h3>
+              
+              {mode === 'view' ? (
                 <div className="space-y-3">
                   <div>
                     <Label>ФИО</Label>
-                    {mode === 'view' ? (
-                      <p className="mt-1 font-medium">
-                        {reservation?.guest?.last_name} {reservation?.guest?.first_name} {reservation?.guest?.middle_name}
-                      </p>
-                    ) : (
-                      <Input 
-                        defaultValue={`${reservation?.guest?.last_name || ''} ${reservation?.guest?.first_name || ''}`}
-                        className="mt-1"
-                      />
-                    )}
+                    <p className="mt-1 font-medium">
+                      {reservation?.guest?.last_name} {reservation?.guest?.first_name} {reservation?.guest?.middle_name}
+                    </p>
                   </div>
-                  
                   <div>
                     <Label className="flex items-center gap-2">
                       <Phone className="h-3.5 w-3.5" />
                       Телефон
                     </Label>
-                    {mode === 'view' ? (
-                      <p className="mt-1">{reservation?.guest?.phone}</p>
-                    ) : (
-                      <Input 
-                        defaultValue={reservation?.guest?.phone}
-                        className="mt-1"
-                      />
-                    )}
+                    <p className="mt-1">{reservation?.guest?.phone}</p>
                   </div>
                 </div>
-              </div>
-
-              <div className="space-y-4">
-                <h3 className="font-semibold text-stone-900 flex items-center gap-2">
-                  <Calendar className="h-4 w-4" />
-                  Дата и время
-                </h3>
-                
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>Дата</Label>
-                    {mode === 'view' ? (
-                      <p className="mt-1 font-medium">{formatDate(reservation?.date || '')}</p>
-                    ) : (
-                      <Input 
-                        type="date"
-                        defaultValue={reservation?.date}
-                        className="mt-1"
-                      />
-                    )}
-                  </div>
-                  
-                  <div>
-                    <Label>Время</Label>
-                    {mode === 'view' ? (
-                      <p className="mt-1 font-medium">{reservation?.time}</p>
-                    ) : (
-                      <Input 
-                        type="time"
-                        defaultValue={reservation?.time}
-                        className="mt-1"
-                      />
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <Label className="flex items-center gap-2">
-                    <MapPin className="h-3.5 w-3.5" />
-                    Зал / Стол
-                  </Label>
-                  {mode === 'view' ? (
-                    <p className="mt-1">{reservation?.hall?.name}</p>
+              ) : (
+                <div className="space-y-3">
+                  {!showNewGuest ? (
+                    <>
+                      <Select 
+                        value={formData.guest_id} 
+                        onValueChange={(v) => setFormData({ ...formData, guest_id: v })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Выберите гостя" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {guests.map(guest => (
+                            <SelectItem key={guest.id} value={guest.id}>
+                              {guest.last_name} {guest.first_name} - {guest.phone}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button variant="outline" size="sm" onClick={() => setShowNewGuest(true)}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Новый гость
+                      </Button>
+                    </>
                   ) : (
-                    <Select defaultValue={reservation?.hall_id}>
-                      <SelectTrigger className="mt-1">
-                        <SelectValue placeholder="Выберите зал" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {mockHalls.map(hall => (
-                          <SelectItem key={hall.id} value={hall.id}>
-                            {hall.name} (до {hall.capacity} чел.)
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="space-y-3 p-4 rounded-xl bg-stone-50">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label>Фамилия *</Label>
+                          <Input 
+                            value={newGuestData.last_name}
+                            onChange={(e) => setNewGuestData({ ...newGuestData, last_name: e.target.value })}
+                            className="mt-1"
+                          />
+                        </div>
+                        <div>
+                          <Label>Имя *</Label>
+                          <Input 
+                            value={newGuestData.first_name}
+                            onChange={(e) => setNewGuestData({ ...newGuestData, first_name: e.target.value })}
+                            className="mt-1"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <Label>Телефон *</Label>
+                        <Input 
+                          value={newGuestData.phone}
+                          onChange={(e) => setNewGuestData({ ...newGuestData, phone: e.target.value })}
+                          className="mt-1"
+                        />
+                      </div>
+                      <Button variant="outline" size="sm" onClick={() => setShowNewGuest(false)}>
+                        Выбрать существующего
+                      </Button>
+                    </div>
                   )}
                 </div>
+              )}
+            </div>
+
+            <Separator />
+
+            {/* Date, Time, Hall */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <Label className="flex items-center gap-2">
+                  <Calendar className="h-3.5 w-3.5" />
+                  Дата
+                </Label>
+                {mode === 'view' ? (
+                  <p className="mt-1 font-medium">{formatDate(reservation?.date || '')}</p>
+                ) : (
+                  <Input 
+                    type="date"
+                    value={formData.date}
+                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                    className="mt-1"
+                  />
+                )}
+              </div>
+              
+              <div>
+                <Label className="flex items-center gap-2">
+                  <Clock className="h-3.5 w-3.5" />
+                  Время
+                </Label>
+                {mode === 'view' ? (
+                  <p className="mt-1 font-medium">{reservation?.time}</p>
+                ) : (
+                  <Input 
+                    type="time"
+                    value={formData.time}
+                    onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                    className="mt-1"
+                  />
+                )}
+              </div>
+
+              <div>
+                <Label className="flex items-center gap-2">
+                  <MapPin className="h-3.5 w-3.5" />
+                  Зал
+                </Label>
+                {mode === 'view' ? (
+                  <p className="mt-1">{reservation?.hall?.name}</p>
+                ) : (
+                  <Select 
+                    value={formData.hall_id}
+                    onValueChange={(v) => setFormData({ ...formData, hall_id: v })}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Выберите зал" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {halls.map(hall => (
+                        <SelectItem key={hall.id} value={hall.id}>
+                          {hall.name} (до {hall.capacity} чел.)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
             </div>
 
@@ -285,11 +462,8 @@ export function ReservationModal({
                   <Input 
                     type="number"
                     min={1}
-                    defaultValue={reservation?.guests_count}
-                    onChange={(e) => setEditedReservation(prev => ({ 
-                      ...prev, 
-                      guests_count: parseInt(e.target.value) || 1 
-                    }))}
+                    value={formData.guests_count}
+                    onChange={(e) => setFormData({ ...formData, guests_count: parseInt(e.target.value) || 1 })}
                     className="mt-1"
                   />
                 )}
@@ -306,7 +480,8 @@ export function ReservationModal({
                   <Input 
                     type="number"
                     min={0}
-                    defaultValue={reservation?.children_count || 0}
+                    value={formData.children_count}
+                    onChange={(e) => setFormData({ ...formData, children_count: parseInt(e.target.value) || 0 })}
                     className="mt-1"
                   />
                 )}
@@ -322,7 +497,8 @@ export function ReservationModal({
                   <Input 
                     type="number"
                     min={0}
-                    defaultValue={reservation?.prepaid_amount || 0}
+                    value={formData.prepaid_amount}
+                    onChange={(e) => setFormData({ ...formData, prepaid_amount: parseFloat(e.target.value) || 0 })}
                     className="mt-1"
                   />
                 )}
@@ -372,14 +548,14 @@ export function ReservationModal({
                   </div>
                   {mode !== 'view' && (
                     <Select 
-                      defaultValue={reservation?.menu_id}
-                      onValueChange={(v) => setEditedReservation(prev => ({ ...prev, menu_id: v }))}
+                      value={formData.menu_id}
+                      onValueChange={(v) => setFormData({ ...formData, menu_id: v })}
                     >
                       <SelectTrigger className="w-[200px]">
                         <SelectValue placeholder="Выберите меню" />
                       </SelectTrigger>
                       <SelectContent>
-                        {mockMenus.map(menu => (
+                        {menus.map(menu => (
                           <SelectItem key={menu.id} value={menu.id}>
                             {menu.name} - {formatCurrency(menu.price_per_person)}
                           </SelectItem>
@@ -406,7 +582,7 @@ export function ReservationModal({
                       const typeConfig = MENU_ITEM_TYPE_CONFIG[type]
                       const isSelectable = items[0]?.is_selectable
                       const maxSelections = items[0]?.max_selections || items.length
-                      const platesCount = calculatePlates(guestsCount)
+                      const platesCount = calculatePlates(formData.guests_count)
 
                       return (
                         <div key={type} className="rounded-xl border border-stone-200 overflow-hidden">
@@ -421,7 +597,7 @@ export function ReservationModal({
                           <div className="divide-y divide-stone-100">
                             {items.map((item, idx) => {
                               const isSelected = !isSelectable || selectedSalads.includes(item.id) || idx < maxSelections
-                              const totalWeight = calculateTotalWeight(item.weight_per_person, guestsCount)
+                              const totalWeight = calculateTotalWeight(item.weight_per_person, formData.guests_count)
                               
                               return (
                                 <div 
@@ -484,7 +660,7 @@ export function ReservationModal({
                 <div>
                   <p className="text-sm text-amber-700">Итоговая стоимость банкета</p>
                   <p className="text-3xl font-bold text-amber-900">
-                    {formatCurrency(reservation?.total_amount || (currentMenu?.price_per_person || 0) * guestsCount)}
+                    {formatCurrency(formData.total_amount)}
                   </p>
                 </div>
                 <div className="text-right">
@@ -492,7 +668,7 @@ export function ReservationModal({
                     {currentMenu?.name} ({formatCurrency(currentMenu?.price_per_person || 0)}/чел.)
                   </p>
                   <p className="text-sm text-amber-600">
-                    {guestsCount} × {formatCurrency(currentMenu?.price_per_person || 0)}
+                    {formData.guests_count} × {formatCurrency(currentMenu?.price_per_person || 0)}
                   </p>
                 </div>
               </div>
@@ -528,13 +704,6 @@ export function ReservationModal({
                     </div>
                   ))}
                 </div>
-                
-                {mode !== 'view' && (
-                  <Button variant="outline" size="sm" className="gap-2">
-                    <Plus className="h-4 w-4" />
-                    Добавить оплату
-                  </Button>
-                )}
               </div>
             )}
 
@@ -551,7 +720,8 @@ export function ReservationModal({
               ) : (
                 <Textarea 
                   placeholder="Добавьте комментарии к заказу..."
-                  defaultValue={reservation?.comments}
+                  value={formData.comments}
+                  onChange={(e) => setFormData({ ...formData, comments: e.target.value })}
                   className="min-h-[100px]"
                 />
               )}
@@ -562,25 +732,30 @@ export function ReservationModal({
         {/* Footer Actions */}
         {mode !== 'view' && (
           <div className="flex items-center justify-between gap-4 p-6 pt-4 border-t border-stone-200 bg-stone-50">
-            <Button
-              variant="destructive"
-              onClick={() => reservation && onDelete?.(reservation.id)}
-              className="gap-2"
-            >
-              <Trash2 className="h-4 w-4" />
-              Удалить
-            </Button>
+            {mode === 'edit' && reservation && (
+              <Button
+                variant="destructive"
+                onClick={handleDelete}
+                disabled={isLoading}
+                className="gap-2"
+              >
+                {deleteReservation.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                Удалить
+              </Button>
+            )}
+            {mode === 'create' && <div />}
             
             <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={() => setMode('view')}>
+              <Button variant="outline" onClick={onClose}>
                 Отмена
               </Button>
-              <Button onClick={() => {
-                // Save logic
-                onClose()
-              }} className="gap-2">
-                <Save className="h-4 w-4" />
-                Сохранить
+              <Button 
+                onClick={handleSave} 
+                disabled={isLoading}
+                className="gap-2"
+              >
+                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {mode === 'create' ? 'Создать' : 'Сохранить'}
               </Button>
             </div>
           </div>
@@ -589,4 +764,3 @@ export function ReservationModal({
     </Dialog>
   )
 }
-

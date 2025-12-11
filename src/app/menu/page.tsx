@@ -1,22 +1,20 @@
 "use client"
 
-import { useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useState, useMemo } from 'react'
+import { motion } from 'framer-motion'
 import { 
   Plus, 
   ChefHat, 
   Pencil, 
   Trash2, 
   GripVertical,
-  Check,
-  X
+  Loader2
 } from 'lucide-react'
 import { PageTransition } from '@/components/layout/PageTransition'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { 
   Dialog, 
   DialogContent, 
@@ -27,7 +25,7 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { mockMenus, mockMenuItems } from '@/store/mockData'
+import { useMenus, useMenuItems, useCreateMutation, useUpdateMutation, useDeleteMutation } from '@/hooks/useSupabase'
 import { formatCurrency, cn } from '@/lib/utils'
 import { Menu, MenuItem, MENU_ITEM_TYPE_CONFIG, MenuItemType } from '@/types'
 import {
@@ -40,20 +38,174 @@ import {
 import { Checkbox } from '@/components/ui/checkbox'
 
 export default function MenuPage() {
-  const [selectedMenu, setSelectedMenu] = useState(mockMenus[0])
+  const [selectedMenuId, setSelectedMenuId] = useState<string | null>(null)
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false)
   const [isAddItemOpen, setIsAddItemOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null)
+  const [editingMenu, setEditingMenu] = useState<Menu | null>(null)
 
-  const menuItems = mockMenuItems.filter(item => item.menu_id === selectedMenu.id)
+  // Form states
+  const [menuForm, setMenuForm] = useState({
+    name: '',
+    price_per_person: 0,
+    total_weight_per_person: 0,
+    description: '',
+    is_active: true
+  })
+
+  const [itemForm, setItemForm] = useState({
+    name: '',
+    type: 'appetizer' as MenuItemType,
+    weight_per_person: 0,
+    is_selectable: false,
+    max_selections: 3,
+    order_index: 0
+  })
+
+  // Fetch data
+  const { data: menus, loading: menusLoading } = useMenus()
+  const { data: allMenuItems, loading: itemsLoading } = useMenuItems()
+
+  // Mutations
+  const createMenu = useCreateMutation<Menu>('menus')
+  const updateMenu = useUpdateMutation<Menu>('menus')
+  const deleteMenu = useDeleteMutation('menus')
+  const createMenuItem = useCreateMutation<MenuItem>('menu_items')
+  const updateMenuItem = useUpdateMutation<MenuItem>('menu_items')
+  const deleteMenuItem = useDeleteMutation('menu_items')
+
+  // Set first menu as selected if none selected
+  const selectedMenu = useMemo(() => {
+    if (selectedMenuId) {
+      return menus.find(m => m.id === selectedMenuId) || menus[0]
+    }
+    if (menus.length > 0 && !selectedMenuId) {
+      setSelectedMenuId(menus[0].id)
+      return menus[0]
+    }
+    return null
+  }, [menus, selectedMenuId])
+
+  const menuItems = useMemo(() => {
+    if (!selectedMenu) return []
+    return allMenuItems.filter(item => item.menu_id === selectedMenu.id)
+  }, [allMenuItems, selectedMenu])
   
-  const itemsByType = menuItems.reduce((acc, item) => {
-    if (!acc[item.type]) acc[item.type] = []
-    acc[item.type].push(item)
-    return acc
-  }, {} as Record<MenuItemType, MenuItem[]>)
+  const itemsByType = useMemo(() => {
+    return menuItems.reduce((acc, item) => {
+      if (!acc[item.type]) acc[item.type] = []
+      acc[item.type].push(item)
+      return acc
+    }, {} as Partial<Record<MenuItemType, MenuItem[]>>)
+  }, [menuItems])
 
   const totalWeight = menuItems.reduce((sum, item) => sum + item.weight_per_person, 0)
+
+  const resetMenuForm = () => {
+    setMenuForm({
+      name: '',
+      price_per_person: 0,
+      total_weight_per_person: 0,
+      description: '',
+      is_active: true
+    })
+    setEditingMenu(null)
+  }
+
+  const resetItemForm = () => {
+    setItemForm({
+      name: '',
+      type: 'appetizer',
+      weight_per_person: 0,
+      is_selectable: false,
+      max_selections: 3,
+      order_index: menuItems.length
+    })
+    setEditingItem(null)
+  }
+
+  const handleOpenAddMenu = () => {
+    resetMenuForm()
+    setIsAddMenuOpen(true)
+  }
+
+  const handleOpenEditMenu = (menu: Menu) => {
+    setMenuForm({
+      name: menu.name,
+      price_per_person: menu.price_per_person,
+      total_weight_per_person: menu.total_weight_per_person,
+      description: menu.description || '',
+      is_active: menu.is_active
+    })
+    setEditingMenu(menu)
+    setIsAddMenuOpen(true)
+  }
+
+  const handleSaveMenu = async () => {
+    if (editingMenu) {
+      await updateMenu.mutate(editingMenu.id, menuForm)
+    } else {
+      await createMenu.mutate(menuForm)
+    }
+    setIsAddMenuOpen(false)
+    resetMenuForm()
+  }
+
+  const handleDeleteMenu = async (id: string) => {
+    if (confirm('Вы уверены что хотите удалить это меню?')) {
+      await deleteMenu.mutate(id)
+      if (selectedMenuId === id) {
+        setSelectedMenuId(null)
+      }
+    }
+  }
+
+  const handleOpenAddItem = () => {
+    resetItemForm()
+    setIsAddItemOpen(true)
+  }
+
+  const handleOpenEditItem = (item: MenuItem) => {
+    setItemForm({
+      name: item.name,
+      type: item.type,
+      weight_per_person: item.weight_per_person,
+      is_selectable: item.is_selectable,
+      max_selections: item.max_selections || 3,
+      order_index: item.order_index
+    })
+    setEditingItem(item)
+    setIsAddItemOpen(true)
+  }
+
+  const handleSaveItem = async () => {
+    if (!selectedMenu) return
+    
+    if (editingItem) {
+      await updateMenuItem.mutate(editingItem.id, itemForm)
+    } else {
+      await createMenuItem.mutate({
+        ...itemForm,
+        menu_id: selectedMenu.id
+      })
+    }
+    setIsAddItemOpen(false)
+    resetItemForm()
+  }
+
+  const handleDeleteItem = async (id: string) => {
+    if (confirm('Вы уверены что хотите удалить эту позицию?')) {
+      await deleteMenuItem.mutate(id)
+    }
+  }
+
+  if (menusLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-amber-600" />
+      </div>
+    )
+  }
 
   return (
     <PageTransition>
@@ -73,7 +225,7 @@ export default function MenuPage() {
             <Button 
               size="lg" 
               className="gap-2 shadow-lg shadow-amber-500/25"
-              onClick={() => setIsAddMenuOpen(true)}
+              onClick={handleOpenAddMenu}
             >
               <Plus className="h-5 w-5" />
               Новое меню
@@ -88,15 +240,15 @@ export default function MenuPage() {
           transition={{ delay: 0.1 }}
           className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8"
         >
-          {mockMenus.map((menu) => (
+          {menus.map((menu) => (
             <motion.div
               key={menu.id}
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              onClick={() => setSelectedMenu(menu)}
+              onClick={() => setSelectedMenuId(menu.id)}
               className={cn(
                 "cursor-pointer rounded-2xl border-2 p-6 transition-all",
-                selectedMenu.id === menu.id 
+                selectedMenu?.id === menu.id 
                   ? "border-amber-500 bg-amber-50 shadow-lg shadow-amber-500/10" 
                   : "border-stone-200 bg-white hover:border-amber-200"
               )}
@@ -105,7 +257,7 @@ export default function MenuPage() {
                 <div className="flex items-center gap-3">
                   <div className={cn(
                     "flex h-12 w-12 items-center justify-center rounded-xl",
-                    selectedMenu.id === menu.id ? "bg-amber-500 text-white" : "bg-stone-100 text-stone-600"
+                    selectedMenu?.id === menu.id ? "bg-amber-500 text-white" : "bg-stone-100 text-stone-600"
                   )}>
                     <ChefHat className="h-6 w-6" />
                   </div>
@@ -114,6 +266,16 @@ export default function MenuPage() {
                     <p className="text-sm text-stone-500">{menu.description}</p>
                   </div>
                 </div>
+                <Button 
+                  variant="ghost" 
+                  size="icon"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleOpenEditMenu(menu)
+                  }}
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
               </div>
               
               <div className="flex items-end justify-between">
@@ -130,152 +292,212 @@ export default function MenuPage() {
               
               <div className="mt-4 pt-4 border-t border-stone-200 flex items-center justify-between text-sm text-stone-500">
                 <span>{menu.total_weight_per_person} гр./чел.</span>
-                <span>{mockMenuItems.filter(i => i.menu_id === menu.id).length} позиций</span>
+                <span>{allMenuItems.filter(i => i.menu_id === menu.id).length} позиций</span>
               </div>
             </motion.div>
           ))}
+
+          {menus.length === 0 && (
+            <div className="col-span-3 text-center py-12 text-stone-500">
+              <ChefHat className="h-12 w-12 mx-auto mb-3 text-stone-300" />
+              <p>Нет меню. Создайте первое меню.</p>
+            </div>
+          )}
         </motion.div>
 
         {/* Selected Menu Details */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <ChefHat className="h-5 w-5 text-amber-600" />
-                  {selectedMenu.name}
-                </CardTitle>
-                <CardDescription>
-                  {formatCurrency(selectedMenu.price_per_person)}/чел. • {totalWeight} гр./чел.
-                </CardDescription>
-              </div>
-              <Button onClick={() => setIsAddItemOpen(true)} className="gap-2">
-                <Plus className="h-4 w-4" />
-                Добавить позицию
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                {(Object.entries(MENU_ITEM_TYPE_CONFIG) as [MenuItemType, typeof MENU_ITEM_TYPE_CONFIG[MenuItemType]][]).map(([type, config]) => {
-                  const items = itemsByType[type]
-                  if (!items?.length) return null
+        {selectedMenu && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <ChefHat className="h-5 w-5 text-amber-600" />
+                    {selectedMenu.name}
+                  </CardTitle>
+                  <CardDescription>
+                    {formatCurrency(selectedMenu.price_per_person)}/чел. • {totalWeight} гр./чел.
+                  </CardDescription>
+                </div>
+                <Button onClick={handleOpenAddItem} className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  Добавить позицию
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {itemsLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-amber-600" />
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {(Object.entries(MENU_ITEM_TYPE_CONFIG) as [MenuItemType, typeof MENU_ITEM_TYPE_CONFIG[MenuItemType]][]).map(([type, config]) => {
+                      const items = itemsByType[type]
+                      if (!items?.length) return null
 
-                  return (
-                    <motion.div 
-                      key={type}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      className="rounded-xl border border-stone-200 overflow-hidden"
-                    >
-                      <div className="bg-stone-50 px-4 py-3 flex items-center justify-between">
-                        <h3 className="font-semibold text-stone-900">{config.labelPlural}</h3>
-                        <span className="text-sm text-stone-500">
-                          {items.reduce((sum, i) => sum + i.weight_per_person, 0)} гр.
-                        </span>
-                      </div>
-                      
-                      <div className="divide-y divide-stone-100">
-                        {items.map((item, index) => (
-                          <motion.div 
-                            key={item.id}
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            transition={{ delay: index * 0.05 }}
-                            className="px-4 py-3 flex items-center justify-between gap-4 hover:bg-stone-50 group"
-                          >
-                            <div className="flex items-center gap-3 flex-1">
-                              <GripVertical className="h-4 w-4 text-stone-300 opacity-0 group-hover:opacity-100 cursor-grab" />
-                              <div>
-                                <p className="font-medium text-stone-900">{item.name}</p>
-                                {item.is_selectable && (
-                                  <Badge variant="outline" className="mt-1 text-xs">
-                                    Выбор {item.max_selections} из доступных
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                            
-                            <div className="flex items-center gap-4">
-                              <span className="text-sm text-stone-500">{item.weight_per_person} гр.</span>
-                              
-                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Button 
-                                  variant="ghost" 
-                                  size="icon"
-                                  className="h-8 w-8"
-                                  onClick={() => setEditingItem(item)}
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                </Button>
-                                <Button 
-                                  variant="ghost" 
-                                  size="icon"
-                                  className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </div>
-                          </motion.div>
-                        ))}
-                      </div>
-                    </motion.div>
-                  )
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
+                      return (
+                        <motion.div 
+                          key={type}
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          className="rounded-xl border border-stone-200 overflow-hidden"
+                        >
+                          <div className="bg-stone-50 px-4 py-3 flex items-center justify-between">
+                            <h3 className="font-semibold text-stone-900">{config.labelPlural}</h3>
+                            <span className="text-sm text-stone-500">
+                              {items.reduce((sum, i) => sum + i.weight_per_person, 0)} гр.
+                            </span>
+                          </div>
+                          
+                          <div className="divide-y divide-stone-100">
+                            {items.map((item, index) => (
+                              <motion.div 
+                                key={item.id}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                transition={{ delay: index * 0.05 }}
+                                className="px-4 py-3 flex items-center justify-between gap-4 hover:bg-stone-50 group"
+                              >
+                                <div className="flex items-center gap-3 flex-1">
+                                  <GripVertical className="h-4 w-4 text-stone-300 opacity-0 group-hover:opacity-100 cursor-grab" />
+                                  <div>
+                                    <p className="font-medium text-stone-900">{item.name}</p>
+                                    {item.is_selectable && (
+                                      <Badge variant="outline" className="mt-1 text-xs">
+                                        Выбор {item.max_selections} из доступных
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                                
+                                <div className="flex items-center gap-4">
+                                  <span className="text-sm text-stone-500">{item.weight_per_person} гр.</span>
+                                  
+                                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Button 
+                                      variant="ghost" 
+                                      size="icon"
+                                      className="h-8 w-8"
+                                      onClick={() => handleOpenEditItem(item)}
+                                    >
+                                      <Pencil className="h-4 w-4" />
+                                    </Button>
+                                    <Button 
+                                      variant="ghost" 
+                                      size="icon"
+                                      className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
+                                      onClick={() => handleDeleteItem(item.id)}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              </motion.div>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )
+                    })}
 
-        {/* Add Menu Dialog */}
+                    {menuItems.length === 0 && (
+                      <div className="text-center py-12 text-stone-500">
+                        <ChefHat className="h-12 w-12 mx-auto mb-3 text-stone-300" />
+                        <p>Нет позиций в меню. Добавьте первую позицию.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+
+        {/* Add/Edit Menu Dialog */}
         <Dialog open={isAddMenuOpen} onOpenChange={setIsAddMenuOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Новое меню</DialogTitle>
+              <DialogTitle>{editingMenu ? 'Редактировать меню' : 'Новое меню'}</DialogTitle>
               <DialogDescription>
-                Создайте новое банкетное меню для ресторана
+                {editingMenu ? 'Измените параметры меню' : 'Создайте новое банкетное меню для ресторана'}
               </DialogDescription>
             </DialogHeader>
             
             <div className="space-y-4">
               <div>
-                <Label>Название</Label>
-                <Input placeholder="Например: Меню Премиум" className="mt-1" />
+                <Label>Название *</Label>
+                <Input 
+                  placeholder="Например: Меню Премиум" 
+                  className="mt-1" 
+                  value={menuForm.name}
+                  onChange={(e) => setMenuForm({ ...menuForm, name: e.target.value })}
+                />
               </div>
               
               <div>
-                <Label>Цена за человека (₽)</Label>
-                <Input type="number" placeholder="5000" className="mt-1" />
+                <Label>Цена за человека (₽) *</Label>
+                <Input 
+                  type="number" 
+                  placeholder="5000" 
+                  className="mt-1" 
+                  value={menuForm.price_per_person || ''}
+                  onChange={(e) => setMenuForm({ ...menuForm, price_per_person: Number(e.target.value) })}
+                />
+              </div>
+
+              <div>
+                <Label>Грамовка на человека (гр.)</Label>
+                <Input 
+                  type="number" 
+                  placeholder="1500" 
+                  className="mt-1" 
+                  value={menuForm.total_weight_per_person || ''}
+                  onChange={(e) => setMenuForm({ ...menuForm, total_weight_per_person: Number(e.target.value) })}
+                />
               </div>
               
               <div>
                 <Label>Описание</Label>
-                <Textarea placeholder="Описание меню..." className="mt-1" />
+                <Textarea 
+                  placeholder="Описание меню..." 
+                  className="mt-1" 
+                  value={menuForm.description}
+                  onChange={(e) => setMenuForm({ ...menuForm, description: e.target.value })}
+                />
               </div>
             </div>
             
-            <DialogFooter>
+            <DialogFooter className="gap-2">
+              {editingMenu && (
+                <Button 
+                  variant="destructive" 
+                  onClick={() => {
+                    handleDeleteMenu(editingMenu.id)
+                    setIsAddMenuOpen(false)
+                  }}
+                >
+                  Удалить
+                </Button>
+              )}
               <Button variant="outline" onClick={() => setIsAddMenuOpen(false)}>
                 Отмена
               </Button>
-              <Button onClick={() => setIsAddMenuOpen(false)}>
-                Создать
+              <Button 
+                onClick={handleSaveMenu}
+                disabled={createMenu.loading || updateMenu.loading || !menuForm.name || !menuForm.price_per_person}
+              >
+                {(createMenu.loading || updateMenu.loading) && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                {editingMenu ? 'Сохранить' : 'Создать'}
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
 
         {/* Add/Edit Item Dialog */}
-        <Dialog open={isAddItemOpen || !!editingItem} onOpenChange={(open) => {
-          if (!open) {
-            setIsAddItemOpen(false)
-            setEditingItem(null)
-          }
-        }}>
+        <Dialog open={isAddItemOpen} onOpenChange={setIsAddItemOpen}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>
@@ -288,17 +510,21 @@ export default function MenuPage() {
             
             <div className="space-y-4">
               <div>
-                <Label>Название</Label>
+                <Label>Название *</Label>
                 <Input 
                   placeholder="Название блюда" 
-                  defaultValue={editingItem?.name}
+                  value={itemForm.name}
+                  onChange={(e) => setItemForm({ ...itemForm, name: e.target.value })}
                   className="mt-1" 
                 />
               </div>
               
               <div>
                 <Label>Тип блюда</Label>
-                <Select defaultValue={editingItem?.type || 'appetizer'}>
+                <Select 
+                  value={itemForm.type} 
+                  onValueChange={(v: MenuItemType) => setItemForm({ ...itemForm, type: v })}
+                >
                   <SelectTrigger className="mt-1">
                     <SelectValue />
                   </SelectTrigger>
@@ -313,11 +539,12 @@ export default function MenuPage() {
               </div>
               
               <div>
-                <Label>Грамовка на человека (гр.)</Label>
+                <Label>Грамовка на человека (гр.) *</Label>
                 <Input 
                   type="number" 
                   placeholder="150" 
-                  defaultValue={editingItem?.weight_per_person}
+                  value={itemForm.weight_per_person || ''}
+                  onChange={(e) => setItemForm({ ...itemForm, weight_per_person: Number(e.target.value) })}
                   className="mt-1" 
                 />
               </div>
@@ -325,25 +552,37 @@ export default function MenuPage() {
               <div className="flex items-center gap-3">
                 <Checkbox 
                   id="selectable" 
-                  defaultChecked={editingItem?.is_selectable}
+                  checked={itemForm.is_selectable}
+                  onCheckedChange={(checked) => setItemForm({ ...itemForm, is_selectable: !!checked })}
                 />
                 <Label htmlFor="selectable" className="cursor-pointer">
                   Можно выбирать (например, 3 из 5 салатов)
                 </Label>
               </div>
+
+              {itemForm.is_selectable && (
+                <div>
+                  <Label>Максимум выборов</Label>
+                  <Input 
+                    type="number" 
+                    placeholder="3" 
+                    value={itemForm.max_selections}
+                    onChange={(e) => setItemForm({ ...itemForm, max_selections: Number(e.target.value) })}
+                    className="mt-1" 
+                  />
+                </div>
+              )}
             </div>
             
             <DialogFooter>
-              <Button variant="outline" onClick={() => {
-                setIsAddItemOpen(false)
-                setEditingItem(null)
-              }}>
+              <Button variant="outline" onClick={() => setIsAddItemOpen(false)}>
                 Отмена
               </Button>
-              <Button onClick={() => {
-                setIsAddItemOpen(false)
-                setEditingItem(null)
-              }}>
+              <Button 
+                onClick={handleSaveItem}
+                disabled={createMenuItem.loading || updateMenuItem.loading || !itemForm.name || !itemForm.weight_per_person}
+              >
+                {(createMenuItem.loading || updateMenuItem.loading) && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                 {editingItem ? 'Сохранить' : 'Добавить'}
               </Button>
             </DialogFooter>
@@ -353,4 +592,3 @@ export default function MenuPage() {
     </PageTransition>
   )
 }
-
