@@ -19,12 +19,15 @@ import {
   isSameDay, 
   isToday,
   addMonths,
-  subMonths
+  subMonths,
+  addYears,
+  subYears
 } from 'date-fns'
 import { ru } from 'date-fns/locale'
 import { Reservation } from '@/types'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { ReservationCard } from './ReservationCard'
 
 interface CalendarProps {
@@ -34,6 +37,8 @@ interface CalendarProps {
   onAddReservation?: (date: Date) => void
   onMonthChange?: (date: Date) => void
   currentDate?: Date
+  viewMode: 'year' | 'month' | 'day'
+  onViewModeChange?: (mode: 'year' | 'month' | 'day') => void
 }
 
 const weekDays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
@@ -44,11 +49,12 @@ export function Calendar({
   onReservationClick,
   onAddReservation,
   onMonthChange,
-  currentDate: controlledDate
+  currentDate: controlledDate,
+  viewMode,
+  onViewModeChange
 }: CalendarProps) {
   const [currentDate, setCurrentDate] = useState(controlledDate ?? new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
-  const [viewMode, setViewMode] = useState<'month' | 'day'>('month')
 
   // Keep internal month in sync with the value provided by the parent
   useEffect(() => {
@@ -56,6 +62,13 @@ export function Calendar({
       setCurrentDate(controlledDate)
     }
   }, [controlledDate, currentDate])
+
+  // Reset selected date when leaving day view
+  useEffect(() => {
+    if (viewMode !== 'day') {
+      setSelectedDate(null)
+    }
+  }, [viewMode])
 
   const calendarDays = useMemo(() => {
     const monthStart = startOfMonth(currentDate)
@@ -66,6 +79,11 @@ export function Calendar({
     return eachDayOfInterval({ start: calendarStart, end: calendarEnd })
   }, [currentDate])
 
+  const monthsOfYear = useMemo(() => {
+    const year = currentDate.getFullYear()
+    return Array.from({ length: 12 }, (_, i) => new Date(year, i, 1))
+  }, [currentDate])
+
   const getReservationsForDate = (date: Date) => {
     return reservations.filter(r => {
       const reservationDate = new Date(r.date)
@@ -73,13 +91,17 @@ export function Calendar({
     })
   }
 
+  const getReservationsForMonth = (date: Date) => {
+    return reservations.filter((r) => isSameMonth(new Date(r.date), date))
+  }
+
   const handlePrevMonth = () => {
-    const newDate = subMonths(currentDate, 1)
+    const newDate = viewMode === 'year' ? subYears(currentDate, 1) : subMonths(currentDate, 1)
     setCurrentDate(newDate)
     onMonthChange?.(newDate)
   }
   const handleNextMonth = () => {
-    const newDate = addMonths(currentDate, 1)
+    const newDate = viewMode === 'year' ? addYears(currentDate, 1) : addMonths(currentDate, 1)
     setCurrentDate(newDate)
     onMonthChange?.(newDate)
   }
@@ -87,19 +109,27 @@ export function Calendar({
     const today = new Date()
     setCurrentDate(today)
     setSelectedDate(today)
-    setViewMode('day')
+    onViewModeChange?.('day')
     onMonthChange?.(today)
   }
 
   const handleDateClick = (date: Date) => {
     setSelectedDate(date)
-    setViewMode('day')
+    onViewModeChange?.('day')
+    setCurrentDate(date)
+    onMonthChange?.(date)
     onDateSelect?.(date)
   }
 
   const handleBackToMonth = () => {
-    setViewMode('month')
+    onViewModeChange?.('month')
     setSelectedDate(null)
+  }
+
+  const handleMonthTileClick = (monthDate: Date) => {
+    setCurrentDate(monthDate)
+    onMonthChange?.(monthDate)
+    onViewModeChange?.('month')
   }
 
   return (
@@ -107,14 +137,24 @@ export function Calendar({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <motion.h2 
-            key={format(currentDate, 'MMMM yyyy')}
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-2xl font-bold text-stone-900 capitalize"
-          >
-            {format(currentDate, 'LLLL yyyy', { locale: ru })}
-          </motion.h2>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={viewMode === 'year' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => onViewModeChange?.('year')}
+              className="text-lg font-semibold"
+            >
+              {format(currentDate, 'yyyy', { locale: ru })}
+            </Button>
+            <Button
+              variant={viewMode === 'month' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => onViewModeChange?.('month')}
+              className="text-lg font-semibold capitalize"
+            >
+              {format(currentDate, 'LLLL', { locale: ru })}
+            </Button>
+          </div>
         </div>
         
         <div className="flex items-center gap-2">
@@ -146,6 +186,51 @@ export function Calendar({
           </div>
         </div>
       </div>
+
+      {viewMode === 'year' && (
+        <div className="rounded-2xl border border-stone-200 bg-white shadow-sm p-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {monthsOfYear.map((monthDate) => {
+              const monthReservations = getReservationsForMonth(monthDate)
+              const sample = monthReservations.slice(0, 2)
+              const remaining = monthReservations.length - sample.length
+
+              return (
+                <motion.button
+                  key={monthDate.toISOString()}
+                  whileHover={{ scale: 1.01 }}
+                  className="rounded-xl border border-stone-200 bg-stone-50/60 p-3 text-left transition hover:border-amber-300 hover:bg-amber-50/60"
+                  onClick={() => handleMonthTileClick(monthDate)}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-semibold capitalize">
+                      {format(monthDate, 'LLLL', { locale: ru })}
+                    </span>
+                    <Badge variant="secondary" className="text-xs">
+                      {monthReservations.length} брони
+                    </Badge>
+                  </div>
+                  <div className="space-y-1 text-xs text-stone-600">
+                    {sample.map((r) => (
+                      <div key={r.id} className="truncate">
+                        {format(new Date(r.date), 'd MMM', { locale: ru })} · {r.guest?.last_name || 'Гость'}
+                      </div>
+                    ))}
+                    {remaining > 0 && (
+                      <div className="text-amber-600 font-medium">
+                        +{remaining} ещё
+                      </div>
+                    )}
+                    {monthReservations.length === 0 && (
+                      <div className="text-stone-400">Нет броней</div>
+                    )}
+                  </div>
+                </motion.button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {viewMode === 'month' && (
         <div className="rounded-2xl border border-stone-200 bg-white shadow-sm overflow-hidden">

@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Plus, Filter, Search, Loader2 } from 'lucide-react'
 import { PageTransition } from '@/components/layout/PageTransition'
@@ -12,7 +12,7 @@ import { Reservation, RESERVATION_STATUS_CONFIG, ReservationStatus } from '@/typ
 import { useHalls, useMenus, useReservations } from '@/hooks/useSupabase'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { endOfMonth, format, startOfMonth, isSameMonth } from 'date-fns'
+import { endOfMonth, format, startOfMonth, startOfYear, endOfYear } from 'date-fns'
 import { ru } from 'date-fns/locale'
 
 export default function HomePage() {
@@ -21,12 +21,11 @@ export default function HomePage() {
   const [modalMode, setModalMode] = useState<'view' | 'edit' | 'create'>('view')
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<ReservationStatus | 'all'>('all')
-  const [currentMonth, setCurrentMonth] = useState(new Date())
+  const [currentDate, setCurrentDate] = useState(new Date())
+  const [viewMode, setViewMode] = useState<'year' | 'month' | 'day'>('month')
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [isFiltersOpen, setIsFiltersOpen] = useState(false)
   const [filters, setFilters] = useState({
-    year: new Date().getFullYear().toString(),
-    month: (new Date().getMonth() + 1).toString(),
     hallId: 'all',
     menuId: 'all',
     paymentMethod: 'all',
@@ -41,47 +40,18 @@ export default function HomePage() {
   const { data: reservationsForFilters } = useReservations()
 
   // Fetch reservations for current month
+  const rangeStart = viewMode === 'year' ? startOfYear(currentDate) : startOfMonth(currentDate)
+  const rangeEnd = viewMode === 'year' ? endOfYear(currentDate) : endOfMonth(currentDate)
+
   const { data: reservations, loading, error, refetch } = useReservations({
-    startDate: format(startOfMonth(currentMonth), 'yyyy-MM-dd'),
-    endDate: format(endOfMonth(currentMonth), 'yyyy-MM-dd')
+    startDate: format(rangeStart, 'yyyy-MM-dd'),
+    endDate: format(rangeEnd, 'yyyy-MM-dd')
   })
-
-  // Sync calendar month with dropdown filters
-  useEffect(() => {
-    const nextDate = new Date(Number(filters.year), Number(filters.month) - 1, 1)
-    if (!isSameMonth(nextDate, currentMonth)) {
-      setCurrentMonth(nextDate)
-    }
-  }, [filters.year, filters.month, currentMonth])
-
-  const availableYears = useMemo(() => {
-    const years = reservationsForFilters?.map((r) => new Date(r.date).getFullYear()) || []
-    const uniqueYears = Array.from(new Set(years))
-    if (uniqueYears.length === 0) {
-      return [new Date().getFullYear()]
-    }
-    return uniqueYears.sort((a, b) => b - a)
-  }, [reservationsForFilters])
-
-  const availableMonths = useMemo(() => {
-    const months = reservationsForFilters
-      ?.filter((r) => new Date(r.date).getFullYear().toString() === filters.year)
-      .map((r) => new Date(r.date).getMonth() + 1) || []
-    const uniqueMonths = Array.from(new Set(months))
-    return uniqueMonths.sort((a, b) => a - b)
-  }, [reservationsForFilters, filters.year])
 
   const paymentMethods = useMemo(() => {
     const methods = reservationsForFilters?.flatMap((r) => r.payments?.map((p) => p.payment_method) ?? []) || []
     return Array.from(new Set(methods))
   }, [reservationsForFilters])
-
-  const monthOptions = useMemo(() => {
-    if (availableMonths.length > 0) {
-      return availableMonths
-    }
-    return Array.from({ length: 12 }, (_, i) => i + 1)
-  }, [availableMonths])
 
   const hasActiveFilters = useMemo(() => {
     return (
@@ -139,12 +109,7 @@ export default function HomePage() {
   }
 
   const handleCalendarMonthChange = (date: Date) => {
-    setCurrentMonth(date)
-    setFilters((prev) => ({
-      ...prev,
-      year: date.getFullYear().toString(),
-      month: (date.getMonth() + 1).toString()
-    }))
+    setCurrentDate(date)
   }
 
   const handleAddReservation = (date?: Date) => {
@@ -166,12 +131,9 @@ export default function HomePage() {
   }
 
   const handleResetFilters = () => {
-    const now = new Date()
     setSearchQuery('')
     setStatusFilter('all')
     setFilters({
-      year: now.getFullYear().toString(),
-      month: (now.getMonth() + 1).toString(),
       hallId: 'all',
       menuId: 'all',
       paymentMethod: 'all',
@@ -321,54 +283,7 @@ export default function HomePage() {
                   exit={{ height: 0, opacity: 0 }}
                   className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm"
                 >
-                  <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="space-y-2">
-                      <p className="text-sm text-stone-500">Год</p>
-                      <Select
-                        value={filters.year}
-                        onValueChange={(value) => setFilters((prev) => {
-                          const next = { ...prev, year: value }
-                          setCurrentMonth(new Date(Number(value), Number(next.month) - 1, 1))
-                          return next
-                        })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Выберите год" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availableYears.map((year) => (
-                            <SelectItem key={year} value={year.toString()}>
-                              {year}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <p className="text-sm text-stone-500">Месяц</p>
-                      <Select
-                        value={filters.month}
-                        onValueChange={(value) => setFilters((prev) => {
-                          const targetYear = Number(prev.year)
-                          const next = { ...prev, month: value }
-                          setCurrentMonth(new Date(targetYear, Number(value) - 1, 1))
-                          return next
-                        })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Выберите месяц" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {monthOptions.map((month) => (
-                            <SelectItem key={month} value={month.toString()}>
-                              {format(new Date(2024, month - 1, 1), 'LLLL', { locale: ru })}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
+                  <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <p className="text-sm text-stone-500">Зал</p>
                       <Select
@@ -470,18 +385,13 @@ export default function HomePage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between border-t border-stone-100 px-4 py-3">
-                    <span className="text-xs text-stone-500">
-                      Опции подтягиваются из реальных данных Supabase
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <Button variant="ghost" size="sm" onClick={handleResetFilters}>
-                        Сбросить
-                      </Button>
-                      <Button size="sm" onClick={() => setIsFiltersOpen(false)}>
-                        Применить
-                      </Button>
-                    </div>
+                  <div className="flex items-center justify-end border-t border-stone-100 px-4 py-3 gap-2">
+                    <Button variant="ghost" size="sm" onClick={handleResetFilters}>
+                      Сбросить
+                    </Button>
+                    <Button size="sm" onClick={() => setIsFiltersOpen(false)}>
+                      Применить
+                    </Button>
                   </div>
                 </motion.div>
               )}
@@ -505,7 +415,9 @@ export default function HomePage() {
               onReservationClick={handleReservationClick}
               onAddReservation={handleAddReservation}
               onMonthChange={handleCalendarMonthChange}
-              currentDate={currentMonth}
+              currentDate={currentDate}
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
             />
           )}
         </motion.div>

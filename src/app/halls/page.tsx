@@ -1,17 +1,18 @@
 "use client"
 
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Users, MapPin, Calendar, Loader2, Trash2, Save } from 'lucide-react'
+import { Plus, Users, MapPin, Loader2, Trash2, Save, Pencil, RotateCw } from 'lucide-react'
 import { PageTransition } from '@/components/layout/PageTransition'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useHalls, useReservations, useTables, useLayoutItems, useCreateMutation, useUpdateMutation, useDeleteMutation } from '@/hooks/useSupabase'
-import { cn, formatDate } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { RESERVATION_STATUS_CONFIG, Table, Hall, LayoutItem } from '@/types'
 import { format } from 'date-fns'
+import { ru } from 'date-fns/locale'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
@@ -25,7 +26,9 @@ export default function HallsPage() {
   const [isTableDialogOpen, setIsTableDialogOpen] = useState(false)
   const [isLayoutDialogOpen, setIsLayoutDialogOpen] = useState(false)
   const [editingTable, setEditingTable] = useState<Table | null>(null)
+  const [editingHall, setEditingHall] = useState<Hall | null>(null)
   const [hallForm, setHallForm] = useState({ name: '', capacity: 0, description: '' })
+  const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [tableForm, setTableForm] = useState({
     hall_id: '',
     number: 1,
@@ -47,7 +50,7 @@ export default function HallsPage() {
   const [resizing, setResizing] = useState<{
     id: string
     target: 'table' | 'layout'
-    corner: 'br' | 'tr' | 'bl' | 'tl'
+    corner: 'br' | 'tr' | 'bl' | 'tl' | 'left' | 'right' | 'top' | 'bottom'
     startMouseX: number
     startMouseY: number
     startW: number
@@ -55,7 +58,6 @@ export default function HallsPage() {
     startX: number
     startY: number
   } | null>(null)
-  const [rotating, setRotating] = useState<{ id: string; target: 'table' | 'layout'; centerX: number; centerY: number } | null>(null)
   const [previewPos, setPreviewPos] = useState<Record<string, { x: number; y: number }>>({})
   const [previewSize, setPreviewSize] = useState<Record<string, { w: number; h: number }>>({})
   const [previewRotation, setPreviewRotation] = useState<Record<string, number>>({})
@@ -73,16 +75,53 @@ export default function HallsPage() {
     bg_color: '#ffffff',
   })
   const previewRef = useRef<HTMLDivElement | null>(null)
+  const previewWrapperRef = useRef<HTMLDivElement | null>(null)
   const editorRef = useRef<HTMLDivElement | null>(null)
+  const editorWrapperRef = useRef<HTMLDivElement | null>(null)
   const GRID = 10
+  const CANVAS_WIDTH = 800
+  const CANVAS_HEIGHT = 600
+  const ROTATE_HANDLE_OFFSET = 24
+  const [previewScale, setPreviewScale] = useState(1)
+  const [editorScale, setEditorScale] = useState(1)
+
+  // Keep preview/editor scaled to fit containers without overflow
+  const computeScale = (el: HTMLDivElement | null, setter: (n: number) => void) => {
+    if (!el) return
+    const padding = 16
+    const availableW = el.clientWidth - padding
+    const availableH = el.clientHeight - padding
+    if (availableW <= 0 || availableH <= 0) return
+    const next = Math.min(1, Math.min(availableW / CANVAS_WIDTH, availableH / CANVAS_HEIGHT))
+    setter(next || 1)
+  }
+
+  useEffect(() => {
+    const el = previewWrapperRef.current
+    if (!el) return
+    computeScale(el, setPreviewScale)
+    const ro = new ResizeObserver(() => computeScale(el, setPreviewScale))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  useEffect(() => {
+    const el = editorWrapperRef.current
+    if (!el) return
+    computeScale(el, setEditorScale)
+    const ro = new ResizeObserver(() => computeScale(el, setEditorScale))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [isEditorOpen])
 
   // Fetch data
   const { data: halls, loading: hallsLoading } = useHalls()
-  const { data: tables } = useTables()
-  const { data: layoutItems } = useLayoutItems(selectedHallId || undefined)
+  const { data: tables, refetch: refetchTables } = useTables()
+  const { data: layoutItems, refetch: refetchLayoutItems } = useLayoutItems(selectedHallId || undefined)
   
   // Mutations
   const createHall = useCreateMutation<Hall>('halls')
+  const updateHall = useUpdateMutation<Hall>('halls')
   const deleteHall = useDeleteMutation('halls')
   const createTable = useCreateMutation<Table>('tables')
   const updateTable = useUpdateMutation<Table>('tables')
@@ -91,9 +130,8 @@ export default function HallsPage() {
   const updateLayoutItem = useUpdateMutation<LayoutItem>('layout_items')
   const deleteLayoutItem = useDeleteMutation('layout_items')
 
-  // Get reservations for today
-  const today = format(new Date(), 'yyyy-MM-dd')
-  const { data: todayReservations, loading: reservationsLoading } = useReservations({ date: today })
+  // Get reservations for selected date
+  const { data: dateReservations, loading: reservationsLoading } = useReservations({ date: selectedDate })
 
   // Set first hall as selected if none
   const selectedHall = selectedHallId 
@@ -102,8 +140,9 @@ export default function HallsPage() {
 
   // Get tables with their reservations
   const getTableReservation = (table: Table) => {
-    return todayReservations.find(r => r.table_id === table.id || r.hall_id === table.hall_id)
+    return dateReservations.find(r => r.table_id === table.id || r.hall_id === table.hall_id)
   }
+
 
   if (hallsLoading) {
     return (
@@ -128,11 +167,13 @@ export default function HallsPage() {
               <p className="mt-1 text-stone-500">Схема расположения столов и текущие брони</p>
             </div>
             
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3 items-center justify-end">
               <Button 
                 variant="outline"
+                size="lg"
                 className="gap-2"
                 onClick={() => {
+                  setEditingHall(null)
                   setHallForm({ name: '', capacity: 0, description: '' })
                   setIsHallDialogOpen(true)
                 }}
@@ -142,9 +183,9 @@ export default function HallsPage() {
               </Button>
               {selectedHall && (
                 <Button 
-                  size="lg"
+                size="lg"
                   className="gap-2 shadow-lg shadow-amber-500/25"
-                  onClick={() => setIsEditorOpen(true)}
+                onClick={() => setIsEditorOpen(true)}
                 >
                   Редактор схемы
                 </Button>
@@ -186,32 +227,50 @@ export default function HallsPage() {
                     {/* Hall Info */}
                     <Card>
                       <CardHeader className="flex flex-col gap-2">
-                        <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center justify-between gap-3">
                           <CardTitle className="flex items-center gap-2">
                             <MapPin className="h-5 w-5 text-amber-600" />
                             {hall.name}
                           </CardTitle>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-stone-400 hover:text-rose-600"
-                            onClick={async () => {
-                              if (!confirm('Удалить этот зал и его столы?')) return
-                              const deleted = await deleteHall.mutate(hall.id)
-                              if (deleted) {
-                                if (selectedHallId === hall.id) {
-                                  const nextHall = halls.find(h => h.id !== hall.id)
-                                  setSelectedHallId(nextHall?.id ?? null)
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                setEditingHall(hall)
+                                setHallForm({
+                                  name: hall.name,
+                                  capacity: hall.capacity,
+                                  description: hall.description || ''
+                                })
+                                setIsHallDialogOpen(true)
+                              }}
+                              className="text-stone-500 hover:text-stone-800"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-stone-400 hover:text-rose-600"
+                              onClick={async () => {
+                                if (!confirm('Удалить этот зал и его столы?')) return
+                                const deleted = await deleteHall.mutate(hall.id)
+                                if (deleted) {
+                                  if (selectedHallId === hall.id) {
+                                    const nextHall = halls.find(h => h.id !== hall.id)
+                                    setSelectedHallId(nextHall?.id ?? null)
+                                  }
+                                } else {
+                                  alert('Не удалось удалить зал. Удалите связанные бронирования или попробуйте позже.')
                                 }
-                              } else {
-                                alert('Не удалось удалить зал. Удалите связанные бронирования или попробуйте позже.')
-                              }
-                            }}
-                            disabled={deleteHall.loading}
-                            title="Удалить зал"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                              }}
+                              disabled={deleteHall.loading}
+                              title="Удалить зал"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
                       </CardHeader>
                       <CardContent className="space-y-4">
@@ -266,116 +325,117 @@ export default function HallsPage() {
                     <div className="lg:col-span-2">
                       <Card className="h-full">
                         <CardHeader>
-                          <CardTitle className="flex items-center justify-between">
+                          <CardTitle className="flex items-center justify-between gap-3">
                             <span>Схема зала</span>
-                            <Badge variant="secondary">
-                              <Calendar className="h-3.5 w-3.5 mr-1" />
-                              {formatDate(new Date())}
-                            </Badge>
+                            <Input
+                              type="date"
+                              value={selectedDate}
+                              onChange={(e) => setSelectedDate(e.target.value)}
+                              className="w-[150px]"
+                            />
                           </CardTitle>
                         </CardHeader>
                         <CardContent>
                           <div
-                            ref={previewRef}
-                            role="button"
-                            className="relative bg-stone-50 rounded-xl border-2 border-dashed border-stone-200 min-h-[400px] p-4 transition hover:border-amber-300 cursor-pointer"
-                            onClick={() => setIsEditorOpen(true)}
+                            ref={previewWrapperRef}
+                            className="relative bg-stone-50 rounded-xl border-2 border-dashed border-stone-200 overflow-hidden flex items-center justify-center"
+                            style={{ width: '100%', maxWidth: CANVAS_WIDTH, height: CANVAS_HEIGHT, backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)', backgroundSize: '16px 16px' }}
                           >
-                            <div className="absolute top-3 right-3 z-10 inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-xs text-stone-600 shadow-sm border border-stone-200">
-                              <Plus className="h-3 w-3 text-amber-600" />
-                              Редактировать схему
-                            </div>
+                            <div
+                              ref={previewRef}
+                              role="button"
+                              className="relative cursor-pointer"
+                              style={{
+                                width: CANVAS_WIDTH,
+                                height: CANVAS_HEIGHT,
+                                transform: `scale(${previewScale})`,
+                                transformOrigin: 'top left',
+                              }}
+                              onClick={() => setIsEditorOpen(true)}
+                            >
+                              {/* Layout items preview */}
+                              {layoutItems
+                                .filter((item) => item.hall_id === hall.id)
+                                .map((item) => (
+                                  <div
+                                    key={item.id}
+                                    className="absolute bg-white border border-stone-200 rounded-lg shadow-sm flex items-center justify-center text-xs text-stone-700"
+                                    style={{
+                                      left: item.position_x,
+                                      top: item.position_y,
+                                      width: item.width,
+                                      height: item.height,
+                                      transform: `rotate(${item.rotation ?? 0}deg)`,
+                                      color: item.color || '#1f2937',
+                                      backgroundColor: item.bg_color || '#ffffff',
+                                    transformOrigin: 'top left',
+                                    }}
+                                  >
+                                    {item.text || 'Элемент'}
+                                  </div>
+                                ))}
 
-                            {/* Layout items preview */}
-                            {layoutItems
-                              .filter((item) => item.hall_id === hall.id)
-                              .map((item) => (
-                                <div
-                                  key={item.id}
-                                  className="absolute bg-white border border-stone-200 rounded-lg shadow-sm flex items-center justify-center text-xs text-stone-700"
-                                  style={{
-                                    left: item.position_x,
-                                    top: item.position_y,
-                                    width: item.width,
-                                    height: item.height,
-                                    transform: `rotate(${item.rotation ?? 0}deg)`,
-                                    color: item.color || '#1f2937',
-                                    backgroundColor: item.bg_color || '#ffffff',
-                                  }}
-                                >
-                                  {item.text || 'Элемент'}
-                                </div>
-                              ))}
-
-                            {/* Tables visualization (read-only) */}
-                            {hallTables.map((table) => {
-                              const reservation = getTableReservation(table)
-                              const statusConfig = reservation ? RESERVATION_STATUS_CONFIG[reservation.status] : null
-                              
-                              return (
-                                <motion.div
-                                  key={table.id}
-                                  initial={{ opacity: 0, scale: 0 }}
-                                  animate={{ opacity: 1, scale: 1 }}
-                                  whileHover={{ scale: 1.02 }}
-                                  className={cn(
-                                    "absolute transition-all border-2 flex flex-col items-center justify-center p-2",
-                                    table.shape === 'round' && "rounded-full",
-                                    table.shape === 'rectangle' && "rounded-xl",
-                                    table.shape === 'square' && "rounded-lg",
-                                    reservation 
-                                      ? "shadow-lg" 
-                                      : "bg-white border-stone-300"
-                                  )}
-                                  style={{
-                                    left: table.position_x,
-                                    top: table.position_y,
-                                    width: table.width,
-                                    height: table.height,
-                                    backgroundColor: statusConfig?.bgColor || 'white',
-                                    borderColor: statusConfig?.borderColor || '#D1D5DB',
-                                    transform: `rotate(${table.rotation ?? 0}deg)`,
-                                  }}
-                                >
-                                  <span className="font-bold text-lg" style={{ color: statusConfig?.color || '#374151' }}>
-                                    {table.number}
-                                  </span>
-                                  <span className="text-xs" style={{ color: statusConfig?.color || '#6B7280' }}>
-                                    {table.capacity} чел.
-                                  </span>
-                                  {reservation && (
-                                    <span className="text-xs mt-1 truncate max-w-full px-1" style={{ color: statusConfig?.color }}>
-                                      {reservation.guest?.last_name}
+                              {/* Tables visualization (read-only) */}
+                              {hallTables.map((table) => {
+                                const reservation = getTableReservation(table)
+                                const statusConfig = reservation ? RESERVATION_STATUS_CONFIG[reservation.status] : null
+                                
+                                return (
+                                  <motion.div
+                                    key={table.id}
+                                    initial={{ opacity: 0, scale: 0 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    whileHover={{ scale: 1.02 }}
+                                    className={cn(
+                                      "absolute transition-all border-2 flex flex-col items-center justify-center p-2",
+                                      table.shape === 'round' && "rounded-full",
+                                      table.shape === 'rectangle' && "rounded-xl",
+                                      table.shape === 'square' && "rounded-lg",
+                                      reservation 
+                                        ? "shadow-lg" 
+                                        : "bg-white border-stone-300"
+                                    )}
+                                    style={{
+                                      left: table.position_x,
+                                      top: table.position_y,
+                                      width: table.width,
+                                      height: table.height,
+                                      backgroundColor: statusConfig?.bgColor || 'white',
+                                      borderColor: statusConfig?.borderColor || '#D1D5DB',
+                                      transform: `rotate(${table.rotation ?? 0}deg)`,
+                                    transformOrigin: 'top left',
+                                    }}
+                                  >
+                                    <span className="font-bold text-lg" style={{ color: statusConfig?.color || '#374151' }}>
+                                      {table.number}
                                     </span>
-                                  )}
-                                </motion.div>
-                              )
-                            })}
+                                  </motion.div>
+                                )
+                              })}
 
-                            {hallTables.length === 0 && (
-                              <div className="flex items-center justify-center h-full text-stone-400">
-                                Нет столов в этом зале
-                              </div>
-                            )}
-
-                            {/* Legend */}
-                            <div className="absolute bottom-4 left-4 flex flex-wrap gap-2 pointer-events-none">
-                              <div className="flex items-center gap-1.5 text-xs text-stone-500">
-                                <div className="w-3 h-3 rounded-full bg-white border-2 border-stone-300" />
-                                Свободен
-                              </div>
-                              {Object.entries(RESERVATION_STATUS_CONFIG).map(([status, config]) => (
-                                <div key={status} className="flex items-center gap-1.5 text-xs">
-                                  <div 
-                                    className="w-3 h-3 rounded-full border-2"
-                                    style={{ backgroundColor: config.bgColor, borderColor: config.borderColor }}
-                                  />
-                                  <span style={{ color: config.color }}>{config.label}</span>
+                              {hallTables.length === 0 && (
+                                <div className="flex items-center justify-center h-full text-stone-400">
+                                  Нет столов в этом зале
                                 </div>
-                              ))}
+                              )}
                             </div>
                           </div>
                         </CardContent>
+                        <div className="flex flex-wrap gap-3 px-4 pb-4">
+                          <div className="flex items-center gap-1.5 text-xs text-stone-500">
+                            <div className="w-3 h-3 rounded-full bg-white border-2 border-stone-300" />
+                            Свободен
+                          </div>
+                          {Object.entries(RESERVATION_STATUS_CONFIG).map(([status, config]) => (
+                            <div key={status} className="flex items-center gap-1.5 text-xs">
+                              <div 
+                                className="w-3 h-3 rounded-full border-2"
+                                style={{ backgroundColor: config.bgColor, borderColor: config.borderColor }}
+                              />
+                              <span style={{ color: config.color }}>{config.label}</span>
+                            </div>
+                          ))}
+                        </div>
                       </Card>
                     </div>
                   </motion.div>
@@ -388,21 +448,23 @@ export default function HallsPage() {
                     className="mt-6"
                   >
                     <Card>
-                      <CardHeader>
-                        <CardTitle>Бронирования на сегодня</CardTitle>
-                      </CardHeader>
+                  <CardHeader>
+                    <CardTitle>
+                      Бронирования на {format(new Date(selectedDate), 'd MMMM yyyy', { locale: ru })}
+                    </CardTitle>
+                  </CardHeader>
                       <CardContent>
                         {reservationsLoading ? (
                           <div className="flex items-center justify-center py-8">
                             <Loader2 className="h-6 w-6 animate-spin text-amber-600" />
                           </div>
-                        ) : todayReservations.filter(r => r.hall_id === hall.id).length === 0 ? (
+                        ) : dateReservations.filter(r => r.hall_id === hall.id).length === 0 ? (
                           <p className="text-center py-8 text-stone-500">
-                            Нет бронирований на сегодня
+                            Нет бронирований на эту дату
                           </p>
                         ) : (
                           <div className="divide-y divide-stone-100">
-                            {todayReservations
+                            {dateReservations
                               .filter(r => r.hall_id === hall.id)
                               .sort((a, b) => a.time.localeCompare(b.time))
                               .map((reservation) => {
@@ -447,11 +509,22 @@ export default function HallsPage() {
       </div>
 
       {/* Hall Dialog */}
-      <Dialog open={isHallDialogOpen} onOpenChange={setIsHallDialogOpen}>
+      <Dialog 
+        open={isHallDialogOpen} 
+        onOpenChange={(open) => {
+          setIsHallDialogOpen(open)
+          if (!open) {
+            setEditingHall(null)
+            setHallForm({ name: '', capacity: 0, description: '' })
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Новый зал</DialogTitle>
-            <DialogDescription>Создайте зал и позже добавьте столы</DialogDescription>
+            <DialogTitle>{editingHall ? 'Редактировать зал' : 'Новый зал'}</DialogTitle>
+            <DialogDescription>
+              {editingHall ? 'Обновите параметры зала' : 'Создайте зал и позже добавьте столы'}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div>
@@ -484,14 +557,29 @@ export default function HallsPage() {
             <Button variant="outline" onClick={() => setIsHallDialogOpen(false)}>Отмена</Button>
             <Button 
               onClick={async () => {
-                await createHall.mutate(hallForm)
-                setIsHallDialogOpen(false)
-                setHallForm({ name: '', capacity: 0, description: '' })
+                const payload = {
+                  name: hallForm.name.trim(),
+                  capacity: hallForm.capacity,
+                  description: hallForm.description?.trim()
+                }
+
+                if (editingHall) {
+                  const updated = await updateHall.mutate(editingHall.id, payload)
+                  if (updated) {
+                    setEditingHall(null)
+                    setIsHallDialogOpen(false)
+                    setHallForm({ name: '', capacity: 0, description: '' })
+                  }
+                } else {
+                  await createHall.mutate(payload)
+                  setIsHallDialogOpen(false)
+                  setHallForm({ name: '', capacity: 0, description: '' })
+                }
               }}
               disabled={!hallForm.name || !hallForm.capacity}
             >
-              {createHall.loading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-              Создать
+              {(createHall.loading || updateHall.loading) && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              {editingHall ? 'Сохранить' : 'Создать'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -724,7 +812,6 @@ export default function HallsPage() {
           if (!open) {
             setDragging(null)
             setResizing(null)
-            setRotating(null)
             setPreviewPos({})
             setPreviewSize({})
             setPreviewRotation({})
@@ -791,13 +878,37 @@ export default function HallsPage() {
                     Добавить элемент
                   </Button>
                 )}
+                <Button
+                  size="sm"
+                  className="gap-2"
+                  onClick={async () => {
+                    await Promise.all([refetchTables(), refetchLayoutItems()])
+                    setIsEditorOpen(false)
+                  }}
+                >
+                  <Save className="h-4 w-4" />
+                  Сохранить
+                </Button>
               </div>
             </div>
 
             <div
-              ref={editorRef}
-              className="relative bg-white rounded-xl border border-stone-200 min-h-[520px] overflow-hidden"
-              onMouseMove={(e) => {
+              ref={editorWrapperRef}
+              className="flex items-center justify-center w-full"
+              style={{ minHeight: CANVAS_HEIGHT + 80 }}
+            >
+              <div
+                ref={editorRef}
+                className="relative bg-white rounded-xl border border-stone-200 overflow-hidden"
+                style={{
+                  width: CANVAS_WIDTH,
+                  height: CANVAS_HEIGHT,
+                  transform: `scale(${editorScale})`,
+                  transformOrigin: 'top left',
+                  backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)',
+                  backgroundSize: '16px 16px',
+                }}
+                onMouseMove={(e) => {
                 if (!editorRef.current) return
                 const rect = editorRef.current.getBoundingClientRect()
                 const mouseX = e.clientX - rect.left
@@ -816,9 +927,9 @@ export default function HallsPage() {
                   const maxY = Math.max(0, rect.height - size.h)
                   const x = dragging.startX + (mouseX - dragging.startMouseX)
                   const y = dragging.startY + (mouseY - dragging.startMouseY)
-                  const snapX = Math.round(clamp(x, 0, maxX) / GRID) * GRID
-                  const snapY = Math.round(clamp(y, 0, maxY) / GRID) * GRID
-                  setPreviewPos((prev) => ({ ...prev, [dragging.id]: { x: snapX, y: snapY } }))
+                  const clampedX = clamp(x, 0, maxX)
+                  const clampedY = clamp(y, 0, maxY)
+                  setPreviewPos((prev) => ({ ...prev, [dragging.id]: { x: clampedX, y: clampedY } }))
                 }
 
                 if (resizing) {
@@ -829,28 +940,52 @@ export default function HallsPage() {
                   const { startMouseX, startMouseY, startW, startH, startX, startY, id, corner } = resizing
                   const deltaX = mouseX - startMouseX
                   const deltaY = mouseY - startMouseY
+                  const currentRot = previewRotation[id] ?? (resizing.target === 'table'
+                    ? tables.find(t => t.id === id)?.rotation ?? 0
+                    : layoutItems.find(li => li.id === id)?.rotation ?? 0)
+                  const rad = (currentRot * Math.PI) / 180
+                  const cos = Math.cos(rad)
+                  const sin = Math.sin(rad)
+                  // Проекция смещения на локальные оси элемента
+                  const localX = deltaX * cos + deltaY * sin
+                  const localY = -deltaX * sin + deltaY * cos
 
                   let newW = startW || baseW
                   let newH = startH || baseH
                   let newX = startX
                   let newY = startY
 
-                  if (corner === 'br') {
-                    newW = startW + deltaX
-                    newH = startH + deltaY
+                  if (corner === 'right') {
+                    newW = startW + localX
+                  } else if (corner === 'left') {
+                    newW = startW - localX
+                    // сдвиг в мировых координатах вдоль локальной оси X
+                    newX = startX + localX * cos
+                    newY = startY + localX * -sin
+                  } else if (corner === 'bottom') {
+                    newH = startH + localY
+                  } else if (corner === 'top') {
+                    newH = startH - localY
+                    newX = startX + localY * sin
+                    newY = startY + localY * cos
+                  } else if (corner === 'br') {
+                    newW = startW + localX
+                    newH = startH + localY
                   } else if (corner === 'tr') {
-                    newW = startW + deltaX
-                    newH = startH - deltaY
-                    newY = startY + deltaY
+                    newW = startW + localX
+                    newH = startH - localY
+                    newX = startX + localY * sin
+                    newY = startY + localY * cos
                   } else if (corner === 'bl') {
-                    newW = startW - deltaX
-                    newH = startH + deltaY
-                    newX = startX + deltaX
+                    newW = startW - localX
+                    newH = startH + localY
+                    newX = startX + localX * cos
+                    newY = startY + localX * -sin
                   } else if (corner === 'tl') {
-                    newW = startW - deltaX
-                    newH = startH - deltaY
-                    newX = startX + deltaX
-                    newY = startY + deltaY
+                    newW = startW - localX
+                    newH = startH - localY
+                    newX = startX + localX * cos + localY * sin
+                    newY = startY - localX * sin + localY * cos
                   }
 
                   newW = Math.max(40, newW)
@@ -864,36 +999,29 @@ export default function HallsPage() {
                   newW = clamp(newW, 40, rect.width - newX)
                   newH = clamp(newH, 40, rect.height - newY)
 
-                  newW = Math.round(newW / GRID) * GRID
-                  newH = Math.round(newH / GRID) * GRID
-                  newX = Math.round(newX / GRID) * GRID
-                  newY = Math.round(newY / GRID) * GRID
-
                   setPreviewPos((prev) => ({ ...prev, [id]: { x: newX, y: newY } }))
                   setPreviewSize((prev) => ({ ...prev, [id]: { w: newW, h: newH } }))
                 }
 
-                if (rotating) {
-                  const { centerX, centerY, id } = rotating
-                  const angle = Math.atan2(mouseY - centerY, mouseX - centerX) * (180 / Math.PI)
-                  setPreviewRotation((prev) => ({ ...prev, [id]: angle }))
-                }
               }}
-              onMouseUp={() => {
+                onMouseUp={() => {
                 if (dragging) {
                   const pos = previewPos[dragging.id]
                   if (pos) {
+                    const snapX = Math.round(pos.x / GRID) * GRID
+                    const snapY = Math.round(pos.y / GRID) * GRID
                     if (dragging.target === 'table') {
                       updateTable.mutate(dragging.id, {
-                        position_x: pos.x,
-                        position_y: pos.y,
+                        position_x: snapX,
+                        position_y: snapY,
                       })
                     } else {
                       updateLayoutItem.mutate(dragging.id, {
-                        position_x: pos.x,
-                        position_y: pos.y,
+                        position_x: snapX,
+                        position_y: snapY,
                       })
                     }
+                    setPreviewPos((prev) => ({ ...prev, [dragging.id]: { x: snapX, y: snapY } }))
                   }
                   setDragging(null)
                 }
@@ -901,44 +1029,34 @@ export default function HallsPage() {
                   const pos = previewPos[resizing.id]
                   const size = previewSize[resizing.id]
                   if (pos && size) {
+                    const snapX = Math.round(pos.x / GRID) * GRID
+                    const snapY = Math.round(pos.y / GRID) * GRID
+                    const snapW = Math.round(size.w / GRID) * GRID
+                    const snapH = Math.round(size.h / GRID) * GRID
                     if (resizing.target === 'table') {
                       updateTable.mutate(resizing.id, {
-                        position_x: pos.x,
-                        position_y: pos.y,
-                        width: size.w,
-                        height: size.h,
+                        position_x: snapX,
+                        position_y: snapY,
+                        width: snapW,
+                        height: snapH,
                       })
                     } else {
                       updateLayoutItem.mutate(resizing.id, {
-                        position_x: pos.x,
-                        position_y: pos.y,
-                        width: size.w,
-                        height: size.h,
+                        position_x: snapX,
+                        position_y: snapY,
+                        width: snapW,
+                        height: snapH,
                       })
                     }
+                    setPreviewPos((prev) => ({ ...prev, [resizing.id]: { x: snapX, y: snapY } }))
+                    setPreviewSize((prev) => ({ ...prev, [resizing.id]: { w: snapW, h: snapH } }))
                   }
                   setResizing(null)
                 }
-                if (rotating) {
-                  const angle = previewRotation[rotating.id]
-                  if (angle !== undefined) {
-                    if (rotating.target === 'table') {
-                      updateTable.mutate(rotating.id, {
-                        rotation: angle,
-                      })
-                    } else {
-                      updateLayoutItem.mutate(rotating.id, {
-                        rotation: angle,
-                      })
-                    }
-                  }
-                  setRotating(null)
-                }
               }}
-              onMouseLeave={() => {
+                onMouseLeave={() => {
                 if (dragging) setDragging(null)
                 if (resizing) setResizing(null)
-                if (rotating) setRotating(null)
               }}
             >
               {/* Layout items */}
@@ -956,19 +1074,13 @@ export default function HallsPage() {
                       width: size.w,
                       height: size.h,
                       transform: `rotate(${rot}deg)`,
-                      transformOrigin: 'center center',
+                      transformOrigin: 'top left',
                     }}
                     onMouseDown={(e) => {
                       e.stopPropagation()
                       const rect = editorRef.current?.getBoundingClientRect()
                       if (!rect) return
                       // Middle button rotates, left button drags
-                      if (e.button === 1) {
-                        const centerX = pos.x + size.w / 2
-                        const centerY = pos.y + size.h / 2
-                        setRotating({ id: item.id, target: 'layout', centerX, centerY })
-                        return
-                      }
                       setDragging({
                         id: item.id,
                         target: 'layout',
@@ -1006,16 +1118,16 @@ export default function HallsPage() {
                     </div>
 
                     {/* Resize & rotate handles */}
-                    <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="absolute inset-0 pointer-events-none">
                       {[
-                        { corner: 'tl', className: 'top-0 left-0 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize' },
-                        { corner: 'tr', className: 'top-0 right-0 translate-x-1/2 -translate-y-1/2 cursor-nesw-resize' },
-                        { corner: 'bl', className: 'bottom-0 left-0 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize' },
-                        { corner: 'br', className: 'bottom-0 right-0 translate-x-1/2 translate-y-1/2 cursor-nwse-resize' },
+                        { corner: 'left', className: 'absolute left-0 top-0 h-full w-3 cursor-ew-resize' },
+                        { corner: 'right', className: 'absolute right-0 top-0 h-full w-3 cursor-ew-resize' },
+                        { corner: 'top', className: 'absolute top-0 left-0 w-full h-3 cursor-ns-resize' },
+                        { corner: 'bottom', className: 'absolute bottom-0 left-0 w-full h-3 cursor-ns-resize' },
                       ].map((h) => (
                         <div
                           key={h.corner}
-                          className={`absolute w-3 h-3 bg-white border border-amber-500 rounded-full ${h.className} pointer-events-auto`}
+                          className={`${h.className} pointer-events-auto`}
                           onMouseDown={(e) => {
                             e.stopPropagation()
                             const rect = editorRef.current?.getBoundingClientRect()
@@ -1023,7 +1135,7 @@ export default function HallsPage() {
                             setResizing({
                               id: item.id,
                               target: 'layout',
-                              corner: h.corner as 'tl' | 'tr' | 'bl' | 'br',
+                              corner: h.corner as 'left' | 'right' | 'top' | 'bottom',
                               startMouseX: e.clientX - rect.left,
                               startMouseY: e.clientY - rect.top,
                               startW: size.w,
@@ -1036,14 +1148,23 @@ export default function HallsPage() {
                       ))}
 
                       <div
-                        className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-5 w-3 h-3 bg-white border border-amber-500 rounded-full pointer-events-auto cursor-alias"
-                        onMouseDown={(e) => {
-                          e.stopPropagation()
-                          const centerX = pos.x + size.w / 2
-                          const centerY = pos.y + size.h / 2
-                          setRotating({ id: item.id, target: 'layout', centerX, centerY })
-                        }}
-                      />
+                        className="absolute left-1/2 pointer-events-none"
+                        style={{ top: 0, transform: `translate(-50%, -${ROTATE_HANDLE_OFFSET}px)` }}
+                      >
+                        <div
+                          className="w-7 h-7 bg-white border border-amber-500 rounded-full pointer-events-auto cursor-pointer flex items-center justify-center shadow-sm"
+                          style={{ transform: `rotate(${-rot}deg)` }}
+                          onClick={async (e) => {
+                            e.stopPropagation()
+                            const next = ((rot ?? 0) + 90) % 360
+                            setPreviewRotation((prev) => ({ ...prev, [item.id]: next }))
+                            await updateLayoutItem.mutate(item.id, { rotation: next })
+                          }}
+                          title="Повернуть вправо"
+                        >
+                          <RotateCw className="h-4 w-4" />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )
@@ -1076,7 +1197,7 @@ export default function HallsPage() {
                       backgroundColor: statusConfig?.bgColor || 'white',
                       borderColor: statusConfig?.borderColor || '#D1D5DB',
                       transform: `rotate(${rot}deg)`,
-                      transformOrigin: 'center center',
+                      transformOrigin: 'top left',
                     }}
                     onMouseDown={(e) => {
                       e.stopPropagation()
@@ -1109,25 +1230,18 @@ export default function HallsPage() {
                     <span className="font-bold text-lg" style={{ color: statusConfig?.color || '#374151' }}>
                       {table.number}
                     </span>
-                    <span className="text-xs" style={{ color: statusConfig?.color || '#6B7280' }}>
-                      {table.capacity} чел.
-                    </span>
-                    {reservation && (
-                      <span className="text-xs mt-1 truncate max-w-full px-1" style={{ color: statusConfig?.color }}>
-                        {reservation.guest?.last_name}
-                      </span>
-                    )}
-
-                    <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div
+                      className="absolute inset-0 pointer-events-none"
+                    >
                       {[
-                        { corner: 'tl', className: 'top-0 left-0 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize' },
-                        { corner: 'tr', className: 'top-0 right-0 translate-x-1/2 -translate-y-1/2 cursor-nesw-resize' },
-                        { corner: 'bl', className: 'bottom-0 left-0 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize' },
-                        { corner: 'br', className: 'bottom-0 right-0 translate-x-1/2 translate-y-1/2 cursor-nwse-resize' },
+                        { corner: 'left', className: 'absolute left-0 top-0 h-full w-3 cursor-ew-resize' },
+                        { corner: 'right', className: 'absolute right-0 top-0 h-full w-3 cursor-ew-resize' },
+                        { corner: 'top', className: 'absolute top-0 left-0 w-full h-3 cursor-ns-resize' },
+                        { corner: 'bottom', className: 'absolute bottom-0 left-0 w-full h-3 cursor-ns-resize' },
                       ].map((h) => (
                         <div
                           key={h.corner}
-                          className={`absolute w-3 h-3 bg-white border border-amber-500 rounded-full ${h.className} pointer-events-auto`}
+                          className={`${h.className} pointer-events-auto`}
                           onMouseDown={(e) => {
                             e.stopPropagation()
                             const rect = editorRef.current?.getBoundingClientRect()
@@ -1135,7 +1249,7 @@ export default function HallsPage() {
                             setResizing({
                               id: table.id,
                               target: 'table',
-                              corner: h.corner as 'tl' | 'tr' | 'bl' | 'br',
+                              corner: h.corner as 'left' | 'right' | 'top' | 'bottom',
                               startMouseX: e.clientX - rect.left,
                               startMouseY: e.clientY - rect.top,
                               startW: size.w,
@@ -1148,18 +1262,28 @@ export default function HallsPage() {
                       ))}
 
                       <div
-                        className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-5 w-3 h-3 bg-white border border-amber-500 rounded-full pointer-events-auto cursor-alias"
-                        onMouseDown={(e) => {
-                          e.stopPropagation()
-                          const centerX = pos.x + size.w / 2
-                          const centerY = pos.y + size.h / 2
-                          setRotating({ id: table.id, target: 'table', centerX, centerY })
-                        }}
-                      />
+                        className="absolute left-1/2 pointer-events-none"
+                        style={{ top: 0, transform: `translate(-50%, -${ROTATE_HANDLE_OFFSET}px)` }}
+                      >
+                        <div
+                          className="w-7 h-7 bg-white border border-amber-500 rounded-full pointer-events-auto cursor-pointer flex items-center justify-center shadow-sm"
+                          style={{ transform: `rotate(${-rot}deg)` }}
+                          onClick={async (e) => {
+                            e.stopPropagation()
+                            const next = ((rot ?? 0) + 90) % 360
+                            setPreviewRotation((prev) => ({ ...prev, [table.id]: next }))
+                            await updateTable.mutate(table.id, { rotation: next })
+                          }}
+                          title="Повернуть вправо"
+                        >
+                          <RotateCw className="h-4 w-4" />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )
               })}
+              </div>
             </div>
           </div>
         </DialogContent>
