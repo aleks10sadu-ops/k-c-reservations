@@ -1,8 +1,8 @@
 "use client"
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Users, MapPin, Calendar, Loader2, Trash2, Save, Pen } from 'lucide-react'
+import { Plus, Users, MapPin, Calendar, Loader2, Trash2, Save } from 'lucide-react'
 import { PageTransition } from '@/components/layout/PageTransition'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -34,6 +34,9 @@ export default function HallsPage() {
     height: 100,
     shape: 'rectangle' as Table['shape'],
   })
+  const [dragging, setDragging] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null)
+  const [previewPos, setPreviewPos] = useState<Record<string, { x: number; y: number }>>({})
+  const containerRef = useRef<HTMLDivElement | null>(null)
 
   // Fetch data
   const { data: halls, loading: hallsLoading } = useHalls()
@@ -222,7 +225,31 @@ export default function HallsPage() {
                           </CardTitle>
                         </CardHeader>
                         <CardContent>
-                          <div className="relative bg-stone-50 rounded-xl border-2 border-dashed border-stone-200 min-h-[400px] p-4">
+                          <div
+                            ref={containerRef}
+                            className="relative bg-stone-50 rounded-xl border-2 border-dashed border-stone-200 min-h-[400px] p-4"
+                            onMouseMove={(e) => {
+                              if (!dragging || !containerRef.current) return
+                              const rect = containerRef.current.getBoundingClientRect()
+                              const x = e.clientX - rect.left - dragging.offsetX
+                              const y = e.clientY - rect.top - dragging.offsetY
+                              setPreviewPos((prev) => ({ ...prev, [dragging.id]: { x, y } }))
+                            }}
+                            onMouseUp={() => {
+                              if (!dragging) return
+                              const pos = previewPos[dragging.id]
+                              if (pos) {
+                                updateTable.mutate(dragging.id, {
+                                  position_x: pos.x,
+                                  position_y: pos.y,
+                                })
+                              }
+                              setDragging(null)
+                            }}
+                            onMouseLeave={() => {
+                              if (dragging) setDragging(null)
+                            }}
+                          >
                             {/* Tables visualization */}
                             {hallTables.map((table) => {
                               const reservation = getTableReservation(table)
@@ -244,14 +271,23 @@ export default function HallsPage() {
                                       : "bg-white border-stone-300 hover:border-amber-400"
                                   )}
                                   style={{
-                                    left: table.position_x,
-                                    top: table.position_y,
+                                    left: (previewPos[table.id]?.x ?? table.position_x),
+                                    top: (previewPos[table.id]?.y ?? table.position_y),
                                     width: table.width,
                                     height: table.height,
                                     backgroundColor: statusConfig?.bgColor || 'white',
                                     borderColor: statusConfig?.borderColor || '#D1D5DB',
                                   }}
-                                  onClick={() => {
+                                  onMouseDown={(e) => {
+                                    if (!containerRef.current) return
+                                    const rect = containerRef.current.getBoundingClientRect()
+                                    setDragging({
+                                      id: table.id,
+                                      offsetX: e.clientX - rect.left - (previewPos[table.id]?.x ?? table.position_x),
+                                      offsetY: e.clientY - rect.top - (previewPos[table.id]?.y ?? table.position_y),
+                                    })
+                                  }}
+                                  onDoubleClick={() => {
                                     setEditingTable(table)
                                     setTableForm({
                                       hall_id: hall.id,
