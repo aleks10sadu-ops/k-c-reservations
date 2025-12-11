@@ -46,7 +46,8 @@ function useSupabaseQuery<T>(
       const { data: result, error: queryError } = await query
 
       if (queryError) throw queryError
-      setData(result || [])
+      // Явно приводим ответ к ожидаемому типу данных
+      setData((result || []) as T[])
     } catch (err: any) {
       setError(err.message)
       console.error(`Error fetching ${tableName}:`, err)
