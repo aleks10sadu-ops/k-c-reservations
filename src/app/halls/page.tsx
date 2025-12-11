@@ -35,8 +35,13 @@ export default function HallsPage() {
     shape: 'rectangle' as Table['shape'],
   })
   const [dragging, setDragging] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null)
+  const [resizing, setResizing] = useState<{ id: string; corner: 'br' | 'tr' | 'bl' | 'tl'; startW: number; startH: number; startX: number; startY: number } | null>(null)
+  const [rotating, setRotating] = useState<{ id: string; centerX: number; centerY: number } | null>(null)
   const [previewPos, setPreviewPos] = useState<Record<string, { x: number; y: number }>>({})
+  const [previewSize, setPreviewSize] = useState<Record<string, { w: number; h: number }>>({})
+  const [previewRotation, setPreviewRotation] = useState<Record<string, number>>({})
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const GRID = 10
 
   // Fetch data
   const { data: halls, loading: hallsLoading } = useHalls()
@@ -229,25 +234,102 @@ export default function HallsPage() {
                             ref={containerRef}
                             className="relative bg-stone-50 rounded-xl border-2 border-dashed border-stone-200 min-h-[400px] p-4"
                             onMouseMove={(e) => {
-                              if (!dragging || !containerRef.current) return
+                              if (!containerRef.current) return
                               const rect = containerRef.current.getBoundingClientRect()
-                              const x = e.clientX - rect.left - dragging.offsetX
-                              const y = e.clientY - rect.top - dragging.offsetY
-                              setPreviewPos((prev) => ({ ...prev, [dragging.id]: { x, y } }))
+                              const mouseX = e.clientX - rect.left
+                              const mouseY = e.clientY - rect.top
+
+                              if (dragging) {
+                                const x = mouseX - dragging.offsetX
+                                const y = mouseY - dragging.offsetY
+                                const snapX = Math.round(x / GRID) * GRID
+                                const snapY = Math.round(y / GRID) * GRID
+                                setPreviewPos((prev) => ({ ...prev, [dragging.id]: { x: snapX, y: snapY } }))
+                              }
+
+                              if (resizing) {
+                                const { startW, startH, startX, startY, id, corner } = resizing
+                                let deltaX = mouseX - startX
+                                let deltaY = mouseY - startY
+
+                                let newW = startW
+                                let newH = startH
+                                let newX = previewPos[id]?.x ?? tables.find(t => t.id === id)?.position_x ?? 0
+                                let newY = previewPos[id]?.y ?? tables.find(t => t.id === id)?.position_y ?? 0
+
+                                if (corner === 'br') {
+                                  newW = startW + deltaX
+                                  newH = startH + deltaY
+                                } else if (corner === 'tr') {
+                                  newW = startW + deltaX
+                                  newH = startH - deltaY
+                                  newY = newY + deltaY
+                                } else if (corner === 'bl') {
+                                  newW = startW - deltaX
+                                  newH = startH + deltaY
+                                  newX = newX + deltaX
+                                } else if (corner === 'tl') {
+                                  newW = startW - deltaX
+                                  newH = startH - deltaY
+                                  newX = newX + deltaX
+                                  newY = newY + deltaY
+                                }
+
+                                newW = Math.max(40, newW)
+                                newH = Math.max(40, newH)
+                                newW = Math.round(newW / GRID) * GRID
+                                newH = Math.round(newH / GRID) * GRID
+                                newX = Math.round(newX / GRID) * GRID
+                                newY = Math.round(newY / GRID) * GRID
+
+                                setPreviewPos((prev) => ({ ...prev, [id]: { x: newX, y: newY } }))
+                                setPreviewSize((prev) => ({ ...prev, [id]: { w: newW, h: newH } }))
+                              }
+
+                              if (rotating) {
+                                const { centerX, centerY, id } = rotating
+                                const angle = Math.atan2(mouseY - centerY, mouseX - centerX) * (180 / Math.PI)
+                                setPreviewRotation((prev) => ({ ...prev, [id]: angle }))
+                              }
                             }}
                             onMouseUp={() => {
-                              if (!dragging) return
-                              const pos = previewPos[dragging.id]
-                              if (pos) {
-                                updateTable.mutate(dragging.id, {
-                                  position_x: pos.x,
-                                  position_y: pos.y,
-                                })
+                              if (dragging) {
+                                const pos = previewPos[dragging.id]
+                                if (pos) {
+                                  updateTable.mutate(dragging.id, {
+                                    position_x: pos.x,
+                                    position_y: pos.y,
+                                  })
+                                }
+                                setDragging(null)
                               }
-                              setDragging(null)
+                              if (resizing) {
+                                const pos = previewPos[resizing.id]
+                                const size = previewSize[resizing.id]
+                                if (pos && size) {
+                                  updateTable.mutate(resizing.id, {
+                                    position_x: pos.x,
+                                    position_y: pos.y,
+                                    width: size.w,
+                                    height: size.h,
+                                  })
+                                }
+                                setResizing(null)
+                              }
+                              if (rotating) {
+                                const angle = previewRotation[rotating.id]
+                                if (angle !== undefined) {
+                                  updateTable.mutate(rotating.id, {
+                                    rotation: angle,
+                                  })
+                                }
+                                setRotating(null)
+                              }
                             }}
                             onMouseLeave={() => {
                               if (dragging) setDragging(null)
+                              if (resizing) setResizing(null)
+                              if (rotating) setRotating(null)
                             }}
                           >
                             {/* Tables visualization */}
@@ -262,7 +344,7 @@ export default function HallsPage() {
                                   animate={{ opacity: 1, scale: 1 }}
                                   whileHover={{ scale: 1.05 }}
                                   className={cn(
-                                    "absolute cursor-pointer transition-all border-2 flex flex-col items-center justify-center p-2",
+                                    "absolute cursor-pointer transition-all border-2 flex flex-col items-center justify-center p-2 group",
                                     table.shape === 'round' && "rounded-full",
                                     table.shape === 'rectangle' && "rounded-xl",
                                     table.shape === 'square' && "rounded-lg",
@@ -273,10 +355,11 @@ export default function HallsPage() {
                                   style={{
                                     left: (previewPos[table.id]?.x ?? table.position_x),
                                     top: (previewPos[table.id]?.y ?? table.position_y),
-                                    width: table.width,
-                                    height: table.height,
+                                    width: previewSize[table.id]?.w ?? table.width,
+                                    height: previewSize[table.id]?.h ?? table.height,
                                     backgroundColor: statusConfig?.bgColor || 'white',
                                     borderColor: statusConfig?.borderColor || '#D1D5DB',
+                                    transform: `rotate(${previewRotation[table.id] ?? table.rotation ?? 0}deg)`,
                                   }}
                                   onMouseDown={(e) => {
                                     if (!containerRef.current) return
@@ -313,6 +396,47 @@ export default function HallsPage() {
                                       {reservation.guest?.last_name}
                                     </span>
                                   )}
+
+                                  {/* Resize handles */}
+                                  <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+                                    {/* corners */}
+                                    {[
+                                      { corner: 'tl', className: 'top-0 left-0 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize' },
+                                      { corner: 'tr', className: 'top-0 right-0 translate-x-1/2 -translate-y-1/2 cursor-nesw-resize' },
+                                      { corner: 'bl', className: 'bottom-0 left-0 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize' },
+                                      { corner: 'br', className: 'bottom-0 right-0 translate-x-1/2 translate-y-1/2 cursor-nwse-resize' },
+                                    ].map((h) => (
+                                      <div
+                                        key={h.corner}
+                                        className={`absolute w-3 h-3 bg-white border border-amber-500 rounded-full ${h.className} pointer-events-auto`}
+                                        onMouseDown={(e) => {
+                                          e.stopPropagation()
+                                          if (!containerRef.current) return
+                                          setResizing({
+                                            id: table.id,
+                                            corner: h.corner as 'tl' | 'tr' | 'bl' | 'br',
+                                            startW: previewSize[table.id]?.w ?? table.width,
+                                            startH: previewSize[table.id]?.h ?? table.height,
+                                            startX: e.clientX - (previewPos[table.id]?.x ?? table.position_x),
+                                            startY: e.clientY - (previewPos[table.id]?.y ?? table.position_y),
+                                          })
+                                        }}
+                                      />
+                                    ))}
+
+                                    {/* rotate handle */}
+                                    <div
+                                      className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-5 w-3 h-3 bg-white border border-amber-500 rounded-full pointer-events-auto cursor-alias"
+                                      onMouseDown={(e) => {
+                                        e.stopPropagation()
+                                        if (!containerRef.current) return
+                                        const rect = containerRef.current.getBoundingClientRect()
+                                        const centerX = rect.left + (previewPos[table.id]?.x ?? table.position_x) + (previewSize[table.id]?.w ?? table.width) / 2
+                                        const centerY = rect.top + (previewPos[table.id]?.y ?? table.position_y) + (previewSize[table.id]?.h ?? table.height) / 2
+                                        setRotating({ id: table.id, centerX, centerY })
+                                      }}
+                                    />
+                                  </div>
                                 </motion.div>
                               )
                             })}

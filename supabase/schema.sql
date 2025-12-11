@@ -23,6 +23,7 @@ CREATE TABLE tables (
     position_y DECIMAL(10,2) NOT NULL DEFAULT 0,
     width DECIMAL(10,2) NOT NULL DEFAULT 100,
     height DECIMAL(10,2) NOT NULL DEFAULT 100,
+    rotation DECIMAL(10,2) NOT NULL DEFAULT 0,
     shape VARCHAR(20) NOT NULL DEFAULT 'rectangle' CHECK (shape IN ('round', 'rectangle', 'square')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(hall_id, number)

@@ -44,6 +44,7 @@ export interface Table {
   width: number
   height: number
   shape: 'round' | 'rectangle' | 'square'
+  rotation?: number
 }
 
 // Позиция меню
