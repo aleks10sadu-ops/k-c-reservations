@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   ChevronLeft, 
@@ -33,6 +33,7 @@ interface CalendarProps {
   onReservationClick?: (reservation: Reservation) => void
   onAddReservation?: (date: Date) => void
   onMonthChange?: (date: Date) => void
+  currentDate?: Date
 }
 
 const weekDays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
@@ -42,11 +43,19 @@ export function Calendar({
   onDateSelect, 
   onReservationClick,
   onAddReservation,
-  onMonthChange
+  onMonthChange,
+  currentDate: controlledDate
 }: CalendarProps) {
-  const [currentDate, setCurrentDate] = useState(new Date())
+  const [currentDate, setCurrentDate] = useState(controlledDate ?? new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [viewMode, setViewMode] = useState<'month' | 'day'>('month')
+
+  // Keep internal month in sync with the value provided by the parent
+  useEffect(() => {
+    if (controlledDate && !isSameMonth(controlledDate, currentDate)) {
+      setCurrentDate(controlledDate)
+    }
+  }, [controlledDate, currentDate])
 
   const calendarDays = useMemo(() => {
     const monthStart = startOfMonth(currentDate)

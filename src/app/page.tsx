@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useMemo } from 'react'
-import { motion } from 'framer-motion'
+import { useMemo, useState, useEffect } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { Plus, Filter, Search, Loader2 } from 'lucide-react'
 import { PageTransition } from '@/components/layout/PageTransition'
 import { Calendar } from '@/components/reservations/Calendar'
@@ -9,9 +9,11 @@ import { ReservationModal } from '@/components/reservations/ReservationModal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Reservation, RESERVATION_STATUS_CONFIG, ReservationStatus } from '@/types'
-import { useReservations } from '@/hooks/useSupabase'
+import { useHalls, useMenus, useReservations } from '@/hooks/useSupabase'
 import { Badge } from '@/components/ui/badge'
-import { startOfMonth, endOfMonth, format } from 'date-fns'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { endOfMonth, format, startOfMonth, isSameMonth } from 'date-fns'
+import { ru } from 'date-fns/locale'
 
 export default function HomePage() {
   const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null)
@@ -21,6 +23,22 @@ export default function HomePage() {
   const [statusFilter, setStatusFilter] = useState<ReservationStatus | 'all'>('all')
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false)
+  const [filters, setFilters] = useState({
+    year: new Date().getFullYear().toString(),
+    month: (new Date().getMonth() + 1).toString(),
+    hallId: 'all',
+    menuId: 'all',
+    paymentMethod: 'all',
+    minGuests: '',
+    maxGuests: '',
+    minChildren: '',
+    maxChildren: ''
+  })
+
+  const { data: halls } = useHalls()
+  const { data: menus } = useMenus()
+  const { data: reservationsForFilters } = useReservations()
 
   // Fetch reservations for current month
   const { data: reservations, loading, error, refetch } = useReservations({
@@ -28,23 +46,105 @@ export default function HomePage() {
     endDate: format(endOfMonth(currentMonth), 'yyyy-MM-dd')
   })
 
+  // Sync calendar month with dropdown filters
+  useEffect(() => {
+    const nextDate = new Date(Number(filters.year), Number(filters.month) - 1, 1)
+    if (!isSameMonth(nextDate, currentMonth)) {
+      setCurrentMonth(nextDate)
+    }
+  }, [filters.year, filters.month, currentMonth])
+
+  const availableYears = useMemo(() => {
+    const years = reservationsForFilters?.map((r) => new Date(r.date).getFullYear()) || []
+    const uniqueYears = Array.from(new Set(years))
+    if (uniqueYears.length === 0) {
+      return [new Date().getFullYear()]
+    }
+    return uniqueYears.sort((a, b) => b - a)
+  }, [reservationsForFilters])
+
+  const availableMonths = useMemo(() => {
+    const months = reservationsForFilters
+      ?.filter((r) => new Date(r.date).getFullYear().toString() === filters.year)
+      .map((r) => new Date(r.date).getMonth() + 1) || []
+    const uniqueMonths = Array.from(new Set(months))
+    return uniqueMonths.sort((a, b) => a - b)
+  }, [reservationsForFilters, filters.year])
+
+  const paymentMethods = useMemo(() => {
+    const methods = reservationsForFilters?.flatMap((r) => r.payments?.map((p) => p.payment_method) ?? []) || []
+    return Array.from(new Set(methods))
+  }, [reservationsForFilters])
+
+  const monthOptions = useMemo(() => {
+    if (availableMonths.length > 0) {
+      return availableMonths
+    }
+    return Array.from({ length: 12 }, (_, i) => i + 1)
+  }, [availableMonths])
+
+  const hasActiveFilters = useMemo(() => {
+    return (
+      statusFilter !== 'all' ||
+      filters.hallId !== 'all' ||
+      filters.menuId !== 'all' ||
+      filters.paymentMethod !== 'all' ||
+      filters.minGuests !== '' ||
+      filters.maxGuests !== '' ||
+      filters.minChildren !== '' ||
+      filters.maxChildren !== '' ||
+      searchQuery !== ''
+    )
+  }, [filters, searchQuery, statusFilter])
+
   const filteredReservations = useMemo(() => {
     return reservations.filter(reservation => {
-      const matchesSearch = searchQuery === '' || 
-        reservation.guest?.last_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        reservation.guest?.first_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        reservation.guest?.phone?.includes(searchQuery)
+      const normalizedQuery = searchQuery.toLowerCase().trim()
+      const matchesSearch = normalizedQuery === '' || 
+        reservation.guest?.last_name?.toLowerCase().includes(normalizedQuery) ||
+        reservation.guest?.first_name?.toLowerCase().includes(normalizedQuery) ||
+        reservation.guest?.phone?.includes(normalizedQuery) ||
+        reservation.comments?.toLowerCase().includes(normalizedQuery)
       
       const matchesStatus = statusFilter === 'all' || reservation.status === statusFilter
+      const matchesHall = filters.hallId === 'all' || reservation.hall_id === filters.hallId
+      const matchesMenu = filters.menuId === 'all' || reservation.menu_id === filters.menuId
+      const matchesPayment = filters.paymentMethod === 'all' || 
+        (reservation.payments || []).some((p) => p.payment_method === filters.paymentMethod)
 
-      return matchesSearch && matchesStatus
+      const matchesGuests = 
+        (filters.minGuests === '' || reservation.guests_count >= Number(filters.minGuests)) &&
+        (filters.maxGuests === '' || reservation.guests_count <= Number(filters.maxGuests))
+
+      const matchesChildren = 
+        (filters.minChildren === '' || reservation.children_count >= Number(filters.minChildren)) &&
+        (filters.maxChildren === '' || reservation.children_count <= Number(filters.maxChildren))
+
+      return (
+        matchesSearch &&
+        matchesStatus &&
+        matchesHall &&
+        matchesMenu &&
+        matchesPayment &&
+        matchesGuests &&
+        matchesChildren
+      )
     })
-  }, [reservations, searchQuery, statusFilter])
+  }, [reservations, searchQuery, statusFilter, filters])
 
   const handleReservationClick = (reservation: Reservation) => {
     setSelectedReservation(reservation)
     setModalMode('view')
     setIsModalOpen(true)
+  }
+
+  const handleCalendarMonthChange = (date: Date) => {
+    setCurrentMonth(date)
+    setFilters((prev) => ({
+      ...prev,
+      year: date.getFullYear().toString(),
+      month: (date.getMonth() + 1).toString()
+    }))
   }
 
   const handleAddReservation = (date?: Date) => {
@@ -63,6 +163,23 @@ export default function HomePage() {
   const handleSaveSuccess = () => {
     handleModalClose()
     refetch()
+  }
+
+  const handleResetFilters = () => {
+    const now = new Date()
+    setSearchQuery('')
+    setStatusFilter('all')
+    setFilters({
+      year: now.getFullYear().toString(),
+      month: (now.getMonth() + 1).toString(),
+      hallId: 'all',
+      menuId: 'all',
+      paymentMethod: 'all',
+      minGuests: '',
+      maxGuests: '',
+      minChildren: '',
+      maxChildren: ''
+    })
   }
 
   // Stats
@@ -159,33 +276,216 @@ export default function HomePage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="flex flex-col sm:flex-row gap-4 mb-6"
+          className="mb-6"
         >
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400" />
-            <Input 
-              placeholder="Поиск по имени или телефону..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          
-          <div className="flex items-center gap-2">
-            {statusFilter !== 'all' && (
-              <Badge 
-                variant={statusFilter === 'new' ? 'new' : 
-                        statusFilter === 'in_progress' ? 'inProgress' :
-                        statusFilter === 'prepaid' ? 'prepaid' : 'paid'}
-                className="cursor-pointer"
-                onClick={() => setStatusFilter('all')}
-              >
-                {RESERVATION_STATUS_CONFIG[statusFilter].label} ✕
-              </Badge>
-            )}
-            <Button variant="outline" size="icon">
-              <Filter className="h-4 w-4" />
-            </Button>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400" />
+                <Input 
+                  placeholder="Поиск по имени, телефону или комментарию..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              
+              <div className="flex items-center gap-2">
+                {statusFilter !== 'all' && (
+                  <Badge 
+                    variant={statusFilter === 'new' ? 'new' : 
+                            statusFilter === 'in_progress' ? 'inProgress' :
+                            statusFilter === 'prepaid' ? 'prepaid' : 'paid'}
+                    className="cursor-pointer"
+                    onClick={() => setStatusFilter('all')}
+                  >
+                    {RESERVATION_STATUS_CONFIG[statusFilter].label} ✕
+                  </Badge>
+                )}
+                <Button 
+                  variant={hasActiveFilters ? 'default' : 'outline'} 
+                  className="gap-2"
+                  onClick={() => setIsFiltersOpen((prev) => !prev)}
+                >
+                  <Filter className="h-4 w-4" />
+                  Фильтры
+                </Button>
+              </div>
+            </div>
+
+            <AnimatePresence initial={false}>
+              {isFiltersOpen && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm"
+                >
+                  <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="space-y-2">
+                      <p className="text-sm text-stone-500">Год</p>
+                      <Select
+                        value={filters.year}
+                        onValueChange={(value) => setFilters((prev) => {
+                          const next = { ...prev, year: value }
+                          setCurrentMonth(new Date(Number(value), Number(next.month) - 1, 1))
+                          return next
+                        })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Выберите год" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableYears.map((year) => (
+                            <SelectItem key={year} value={year.toString()}>
+                              {year}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <p className="text-sm text-stone-500">Месяц</p>
+                      <Select
+                        value={filters.month}
+                        onValueChange={(value) => setFilters((prev) => {
+                          const targetYear = Number(prev.year)
+                          const next = { ...prev, month: value }
+                          setCurrentMonth(new Date(targetYear, Number(value) - 1, 1))
+                          return next
+                        })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Выберите месяц" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {monthOptions.map((month) => (
+                            <SelectItem key={month} value={month.toString()}>
+                              {format(new Date(2024, month - 1, 1), 'LLLL', { locale: ru })}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <p className="text-sm text-stone-500">Зал</p>
+                      <Select
+                        value={filters.hallId}
+                        onValueChange={(value) => setFilters((prev) => ({ ...prev, hallId: value }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Все залы" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Все залы</SelectItem>
+                          {halls?.map((hall) => (
+                            <SelectItem key={hall.id} value={hall.id}>
+                              {hall.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <p className="text-sm text-stone-500">Меню</p>
+                      <Select
+                        value={filters.menuId}
+                        onValueChange={(value) => setFilters((prev) => ({ ...prev, menuId: value }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Все меню" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Все меню</SelectItem>
+                          {menus?.map((menu) => (
+                            <SelectItem key={menu.id} value={menu.id}>
+                              {menu.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <p className="text-sm text-stone-500">Способ оплаты</p>
+                      <Select
+                        value={filters.paymentMethod}
+                        onValueChange={(value) => setFilters((prev) => ({ ...prev, paymentMethod: value }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Любой" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Любой</SelectItem>
+                          {paymentMethods.map((method) => (
+                            <SelectItem key={method} value={method}>
+                              {method === 'cash' ? 'Наличные' : method === 'card' ? 'Карта' : 'Перевод'}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <p className="text-sm text-stone-500">Гостей (мин / макс)</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          type="number"
+                          min={0}
+                          placeholder="мин."
+                          value={filters.minGuests}
+                          onChange={(e) => setFilters((prev) => ({ ...prev, minGuests: e.target.value }))}
+                        />
+                        <Input
+                          type="number"
+                          min={0}
+                          placeholder="макс."
+                          value={filters.maxGuests}
+                          onChange={(e) => setFilters((prev) => ({ ...prev, maxGuests: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <p className="text-sm text-stone-500">Детей (мин / макс)</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          type="number"
+                          min={0}
+                          placeholder="мин."
+                          value={filters.minChildren}
+                          onChange={(e) => setFilters((prev) => ({ ...prev, minChildren: e.target.value }))}
+                        />
+                        <Input
+                          type="number"
+                          min={0}
+                          placeholder="макс."
+                          value={filters.maxChildren}
+                          onChange={(e) => setFilters((prev) => ({ ...prev, maxChildren: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between border-t border-stone-100 px-4 py-3">
+                    <span className="text-xs text-stone-500">
+                      Опции подтягиваются из реальных данных Supabase
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <Button variant="ghost" size="sm" onClick={handleResetFilters}>
+                        Сбросить
+                      </Button>
+                      <Button size="sm" onClick={() => setIsFiltersOpen(false)}>
+                        Применить
+                      </Button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </motion.div>
 
@@ -204,7 +504,8 @@ export default function HomePage() {
               reservations={filteredReservations}
               onReservationClick={handleReservationClick}
               onAddReservation={handleAddReservation}
-              onMonthChange={setCurrentMonth}
+              onMonthChange={handleCalendarMonthChange}
+              currentDate={currentMonth}
             />
           )}
         </motion.div>
