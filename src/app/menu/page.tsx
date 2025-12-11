@@ -248,7 +248,7 @@ export default function MenuPage() {
               </div>
               
               <div>
-                <Label>Цена за человека (₴)</Label>
+                <Label>Цена за человека (₽)</Label>
                 <Input type="number" placeholder="5000" className="mt-1" />
               </div>
               

@@ -445,7 +445,7 @@ export default function PaymentsPage() {
               </div>
               
               <div>
-                <Label>Сумма (₴)</Label>
+                <Label>Сумма (₽)</Label>
                 <Input type="number" placeholder="10000" className="mt-1" />
               </div>
               
