@@ -245,8 +245,8 @@ export function ReservationModal({
               )}
             </div>
             
-            {mode === 'view' && (
-              <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
+              {mode === 'view' ? (
                 <Button
                   variant="outline"
                   size="sm"
@@ -256,8 +256,27 @@ export function ReservationModal({
                   <Pencil className="h-4 w-4" />
                   Редактировать
                 </Button>
-              </div>
-            )}
+              ) : (
+                <>
+                  <Button variant="outline" size="sm" onClick={onClose}>
+                    Отмена
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="gap-2"
+                    onClick={handleSave}
+                    disabled={isLoading}
+                  >
+                    {isLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                    Сохранить
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
         </DialogHeader>
 
