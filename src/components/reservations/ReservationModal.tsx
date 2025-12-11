@@ -194,7 +194,8 @@ export function ReservationModal({
     const dataToSave = {
       ...formData,
       guest_id: guestId,
-      table_id: formData.table_id || null
+      // Supabase column nullable, тип в TS optional, передаём undefined, не null
+      table_id: formData.table_id || undefined,
     }
 
     if (mode === 'create') {
