@@ -46,6 +46,7 @@ export function Calendar({
 }: CalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
+  const [viewMode, setViewMode] = useState<'month' | 'day'>('month')
 
   const calendarDays = useMemo(() => {
     const monthStart = startOfMonth(currentDate)
@@ -77,12 +78,19 @@ export function Calendar({
     const today = new Date()
     setCurrentDate(today)
     setSelectedDate(today)
+    setViewMode('day')
     onMonthChange?.(today)
   }
 
   const handleDateClick = (date: Date) => {
     setSelectedDate(date)
+    setViewMode('day')
     onDateSelect?.(date)
+  }
+
+  const handleBackToMonth = () => {
+    setViewMode('month')
+    setSelectedDate(null)
   }
 
   return (
@@ -130,119 +138,128 @@ export function Calendar({
         </div>
       </div>
 
-      {/* Calendar Grid */}
-      <div className="rounded-2xl border border-stone-200 bg-white shadow-sm overflow-hidden">
-        {/* Week days header */}
-        <div className="grid grid-cols-7 bg-stone-50 border-b border-stone-200">
-          {weekDays.map((day, index) => (
-            <div 
-              key={day} 
-              className={cn(
-                "py-3 text-center text-sm font-medium text-stone-500",
-                index >= 5 && "text-stone-400"
-              )}
-            >
-              {day}
-            </div>
-          ))}
-        </div>
-
-        {/* Days grid */}
-        <div className="grid grid-cols-7">
-          {calendarDays.map((day, index) => {
-            const dayReservations = getReservationsForDate(day)
-            const isCurrentMonth = isSameMonth(day, currentDate)
-            const isSelected = selectedDate && isSameDay(day, selectedDate)
-            const isTodayDate = isToday(day)
-
-            return (
-              <motion.div
-                key={day.toISOString()}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: index * 0.01 }}
-                onClick={() => handleDateClick(day)}
+      {viewMode === 'month' && (
+        <div className="rounded-2xl border border-stone-200 bg-white shadow-sm overflow-hidden">
+          {/* Week days header */}
+          <div className="grid grid-cols-7 bg-stone-50 border-b border-stone-200">
+            {weekDays.map((day, index) => (
+              <div 
+                key={day} 
                 className={cn(
-                  "min-h-[120px] sm:min-h-[140px] p-2 border-b border-r border-stone-100 cursor-pointer transition-colors",
-                  !isCurrentMonth && "bg-stone-50/50",
-                  isCurrentMonth && "bg-white hover:bg-stone-50",
-                  isTodayDate && "bg-amber-50/50",
-                  isSelected && "ring-2 ring-inset ring-amber-500",
-                  index % 7 === 6 && "border-r-0"
+                  "py-3 text-center text-sm font-medium text-stone-500",
+                  index >= 5 && "text-stone-400"
                 )}
               >
-                <div className="flex items-center justify-between mb-2">
-                  <span 
-                    className={cn(
-                      "flex h-7 w-7 items-center justify-center rounded-full text-sm font-medium",
-                      !isCurrentMonth && "text-stone-300",
-                      isCurrentMonth && "text-stone-700",
-                      isTodayDate && "bg-amber-500 text-white",
-                      isSelected && !isTodayDate && "bg-stone-200"
-                    )}
-                  >
-                    {format(day, 'd')}
-                  </span>
-                  
-                  {isCurrentMonth && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 opacity-0 group-hover:opacity-100 hover:opacity-100 focus:opacity-100"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onAddReservation?.(day)
-                      }}
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
+                {day}
+              </div>
+            ))}
+          </div>
 
-                <div className="space-y-1 overflow-hidden">
-                  <AnimatePresence>
-                    {dayReservations.slice(0, 3).map((reservation, rIndex) => (
-                      <motion.div
-                        key={reservation.id}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: 10 }}
-                        transition={{ delay: rIndex * 0.05 }}
+          {/* Days grid */}
+          <div className="grid grid-cols-7">
+            {calendarDays.map((day, index) => {
+              const dayReservations = getReservationsForDate(day)
+              const isCurrentMonth = isSameMonth(day, currentDate)
+              const isSelected = selectedDate && isSameDay(day, selectedDate)
+              const isTodayDate = isToday(day)
+
+              return (
+                <motion.div
+                  key={day.toISOString()}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: index * 0.01 }}
+                  onClick={() => handleDateClick(day)}
+                  className={cn(
+                    "group min-h-[120px] sm:min-h-[140px] p-2 border-b border-r border-stone-100 cursor-pointer transition-colors",
+                    !isCurrentMonth && "bg-stone-50/50",
+                    isCurrentMonth && "bg-white hover:bg-stone-50",
+                    isTodayDate && "bg-amber-50/50",
+                    isSelected && "ring-2 ring-inset ring-amber-500",
+                    index % 7 === 6 && "border-r-0"
+                  )}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span 
+                      className={cn(
+                        "flex h-7 w-7 items-center justify-center rounded-full text-sm font-medium",
+                        !isCurrentMonth && "text-stone-300",
+                        isCurrentMonth && "text-stone-700",
+                        isTodayDate && "bg-amber-500 text-white",
+                        isSelected && !isTodayDate && "bg-stone-200"
+                      )}
+                    >
+                      {format(day, 'd')}
+                    </span>
+                    
+                    {isCurrentMonth && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 opacity-0 group-hover:opacity-100 hover:opacity-100 focus:opacity-100"
                         onClick={(e) => {
                           e.stopPropagation()
-                          onReservationClick?.(reservation)
+                          onAddReservation?.(day)
                         }}
                       >
-                        <ReservationCard reservation={reservation} compact />
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
-                  
-                  {dayReservations.length > 3 && (
-                    <div className="text-xs text-stone-500 text-center py-1">
-                      +{dayReservations.length - 3} ещё
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            )
-          })}
-        </div>
-      </div>
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
 
-      {/* Selected Date Details */}
-      <AnimatePresence>
-        {selectedDate && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm"
-          >
-            <div className="flex items-center justify-between mb-4">
+                  <div className="space-y-1 overflow-hidden">
+                    <AnimatePresence>
+                      {dayReservations.slice(0, 3).map((reservation, rIndex) => (
+                        <motion.div
+                          key={reservation.id}
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, x: 10 }}
+                          transition={{ delay: rIndex * 0.05 }}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onReservationClick?.(reservation)
+                          }}
+                        >
+                          <ReservationCard reservation={reservation} compact />
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                    
+                    {dayReservations.length > 3 && (
+                      <div className="text-xs text-stone-500 text-center py-1">
+                        +{dayReservations.length - 3} ещё
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {viewMode === 'day' && selectedDate && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 20 }}
+          className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm"
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+            <div>
               <h3 className="text-lg font-semibold text-stone-900">
                 {format(selectedDate, 'd MMMM yyyy', { locale: ru })}
               </h3>
+              <p className="text-sm text-stone-500">
+                Всего бронирований: {getReservationsForDate(selectedDate).length}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={handleBackToMonth} className="gap-2">
+                <ChevronLeft className="h-4 w-4" />
+                Назад к календарю
+              </Button>
               <Button
                 onClick={() => onAddReservation?.(selectedDate)}
                 className="gap-2"
@@ -251,26 +268,26 @@ export function Calendar({
                 Новая бронь
               </Button>
             </div>
+          </div>
 
-            {getReservationsForDate(selectedDate).length === 0 ? (
-              <div className="text-center py-8 text-stone-500">
-                <CalendarIcon className="h-12 w-12 mx-auto mb-3 text-stone-300" />
-                <p>Нет бронирований на эту дату</p>
-              </div>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {getReservationsForDate(selectedDate).map((reservation) => (
-                  <ReservationCard
-                    key={reservation.id}
-                    reservation={reservation}
-                    onClick={() => onReservationClick?.(reservation)}
-                  />
-                ))}
-              </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
+          {getReservationsForDate(selectedDate).length === 0 ? (
+            <div className="text-center py-12 text-stone-500">
+              <CalendarIcon className="h-12 w-12 mx-auto mb-3 text-stone-300" />
+              <p>Нет бронирований на эту дату</p>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {getReservationsForDate(selectedDate).map((reservation) => (
+                <ReservationCard
+                  key={reservation.id}
+                  reservation={reservation}
+                  onClick={() => onReservationClick?.(reservation)}
+                />
+              ))}
+            </div>
+          )}
+        </motion.div>
+      )}
     </div>
   )
 }
