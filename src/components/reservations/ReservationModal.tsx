@@ -42,7 +42,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { useHalls, useMenus, useMenuItems, useGuests, useCreateMutation, useUpdateMutation, useDeleteMutation } from '@/hooks/useSupabase'
+import { useHalls, useMenus, useMenuItems, useGuests, useTables, useCreateMutation, useUpdateMutation, useDeleteMutation } from '@/hooks/useSupabase'
 import { format } from 'date-fns'
 
 interface ReservationModalProps {
@@ -95,6 +95,7 @@ export function ReservationModal({
   const { data: menus } = useMenus()
   const { data: menuItems } = useMenuItems()
   const { data: guests } = useGuests()
+  const { data: tables } = useTables(formData.hall_id)
 
   // Mutations
   const createReservation = useCreateMutation<Reservation>('reservations')
@@ -460,6 +461,35 @@ export function ReservationModal({
                       {halls.map(hall => (
                         <SelectItem key={hall.id} value={hall.id}>
                           {hall.name} (до {hall.capacity} чел.)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+
+              <div>
+                <Label className="flex items-center gap-2">
+                  <MapPin className="h-3.5 w-3.5" />
+                  Стол
+                </Label>
+                {mode === 'view' ? (
+                  <p className="mt-1">
+                    {reservation?.table?.number ? `Стол ${reservation.table.number}` : 'Не выбран'}
+                  </p>
+                ) : (
+                  <Select 
+                    value={formData.table_id}
+                    onValueChange={(v) => setFormData({ ...formData, table_id: v })}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Выберите стол" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Без стола</SelectItem>
+                      {tables.map(table => (
+                        <SelectItem key={table.id} value={table.id}>
+                          Стол {table.number} • {table.capacity} чел.
                         </SelectItem>
                       ))}
                     </SelectContent>

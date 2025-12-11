@@ -2,24 +2,51 @@
 
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Users, MapPin, Calendar, Loader2 } from 'lucide-react'
+import { Plus, Users, MapPin, Calendar, Loader2, Trash2, Save, Pen } from 'lucide-react'
 import { PageTransition } from '@/components/layout/PageTransition'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useHalls, useReservations, useTables } from '@/hooks/useSupabase'
+import { useHalls, useReservations, useTables, useCreateMutation, useUpdateMutation, useDeleteMutation } from '@/hooks/useSupabase'
 import { cn, formatDate } from '@/lib/utils'
 import { RESERVATION_STATUS_CONFIG, Table, Hall } from '@/types'
 import { format } from 'date-fns'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 export default function HallsPage() {
   const [selectedHallId, setSelectedHallId] = useState<string | null>(null)
+  const [isHallDialogOpen, setIsHallDialogOpen] = useState(false)
+  const [isTableDialogOpen, setIsTableDialogOpen] = useState(false)
+  const [editingTable, setEditingTable] = useState<Table | null>(null)
+  const [hallForm, setHallForm] = useState({ name: '', capacity: 0, description: '' })
+  const [tableForm, setTableForm] = useState({
+    hall_id: '',
+    number: 1,
+    capacity: 4,
+    position_x: 50,
+    position_y: 50,
+    width: 100,
+    height: 100,
+    shape: 'rectangle' as Table['shape'],
+  })
 
   // Fetch data
   const { data: halls, loading: hallsLoading } = useHalls()
   const { data: tables } = useTables()
   
+  // Mutations
+  const createHall = useCreateMutation<Hall>('halls')
+  const updateHall = useUpdateMutation<Hall>('halls')
+  const deleteHall = useDeleteMutation('halls')
+  const createTable = useCreateMutation<Table>('tables')
+  const updateTable = useUpdateMutation<Table>('tables')
+  const deleteTable = useDeleteMutation('tables')
+
   // Get reservations for today
   const today = format(new Date(), 'yyyy-MM-dd')
   const { data: todayReservations, loading: reservationsLoading } = useReservations({ date: today })
@@ -57,10 +84,42 @@ export default function HallsPage() {
               <p className="mt-1 text-stone-500">Схема расположения столов и текущие брони</p>
             </div>
             
-            <Button size="lg" className="gap-2 shadow-lg shadow-amber-500/25">
-              <Plus className="h-5 w-5" />
-              Добавить зал
-            </Button>
+            <div className="flex gap-3">
+              <Button 
+                variant="outline"
+                className="gap-2"
+                onClick={() => {
+                  setHallForm({ name: '', capacity: 0, description: '' })
+                  setIsHallDialogOpen(true)
+                }}
+              >
+                <Plus className="h-5 w-5" />
+                Добавить зал
+              </Button>
+              {selectedHall && (
+                <Button 
+                  size="lg" 
+                  className="gap-2 shadow-lg shadow-amber-500/25"
+                  onClick={() => {
+                    setEditingTable(null)
+                    setTableForm({
+                      hall_id: selectedHall.id,
+                      number: (tables.filter(t=>t.hall_id===selectedHall.id).length || 0) + 1,
+                      capacity: 4,
+                      position_x: 50,
+                      position_y: 50,
+                      width: 100,
+                      height: 100,
+                      shape: 'rectangle',
+                    })
+                    setIsTableDialogOpen(true)
+                  }}
+                >
+                  <Plus className="h-5 w-5" />
+                  Добавить стол
+                </Button>
+              )}
+            </div>
           </motion.div>
         </div>
 
@@ -125,6 +184,21 @@ export default function HallsPage() {
                                      reservation.status === 'canceled' ? 'canceled' : 'new')
                                     : 'outline'
                                   }
+                                  onClick={() => {
+                                    setEditingTable(table)
+                                    setTableForm({
+                                      hall_id: hall.id,
+                                      number: table.number,
+                                      capacity: table.capacity,
+                                      position_x: table.position_x,
+                                      position_y: table.position_y,
+                                      width: table.width,
+                                      height: table.height,
+                                      shape: table.shape,
+                                    })
+                                    setIsTableDialogOpen(true)
+                                  }}
+                                  className="cursor-pointer"
                                 >
                                   Стол {table.number} ({table.capacity} чел.)
                                 </Badge>
@@ -176,6 +250,20 @@ export default function HallsPage() {
                                     height: table.height,
                                     backgroundColor: statusConfig?.bgColor || 'white',
                                     borderColor: statusConfig?.borderColor || '#D1D5DB',
+                                  }}
+                                  onClick={() => {
+                                    setEditingTable(table)
+                                    setTableForm({
+                                      hall_id: hall.id,
+                                      number: table.number,
+                                      capacity: table.capacity,
+                                      position_x: table.position_x,
+                                      position_y: table.position_y,
+                                      width: table.width,
+                                      height: table.height,
+                                      shape: table.shape,
+                                    })
+                                    setIsTableDialogOpen(true)
                                   }}
                                 >
                                   <span className="font-bold text-lg" style={{ color: statusConfig?.color || '#374151' }}>
@@ -286,6 +374,181 @@ export default function HallsPage() {
           </Tabs>
         )}
       </div>
+
+      {/* Hall Dialog */}
+      <Dialog open={isHallDialogOpen} onOpenChange={setIsHallDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Новый зал</DialogTitle>
+            <DialogDescription>Создайте зал и позже добавьте столы</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Название *</Label>
+              <Input 
+                value={hallForm.name}
+                onChange={(e) => setHallForm({ ...hallForm, name: e.target.value })}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label>Вместимость *</Label>
+              <Input 
+                type="number"
+                value={hallForm.capacity || ''}
+                onChange={(e) => setHallForm({ ...hallForm, capacity: parseInt(e.target.value) || 0 })}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label>Описание</Label>
+              <Textarea 
+                value={hallForm.description}
+                onChange={(e) => setHallForm({ ...hallForm, description: e.target.value })}
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsHallDialogOpen(false)}>Отмена</Button>
+            <Button 
+              onClick={async () => {
+                await createHall.mutate(hallForm)
+                setIsHallDialogOpen(false)
+                setHallForm({ name: '', capacity: 0, description: '' })
+              }}
+              disabled={!hallForm.name || !hallForm.capacity}
+            >
+              {createHall.loading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Создать
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Table Dialog */}
+      <Dialog open={isTableDialogOpen} onOpenChange={setIsTableDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingTable ? 'Редактировать стол' : 'Новый стол'}</DialogTitle>
+            <DialogDescription>Настройте расположение и параметры стола</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Номер *</Label>
+                <Input 
+                  type="number"
+                  value={tableForm.number || ''}
+                  onChange={(e) => setTableForm({ ...tableForm, number: parseInt(e.target.value) || 1 })}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label>Вместимость *</Label>
+                <Input 
+                  type="number"
+                  value={tableForm.capacity || ''}
+                  onChange={(e) => setTableForm({ ...tableForm, capacity: parseInt(e.target.value) || 0 })}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Ширина</Label>
+                <Input 
+                  type="number"
+                  value={tableForm.width || ''}
+                  onChange={(e) => setTableForm({ ...tableForm, width: parseInt(e.target.value) || 0 })}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label>Высота</Label>
+                <Input 
+                  type="number"
+                  value={tableForm.height || ''}
+                  onChange={(e) => setTableForm({ ...tableForm, height: parseInt(e.target.value) || 0 })}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Позиция X</Label>
+                <Input 
+                  type="number"
+                  value={tableForm.position_x || ''}
+                  onChange={(e) => setTableForm({ ...tableForm, position_x: parseInt(e.target.value) || 0 })}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label>Позиция Y</Label>
+                <Input 
+                  type="number"
+                  value={tableForm.position_y || ''}
+                  onChange={(e) => setTableForm({ ...tableForm, position_y: parseInt(e.target.value) || 0 })}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+            <div>
+              <Label>Форма</Label>
+              <Select 
+                value={tableForm.shape}
+                onValueChange={(v) => setTableForm({ ...tableForm, shape: v as Table['shape'] })}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="round">Круглый</SelectItem>
+                  <SelectItem value="rectangle">Прямоугольный</SelectItem>
+                  <SelectItem value="square">Квадратный</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter className="justify-between">
+            {editingTable ? (
+              <div className="flex gap-2">
+                <Button 
+                  variant="destructive"
+                  onClick={async () => {
+                    await deleteTable.mutate(editingTable.id)
+                    setIsTableDialogOpen(false)
+                    setEditingTable(null)
+                  }}
+                  disabled={deleteTable.loading}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Удалить
+                </Button>
+              </div>
+            ) : <div />}
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setIsTableDialogOpen(false)}>Отмена</Button>
+              <Button 
+                onClick={async () => {
+                  if (editingTable) {
+                    await updateTable.mutate(editingTable.id, tableForm)
+                  } else {
+                    await createTable.mutate({ ...tableForm, hall_id: tableForm.hall_id || selectedHall?.id || '' })
+                  }
+                  setIsTableDialogOpen(false)
+                  setEditingTable(null)
+                }}
+                disabled={!tableForm.number || !tableForm.capacity}
+              >
+                <Save className="h-4 w-4 mr-2" />
+                Сохранить
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageTransition>
   )
 }
