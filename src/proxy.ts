@@ -1,13 +1,13 @@
 import { type NextRequest, NextResponse } from 'next/server'
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   // Временно отключаем аутентификацию для демонстрации
   // Когда Supabase будет настроен, раскомментируйте код ниже
-  
+  //
   // import { updateSession } from '@/lib/supabase/middleware'
   // return await updateSession(request)
-  
-  return NextResponse.next()
+  //
+  return NextResponse.next({ request })
 }
 
 export const config = {
