@@ -479,14 +479,14 @@ export function ReservationModal({
                   </p>
                 ) : (
                   <Select 
-                    value={formData.table_id}
-                    onValueChange={(v) => setFormData({ ...formData, table_id: v })}
+                    value={formData.table_id || 'none'}
+                    onValueChange={(v) => setFormData({ ...formData, table_id: v === 'none' ? '' : v })}
                   >
                     <SelectTrigger className="mt-1">
                       <SelectValue placeholder="Выберите стол" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Без стола</SelectItem>
+                      <SelectItem value="none">Без стола</SelectItem>
                       {tables.map(table => (
                         <SelectItem key={table.id} value={table.id}>
                           Стол {table.number} • {table.capacity} чел.
