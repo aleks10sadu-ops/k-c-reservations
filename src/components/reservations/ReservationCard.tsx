@@ -46,7 +46,15 @@ export function ReservationCard({ reservation, onClick, compact = false }: Reser
             <Users className="h-3 w-3" />
             {reservation.guests_count}
           </span>
-          <span className="truncate">{reservation.hall?.name}</span>
+            <span className="truncate">{reservation.hall?.name}</span>
+            {(reservation.table_ids?.length || reservation.table?.number) && (
+              <span className="truncate">
+                столы: {(reservation.table_ids?.length ? reservation.table_ids : (reservation.table ? [reservation.table.id] : []))
+                  .map(id => reservation.tables?.find(t => t.id === id)?.number)
+                  .filter(Boolean)
+                  .join(', ')}
+              </span>
+            )}
         </div>
       </motion.div>
     )
@@ -85,6 +93,18 @@ export function ReservationCard({ reservation, onClick, compact = false }: Reser
               <MapPin className="h-4 w-4 text-stone-400" />
               <span className="truncate">{reservation.hall?.name}</span>
             </div>
+            
+            {(reservation.table_ids?.length || reservation.table?.number) && (
+              <div className="flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-stone-400" />
+                <span className="truncate">
+                  Столы: {(reservation.table_ids?.length ? reservation.table_ids : (reservation.table ? [reservation.table.id] : []))
+                    .map(id => reservation.tables?.find(t => t.id === id)?.number)
+                    .filter(Boolean)
+                    .join(', ')}
+                </span>
+              </div>
+            )}
             
             <div className="flex items-center gap-2">
               <Users className="h-4 w-4 text-stone-400" />

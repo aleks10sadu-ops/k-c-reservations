@@ -140,7 +140,10 @@ export default function HallsPage() {
 
   // Get tables with their reservations
   const getTableReservation = (table: Table) => {
-    return dateReservations.find(r => r.table_id === table.id || r.hall_id === table.hall_id)
+    return dateReservations.find(r => 
+      r.table_id === table.id ||
+      (r.table_ids && r.table_ids.includes(table.id))
+    )
   }
 
 
@@ -406,6 +409,12 @@ export default function HallsPage() {
                                     transformOrigin: 'top left',
                                     }}
                                   >
+                            {reservation && (
+                              <span
+                                className="absolute -top-2 -right-2 h-3.5 w-3.5 rounded-full border border-white shadow"
+                                style={{ backgroundColor: statusConfig?.borderColor || reservation.color || '#f59e0b' }}
+                              />
+                            )}
                                     <span className="font-bold text-lg" style={{ color: statusConfig?.color || '#374151' }}>
                                       {table.number}
                                     </span>
@@ -1227,6 +1236,12 @@ export default function HallsPage() {
                       setIsTableDialogOpen(true)
                     }}
                   >
+                    {reservation && (
+                      <span
+                        className="absolute -top-2 -right-2 h-3.5 w-3.5 rounded-full border border-white shadow"
+                        style={{ backgroundColor: reservation.color || statusConfig?.borderColor || '#f59e0b' }}
+                      />
+                    )}
                     <span className="font-bold text-lg" style={{ color: statusConfig?.color || '#374151' }}>
                       {table.number}
                     </span>

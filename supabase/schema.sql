@@ -101,6 +101,7 @@ CREATE TABLE reservations (
     guests_count INTEGER NOT NULL DEFAULT 1,
     children_count INTEGER NOT NULL DEFAULT 0,
     menu_id UUID REFERENCES menus(id),
+    color VARCHAR(20) DEFAULT '#f59e0b',
     status VARCHAR(20) NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'in_progress', 'prepaid', 'paid', 'canceled')),
     total_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
     prepaid_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
@@ -108,6 +109,15 @@ CREATE TABLE reservations (
     created_by UUID,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Привязка нескольких столов к бронированию
+CREATE TABLE reservation_tables (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    reservation_id UUID NOT NULL REFERENCES reservations(id) ON DELETE CASCADE,
+    table_id UUID NOT NULL REFERENCES tables(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(reservation_id, table_id)
 );
 
 -- Таблица выбранных позиций меню в бронировании

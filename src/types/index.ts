@@ -140,6 +140,8 @@ export interface Reservation {
   hall?: Hall
   table_id?: string
   table?: Table
+  tables?: Table[]
+  table_ids?: string[]
   guest_id: string
   guest?: Guest
   guests_count: number
@@ -148,6 +150,7 @@ export interface Reservation {
   menu?: Menu
   selected_menu_items: ReservationMenuItem[]
   status: ReservationStatus
+  color?: string
   total_amount: number
   prepaid_amount: number
   payments: Payment[]

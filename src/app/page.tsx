@@ -125,8 +125,12 @@ export default function HomePage() {
     setSelectedDate(null)
   }
 
-  const handleSaveSuccess = () => {
-    handleModalClose()
+  const handleSaveSuccess = (saved?: any) => {
+    if (saved) {
+      setSelectedReservation(saved)
+      setModalMode('view')
+      setIsModalOpen(true)
+    }
     refetch()
   }
 

@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Calendar, 
@@ -31,7 +32,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -42,14 +42,14 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { useHalls, useMenus, useMenuItems, useGuests, useTables, useCreateMutation, useUpdateMutation, useDeleteMutation } from '@/hooks/useSupabase'
+import { useHalls, useMenus, useMenuItems, useGuests, useTables, useCreateMutation, useUpdateMutation, useDeleteMutation, useReservations } from '@/hooks/useSupabase'
 import { format } from 'date-fns'
 
 interface ReservationModalProps {
   reservation: Reservation | null
   isOpen: boolean
   onClose: () => void
-  onSaveSuccess?: () => void
+  onSaveSuccess?: (saved?: Reservation) => void
   mode?: 'view' | 'edit' | 'create'
   initialDate?: Date | null
 }
@@ -76,6 +76,7 @@ export function ReservationModal({
     guests_count: 10,
     children_count: 0,
     menu_id: '',
+    color: '#f59e0b',
     status: 'new' as ReservationStatus,
     total_amount: 0,
     prepaid_amount: 0,
@@ -89,6 +90,22 @@ export function ReservationModal({
     last_name: '',
     phone: ''
   })
+  const [showSchemePicker, setShowSchemePicker] = useState(false)
+  const [selectedTables, setSelectedTables] = useState<string[]>([])
+  const [draftTables, setDraftTables] = useState<string[]>([])
+  const [selectionBox, setSelectionBox] = useState<{
+    x1: number
+    y1: number
+    x2: number
+    y2: number
+    active: boolean
+    moved: boolean
+  } | null>(null)
+  const schemeRef = useRef<HTMLDivElement | null>(null)
+
+  const CANVAS_WIDTH = 800
+  const CANVAS_HEIGHT = 600
+  const COLOR_PRESETS = ['#f97316', '#f59e0b', '#10b981', '#3b82f6', '#6366f1', '#ec4899', '#ef4444', '#6b7280']
 
   // Fetch data
   const { data: halls } = useHalls()
@@ -96,67 +113,98 @@ export function ReservationModal({
   const { data: menuItems } = useMenuItems()
   const { data: guests } = useGuests()
   const { data: tables } = useTables(formData.hall_id)
+  const { data: dayReservations } = useReservations(
+    formData.date
+      ? { date: formData.date, hall_id: formData.hall_id || undefined }
+      : undefined
+  )
 
   // Mutations
   const createReservation = useCreateMutation<Reservation>('reservations')
   const updateReservation = useUpdateMutation<Reservation>('reservations')
   const deleteReservation = useDeleteMutation('reservations')
   const createGuest = useCreateMutation<Guest>('guests')
-  const createPayment = useCreateMutation<any>('payments')
 
-  // Reset form when modal opens
+  // Reset form when modal opens or reservation changes
   useEffect(() => {
-    setMode(initialMode)
-    
-    if (reservation && initialMode !== 'create') {
-      setFormData({
-        date: reservation.date,
-        time: reservation.time,
-        hall_id: reservation.hall_id,
-        table_id: reservation.table_id || '',
-        guest_id: reservation.guest_id,
-        guests_count: reservation.guests_count,
-        children_count: reservation.children_count,
-        menu_id: reservation.menu_id || '',
-        status: reservation.status,
-        total_amount: reservation.total_amount,
-        prepaid_amount: reservation.prepaid_amount,
-        comments: reservation.comments || ''
-      })
-    } else if (initialMode === 'create') {
-      setFormData({
-        date: initialDate ? format(initialDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
-        time: '18:00',
-        hall_id: halls[0]?.id || '',
-        table_id: '',
-        guest_id: '',
-        guests_count: 10,
-        children_count: 0,
-        menu_id: menus[0]?.id || '',
-        status: 'new',
-        total_amount: 0,
-        prepaid_amount: 0,
-        comments: ''
-      })
-    }
+    if (!isOpen) return
+    queueMicrotask(() => {
+      setMode(initialMode)
+
+      if (reservation && initialMode !== 'create') {
+        setFormData({
+          date: reservation.date,
+          time: reservation.time,
+          hall_id: reservation.hall_id,
+          table_id: reservation.table_id || '',
+          guest_id: reservation.guest_id,
+          guests_count: reservation.guests_count,
+          children_count: reservation.children_count,
+          menu_id: reservation.menu_id || '',
+          color: reservation.color || '#f59e0b',
+          status: reservation.status,
+          total_amount: reservation.total_amount,
+          prepaid_amount: reservation.prepaid_amount,
+          comments: reservation.comments || ''
+        })
+        const initialTables =
+          reservation.tables?.length
+            ? reservation.tables.map((t) => t.id)
+            : reservation.table_id
+              ? [reservation.table_id]
+              : []
+        setSelectedTables(initialTables)
+        setDraftTables(initialTables)
+      } else if (initialMode === 'create') {
+        setFormData({
+          date: initialDate ? format(initialDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
+          time: '18:00',
+          hall_id: halls[0]?.id || '',
+          table_id: '',
+          guest_id: '',
+          guests_count: 10,
+          children_count: 0,
+          menu_id: menus[0]?.id || '',
+        color: '#f59e0b',
+          status: 'new',
+          total_amount: 0,
+          prepaid_amount: 0,
+          comments: ''
+        })
+        setSelectedTables([])
+        setDraftTables([])
+      }
+      setShowSchemePicker(false)
+      setSelectionBox(null)
+    })
   }, [reservation, initialMode, isOpen, initialDate, halls, menus])
-
-  // Calculate total amount when guests or menu changes
-  useEffect(() => {
-    const selectedMenu = menus.find(m => m.id === formData.menu_id)
-    if (selectedMenu) {
-      setFormData(prev => ({
-        ...prev,
-        total_amount: selectedMenu.price_per_person * prev.guests_count
-      }))
-    }
-  }, [formData.guests_count, formData.menu_id, menus])
 
   const statusOptions: ReservationStatus[] = ['new', 'in_progress', 'prepaid', 'paid', 'canceled']
   
   const currentMenu = useMemo(() => {
     return menus.find(m => m.id === formData.menu_id)
   }, [formData.menu_id, menus])
+
+  const computedTotal = useMemo(() => {
+    if (currentMenu) {
+      return currentMenu.price_per_person * formData.guests_count
+    }
+    return formData.total_amount
+  }, [currentMenu, formData.guests_count, formData.total_amount])
+
+  const remainingAmount = computedTotal - formData.prepaid_amount
+
+  const occupiedTableMap = useMemo(() => {
+    const map = new Map<string, string>()
+    dayReservations
+      ?.filter(r => r.id !== reservation?.id)
+      ?.forEach(r => {
+        const color = r.color || '#ef4444'
+        if (r.table_id) map.set(r.table_id, color)
+        if (r.table_ids?.length) r.table_ids.forEach(id => map.set(id, color))
+      })
+    return map
+  }, [dayReservations, reservation?.id])
 
   const menuItemsByType = useMemo((): Partial<Record<MenuItemType, typeof menuItems>> => {
     if (!currentMenu) return {}
@@ -168,7 +216,90 @@ export function ReservationModal({
     }, {} as Partial<Record<MenuItemType, typeof items>>)
   }, [currentMenu, menuItems])
 
-  const remainingAmount = formData.total_amount - formData.prepaid_amount
+  const clamp = (val: number, min: number, max: number) => Math.min(Math.max(val, min), max)
+
+  const getTableAABB = (table: typeof tables[number]) => {
+    const rot = (table.rotation ?? 0) * (Math.PI / 180)
+    const cos = Math.cos(rot)
+    const sin = Math.sin(rot)
+    const corners = [
+      { x: 0, y: 0 },
+      { x: table.width, y: 0 },
+      { x: table.width, y: table.height },
+      { x: 0, y: table.height },
+    ].map((c) => ({
+      x: table.position_x + c.x * cos - c.y * sin,
+      y: table.position_y + c.x * sin + c.y * cos,
+    }))
+    const xs = corners.map((c) => c.x)
+    const ys = corners.map((c) => c.y)
+    return {
+      minX: Math.min(...xs),
+      maxX: Math.max(...xs),
+      minY: Math.min(...ys),
+      maxY: Math.max(...ys),
+    }
+  }
+
+  const handleSchemeMouseDown = (e: React.MouseEvent) => {
+    if (!schemeRef.current) return
+    const rect = schemeRef.current.getBoundingClientRect()
+    const x = clamp(e.clientX - rect.left, 0, CANVAS_WIDTH)
+    const y = clamp(e.clientY - rect.top, 0, CANVAS_HEIGHT)
+    setSelectionBox({ x1: x, y1: y, x2: x, y2: y, active: true, moved: false })
+  }
+
+  const handleSchemeMouseMove = (e: React.MouseEvent) => {
+    if (!schemeRef.current || !selectionBox?.active) return
+    const rect = schemeRef.current.getBoundingClientRect()
+    const x = clamp(e.clientX - rect.left, 0, CANVAS_WIDTH)
+    const y = clamp(e.clientY - rect.top, 0, CANVAS_HEIGHT)
+    setSelectionBox((prev) => {
+      if (!prev) return prev
+      const moved = prev.moved || Math.abs(x - prev.x1) > 3 || Math.abs(y - prev.y1) > 3
+      return { ...prev, x2: x, y2: y, moved }
+    })
+  }
+
+  const handleSchemeMouseUp = () => {
+    if (!selectionBox || !tables.length) {
+      setSelectionBox(null)
+      return
+    }
+    if (!selectionBox.moved) {
+      setSelectionBox(null)
+      return
+    }
+    const minX = Math.min(selectionBox.x1, selectionBox.x2)
+    const maxX = Math.max(selectionBox.x1, selectionBox.x2)
+    const minY = Math.min(selectionBox.y1, selectionBox.y2)
+    const maxY = Math.max(selectionBox.y1, selectionBox.y2)
+
+    const nextSelected = tables
+      .filter((t) => {
+        const box = getTableAABB(t)
+        const intersects =
+          box.maxX >= minX &&
+          box.minX <= maxX &&
+          box.maxY >= minY &&
+          box.minY <= maxY
+        return intersects
+      })
+      .map((t) => t.id)
+
+    setDraftTables(nextSelected)
+    setSelectionBox(null)
+  }
+
+  const handleSchemeClick = (tableId: string) => {
+    setDraftTables((prev) => {
+      const exists = prev.includes(tableId)
+      if (exists) {
+        return prev.filter((id) => id !== tableId)
+      }
+      return [...prev, tableId]
+    })
+  }
 
   const handleStatusChange = (status: ReservationStatus) => {
     setFormData(prev => ({ ...prev, status }))
@@ -196,20 +327,32 @@ export function ReservationModal({
       ...formData,
       guest_id: guestId,
       // Supabase column nullable, тип в TS optional, передаём undefined, не null
-      table_id: formData.table_id || undefined,
+      table_id: (selectedTables[0] || formData.table_id) || undefined,
     }
 
     if (mode === 'create') {
-      const result = await createReservation.mutate(dataToSave)
-      if (result) {
-        onSaveSuccess?.()
+      const created = await createReservation.mutate(dataToSave)
+      if (created) {
+        await syncReservationTables(created.id, selectedTables)
+        onSaveSuccess?.({ ...created, tables: tables.filter(t => selectedTables.includes(t.id)), table_ids: selectedTables })
       }
     } else if (reservation) {
       const result = await updateReservation.mutate(reservation.id, dataToSave)
       if (result) {
-        onSaveSuccess?.()
+        await syncReservationTables(reservation.id, selectedTables)
+        onSaveSuccess?.({ ...result, tables: tables.filter(t => selectedTables.includes(t.id)), table_ids: selectedTables })
       }
     }
+  }
+
+  const syncReservationTables = async (reservationId?: string, tableIds: string[] = []) => {
+    if (!reservationId) return
+    const supabase = createClient()
+    // Сначала очищаем предыдущие связи
+    await supabase.from('reservation_tables').delete().eq('reservation_id', reservationId)
+    if (!tableIds.length) return
+    const payload = tableIds.map((tableId) => ({ reservation_id: reservationId, table_id: tableId }))
+    await supabase.from('reservation_tables').insert(payload)
   }
 
   const handleDelete = async () => {
@@ -220,14 +363,6 @@ export function ReservationModal({
       }
     }
   }
-
-  const statusVariant = {
-    new: 'new' as const,
-    in_progress: 'inProgress' as const,
-    prepaid: 'prepaid' as const,
-    paid: 'paid' as const,
-    canceled: 'canceled' as const,
-  }[formData.status]
 
   const isLoading = createReservation.loading || updateReservation.loading || deleteReservation.loading || createGuest.loading
 
@@ -469,7 +604,13 @@ export function ReservationModal({
                 ) : (
                   <Select 
                     value={formData.hall_id}
-                    onValueChange={(v) => setFormData({ ...formData, hall_id: v })}
+                    onValueChange={(v) => {
+                      setFormData({ ...formData, hall_id: v, table_id: '' })
+                      setSelectedTables([])
+                      setDraftTables([])
+                      setShowSchemePicker(false)
+                      setSelectionBox(null)
+                    }}
                   >
                     <SelectTrigger className="mt-1">
                       <SelectValue placeholder="Выберите зал" />
@@ -485,32 +626,211 @@ export function ReservationModal({
                 )}
               </div>
 
-              <div>
-                <Label className="flex items-center gap-2">
-                  <MapPin className="h-3.5 w-3.5" />
-                  Стол
-                </Label>
-                {mode === 'view' ? (
-                  <p className="mt-1">
-                    {reservation?.table?.number ? `Стол ${reservation.table.number}` : 'Не выбран'}
-                  </p>
-                ) : (
-                  <Select 
-                    value={formData.table_id || 'none'}
-                    onValueChange={(v) => setFormData({ ...formData, table_id: v === 'none' ? '' : v })}
-                  >
-                    <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Выберите стол" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Без стола</SelectItem>
-                      {tables.map(table => (
-                        <SelectItem key={table.id} value={table.id}>
-                          Стол {table.number} • {table.capacity} чел.
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <Label className="flex items-center gap-2">
+                      <MapPin className="h-3.5 w-3.5" />
+                      Стол
+                    </Label>
+                    {mode === 'view' ? (
+                      <p className="mt-1">
+                        {reservation?.tables?.length
+                          ? reservation.tables.map((t) => t.number).join(', ')
+                          : reservation?.table?.number
+                            ? `${reservation.table.number}`
+                            : 'Не выбраны'}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-stone-500 mt-1">
+                        Выберите столы в списке или на схеме зала
+                      </p>
+                    )}
+                  </div>
+                  {mode !== 'view' && (
+                    <Button
+                      type="button"
+                      variant={showSchemePicker ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setShowSchemePicker((v) => !v)}
+                      className="gap-2"
+                    >
+                      {showSchemePicker ? 'Скрыть схему' : 'Выбрать на схеме'}
+                    </Button>
+                  )}
+                </div>
+
+                {mode === 'view' ? null : (
+                  <div className="grid gap-2">
+                    <Select 
+                      value={formData.table_id || 'none'}
+                      onValueChange={(v) => {
+                        const id = v === 'none' ? '' : v
+                        setFormData({ ...formData, table_id: id })
+                        const next = id ? [id] : []
+                        setSelectedTables(next)
+                        if (showSchemePicker) setDraftTables(next)
+                      }}
+                    >
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="Выберите стол" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Без стола</SelectItem>
+                        {tables.map(table => {
+                          const occupiedColor = occupiedTableMap.get(table.id)
+                          return (
+                            <SelectItem key={table.id} value={table.id}>
+                              <span className="inline-flex items-center gap-2">
+                                {occupiedColor && (
+                                  <span
+                                    className="inline-block h-3 w-3 rounded-full border border-stone-300"
+                                    style={{ backgroundColor: occupiedColor }}
+                                  />
+                                )}
+                                {table.number} • {table.capacity} чел.{occupiedColor ? ' (занят)' : ''}
+                              </span>
+                            </SelectItem>
+                          )
+                        })}
+                      </SelectContent>
+                    </Select>
+
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <Label className="text-sm text-stone-600">Цвет бронирования</Label>
+                      <div className="flex items-center gap-2">
+                        {COLOR_PRESETS.map((c) => (
+                          <button
+                            key={c}
+                            type="button"
+                            className={cn(
+                              "h-7 w-7 rounded-full border-2",
+                              formData.color === c ? "ring-2 ring-offset-2 ring-amber-500 border-stone-300" : "border-stone-200"
+                            )}
+                            style={{ backgroundColor: c }}
+                            onClick={() => setFormData({ ...formData, color: c })}
+                          />
+                        ))}
+                        <Input
+                          type="color"
+                          value={formData.color}
+                          onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                          className="h-8 w-16 p-1"
+                        />
+                      </div>
+                    </div>
+
+                    {showSchemePicker && (
+                      <div className="rounded-xl border border-stone-200 bg-stone-50 p-3 space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-sm text-stone-600">
+                            Кликните по столу или выделите рамкой несколько. Можно выбрать несколько — бронь закрепится за всеми выбранными.
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setDraftTables([])
+                                setSelectedTables([])
+                                setFormData((prev) => ({ ...prev, table_id: '' }))
+                              }}
+                            >
+                              Сбросить
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedTables(draftTables)
+                                setFormData((prev) => ({ ...prev, table_id: draftTables[0] ?? '' }))
+                                setShowSchemePicker(false)
+                              }}
+                            >
+                              Подтвердить
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div
+                          ref={schemeRef}
+                          className="relative bg-white border border-dashed border-stone-200 overflow-hidden rounded-lg"
+                          style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)', backgroundSize: '16px 16px' }}
+                          onMouseDown={handleSchemeMouseDown}
+                          onMouseMove={handleSchemeMouseMove}
+                          onMouseUp={handleSchemeMouseUp}
+                          onMouseLeave={handleSchemeMouseUp}
+                        >
+                          {tables.map((table) => {
+                            const isSelected = draftTables.includes(table.id)
+                            const occupiedColor = occupiedTableMap.get(table.id)
+                            return (
+                              <div
+                                key={table.id}
+                                className={cn(
+                                  "absolute border-2 flex items-center justify-center text-sm font-semibold transition shadow-sm select-none",
+                                  table.shape === 'round' && "rounded-full",
+                                  table.shape === 'rectangle' && "rounded-xl",
+                                  table.shape === 'square' && "rounded-lg",
+                                  isSelected
+                                    ? "border-amber-500 bg-amber-50"
+                                    : occupiedColor
+                                      ? "border-stone-300 bg-white"
+                                      : "border-stone-300 bg-white hover:border-amber-400"
+                                )}
+                                style={{
+                                  left: table.position_x,
+                                  top: table.position_y,
+                                  width: table.width,
+                                  height: table.height,
+                                  transform: `rotate(${table.rotation ?? 0}deg)`,
+                                  transformOrigin: 'top left',
+                                }}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleSchemeClick(table.id)
+                                }}
+                                title={occupiedColor ? 'Занято другим бронированием' : undefined}
+                              >
+                                {table.number}
+                                {occupiedColor && (
+                                  <span
+                                    className="absolute -top-2 -right-2 h-3.5 w-3.5 rounded-full border border-white shadow"
+                                    style={{ backgroundColor: occupiedColor }}
+                                  />
+                                )}
+                              </div>
+                            )
+                          })}
+
+                          {selectionBox && (
+                            <div
+                              className="absolute border-2 border-amber-400 bg-amber-200/20 pointer-events-none"
+                              style={{
+                                left: Math.min(selectionBox.x1, selectionBox.x2),
+                                top: Math.min(selectionBox.y1, selectionBox.y2),
+                                width: Math.abs(selectionBox.x2 - selectionBox.x1),
+                                height: Math.abs(selectionBox.y2 - selectionBox.y1),
+                              }}
+                            />
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap gap-3 text-sm text-stone-700">
+                          {draftTables.length > 0 && (
+                            <span>Выбрано: {draftTables.length}</span>
+                          )}
+                          {occupiedTableMap.size > 0 && (
+                            <span className="text-rose-600">
+                              Заняты: {tables.filter(t => occupiedTableMap.has(t.id)).map(t => t.number).join(', ')}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -723,12 +1043,12 @@ export function ReservationModal({
             <Separator />
 
             {/* Total Amount */}
-            <div className="rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 p-4">
+            <div className="rounded-xl bg-linear-to-r from-amber-50 to-orange-50 border border-amber-200 p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-amber-700">Итоговая стоимость банкета</p>
                   <p className="text-3xl font-bold text-amber-900">
-                    {formatCurrency(formData.total_amount)}
+                    {formatCurrency(computedTotal)}
                   </p>
                 </div>
                 <div className="text-right">

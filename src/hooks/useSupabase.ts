@@ -171,6 +171,10 @@ export function useReservations(filters?: {
           *,
           hall:halls (*),
           table:tables (*),
+          reservation_tables:reservation_tables (
+            table_id,
+            table:tables (*)
+          ),
           guest:guests (*),
           menu:menus (*),
           payments (*)
@@ -200,7 +204,16 @@ export function useReservations(filters?: {
         .order('time')
 
       if (queryError) throw queryError
-      setData(result || [])
+      const normalized = (result || []).map((row: any) => {
+        const tables = (row.reservation_tables || [])
+          .map((rt: any) => rt.table)
+          .filter(Boolean)
+        const table_ids = (row.reservation_tables || [])
+          .map((rt: any) => rt.table_id)
+          .filter(Boolean)
+        return { ...row, tables, table_ids }
+      })
+      setData(normalized as Reservation[])
     } catch (err: any) {
       setError(err.message)
       console.error('Error fetching reservations:', err)
