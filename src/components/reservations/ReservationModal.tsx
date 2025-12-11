@@ -73,14 +73,14 @@ export function ReservationModal({
     return mockMenus.find(m => m.id === (editedReservation.menu_id || reservation?.menu_id))
   }, [editedReservation.menu_id, reservation?.menu_id])
 
-  const menuItemsByType = useMemo(() => {
+  const menuItemsByType = useMemo((): Partial<Record<MenuItemType, typeof mockMenuItems>> => {
     if (!currentMenu) return {}
     const items = mockMenuItems.filter(i => i.menu_id === currentMenu.id)
     return items.reduce((acc, item) => {
       if (!acc[item.type]) acc[item.type] = []
-      acc[item.type].push(item)
+      acc[item.type]!.push(item)
       return acc
-    }, {} as Record<MenuItemType, typeof items>)
+    }, {} as Partial<Record<MenuItemType, typeof items>>)
   }, [currentMenu])
 
   const guestsCount = editedReservation.guests_count || reservation?.guests_count || 1
