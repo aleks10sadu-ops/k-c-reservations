@@ -98,7 +98,7 @@ export default function PaymentsPage() {
       reservation_id: selectedReservationId,
       amount: paymentForm.amount,
       payment_method: paymentForm.payment_method,
-      notes: paymentForm.notes || null
+      notes: paymentForm.notes || undefined
     })
 
     if (result) {
