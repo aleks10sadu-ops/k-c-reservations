@@ -152,6 +152,11 @@ body {
   border-color: #22C55E;
 }
 
+.status-canceled {
+  background-color: #FEE2E2;
+  border-color: #FCA5A5;
+}
+
 /* Calendar grid */
 .calendar-grid {
   display: grid;

@@ -72,6 +72,7 @@ export default function HomePage() {
     inProgress: reservations.filter(r => r.status === 'in_progress').length,
     prepaid: reservations.filter(r => r.status === 'prepaid').length,
     paid: reservations.filter(r => r.status === 'paid').length,
+    canceled: reservations.filter(r => r.status === 'canceled').length,
   }), [reservations])
 
   if (error) {
@@ -140,10 +141,14 @@ export default function HomePage() {
             >
               <p className="text-sm" style={{ color: config.color }}>{config.label}</p>
               <p className="text-3xl font-bold" style={{ color: config.color }}>
-                {loading ? <Loader2 className="h-6 w-6 animate-spin" /> :
-                 status === 'new' ? stats.new :
-                 status === 'in_progress' ? stats.inProgress :
-                 status === 'prepaid' ? stats.prepaid : stats.paid}
+                {loading ? (
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                ) : (
+                  status === 'new' ? stats.new :
+                  status === 'in_progress' ? stats.inProgress :
+                  status === 'prepaid' ? stats.prepaid :
+                  status === 'paid' ? stats.paid : stats.canceled
+                )}
               </p>
             </motion.div>
           ))}

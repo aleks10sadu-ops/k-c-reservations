@@ -18,6 +18,7 @@ const badgeVariants = cva(
         inProgress: "border-amber-200 bg-amber-50 text-amber-700",
         prepaid: "border-blue-200 bg-blue-50 text-blue-700",
         paid: "border-green-200 bg-green-50 text-green-700",
+        canceled: "border-rose-200 bg-rose-50 text-rose-700",
         vip: "border-amber-300 bg-amber-100 text-amber-800",
         frequent: "border-purple-200 bg-purple-50 text-purple-700",
       },

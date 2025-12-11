@@ -63,7 +63,7 @@ export default function PaymentsPage() {
   const totalRemaining = totalExpected - totalRevenue
   
   const paidReservations = reservations.filter(r => r.status === 'paid')
-  const pendingPayments = reservations.filter(r => r.status !== 'paid' && r.total_amount > (r.prepaid_amount || 0))
+  const pendingPayments = reservations.filter(r => r.status !== 'paid' && r.status !== 'canceled' && r.total_amount > (r.prepaid_amount || 0))
 
   // Get all payments with reservation info
   const allPayments = reservations.flatMap(reservation => 
@@ -222,6 +222,9 @@ export default function PaymentsPage() {
               <CreditCard className="h-4 w-4" />
               История платежей
             </TabsTrigger>
+            <TabsTrigger value="canceled" className="gap-2">
+              <Badge variant="canceled">Отменены</Badge>
+            </TabsTrigger>
           </TabsList>
 
           {/* Pending Payments */}
@@ -277,7 +280,8 @@ export default function PaymentsPage() {
                                 </p>
                                 <Badge 
                                   variant={reservation.status === 'new' ? 'new' : 
-                                          reservation.status === 'in_progress' ? 'inProgress' : 'prepaid'}
+                                          reservation.status === 'in_progress' ? 'inProgress' : 
+                                          reservation.status === 'prepaid' ? 'prepaid' : 'canceled'}
                                 >
                                   {statusConfig.label}
                                 </Badge>
@@ -320,6 +324,66 @@ export default function PaymentsPage() {
                           </motion.div>
                         )
                       })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </motion.div>
+          </TabsContent>
+
+          {/* Canceled Reservations */}
+          <TabsContent value="canceled">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              <Card>
+                <CardHeader>
+                  <CardTitle>Отменённые бронирования</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {reservations.filter(r => r.status === 'canceled').length === 0 ? (
+                    <div className="text-center py-12 text-stone-500">
+                      <CreditCard className="h-12 w-12 mx-auto mb-3 text-stone-300" />
+                      <p>Нет отменённых бронирований</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-stone-100">
+                      {reservations
+                        .filter(r => r.status === 'canceled')
+                        .map((reservation, index) => {
+                          const statusConfig = RESERVATION_STATUS_CONFIG[reservation.status]
+                          return (
+                            <motion.div
+                              key={reservation.id}
+                              initial={{ opacity: 0, x: -20 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ delay: index * 0.05 }}
+                              className="py-4 first:pt-0 last:pb-0 flex items-center justify-between"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-50">
+                                  <Clock className="h-5 w-5 text-rose-600" />
+                                </div>
+                                <div>
+                                  <h3 className="font-semibold text-stone-900">
+                                    {reservation.guest?.last_name} {reservation.guest?.first_name}
+                                  </h3>
+                                  <p className="text-sm text-stone-500">
+                                    {formatDate(reservation.date)} • {reservation.hall?.name}
+                                  </p>
+                                </div>
+                              </div>
+                              
+                              <div className="text-right">
+                                <p className="text-xl font-bold text-rose-600">
+                                  {formatCurrency(reservation.total_amount)}
+                                </p>
+                                <Badge variant="canceled">{statusConfig.label}</Badge>
+                              </div>
+                            </motion.div>
+                          )
+                        })}
                     </div>
                   )}
                 </CardContent>

@@ -121,7 +121,8 @@ export default function HallsPage() {
                                   variant={reservation ? 
                                     (reservation.status === 'paid' ? 'paid' : 
                                      reservation.status === 'prepaid' ? 'prepaid' :
-                                     reservation.status === 'in_progress' ? 'inProgress' : 'new')
+                                     reservation.status === 'in_progress' ? 'inProgress' :
+                                     reservation.status === 'canceled' ? 'canceled' : 'new')
                                     : 'outline'
                                   }
                                 >
@@ -263,11 +264,12 @@ export default function HallsPage() {
                                         </p>
                                       </div>
                                     </div>
-                                    <Badge 
-                                      variant={reservation.status === 'new' ? 'new' : 
-                                              reservation.status === 'in_progress' ? 'inProgress' :
-                                              reservation.status === 'prepaid' ? 'prepaid' : 'paid'}
-                                    >
+                                <Badge 
+                                  variant={reservation.status === 'new' ? 'new' : 
+                                          reservation.status === 'in_progress' ? 'inProgress' :
+                                          reservation.status === 'prepaid' ? 'prepaid' :
+                                          reservation.status === 'paid' ? 'paid' : 'canceled'}
+                                >
                                       {statusConfig.label}
                                     </Badge>
                                   </div>

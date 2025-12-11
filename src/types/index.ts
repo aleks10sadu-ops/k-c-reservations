@@ -4,6 +4,7 @@ export type ReservationStatus =
   | 'in_progress'   // Взято в работу - Бежевый
   | 'prepaid'       // Предоплата внесена - Нежный голубой
   | 'paid'          // Полностью оплачено - Нежный зелёный
+  | 'canceled'      // Отмена брони - Нежный красный
 
 // Статусы гостей
 export type GuestStatus = 
@@ -185,6 +186,12 @@ export const RESERVATION_STATUS_CONFIG: Record<ReservationStatus, {
     color: '#166534',
     bgColor: '#DCFCE7',
     borderColor: '#22C55E',
+  },
+  canceled: {
+    label: 'Отмена брони',
+    color: '#B91C1C',
+    bgColor: '#FEE2E2',
+    borderColor: '#FCA5A5',
   },
 }
 

@@ -20,6 +20,7 @@ export function ReservationCard({ reservation, onClick, compact = false }: Reser
     in_progress: 'inProgress' as const,
     prepaid: 'prepaid' as const,
     paid: 'paid' as const,
+    canceled: 'canceled' as const,
   }[reservation.status]
 
   if (compact) {

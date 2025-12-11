@@ -83,7 +83,7 @@ CREATE TABLE reservations (
     guests_count INTEGER NOT NULL DEFAULT 1,
     children_count INTEGER NOT NULL DEFAULT 0,
     menu_id UUID REFERENCES menus(id),
-    status VARCHAR(20) NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'in_progress', 'prepaid', 'paid')),
+    status VARCHAR(20) NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'in_progress', 'prepaid', 'paid', 'canceled')),
     total_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
     prepaid_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
     comments TEXT,

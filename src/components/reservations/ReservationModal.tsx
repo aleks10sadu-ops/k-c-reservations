@@ -151,7 +151,7 @@ export function ReservationModal({
     }
   }, [formData.guests_count, formData.menu_id, menus])
 
-  const statusOptions: ReservationStatus[] = ['new', 'in_progress', 'prepaid', 'paid']
+  const statusOptions: ReservationStatus[] = ['new', 'in_progress', 'prepaid', 'paid', 'canceled']
   
   const currentMenu = useMemo(() => {
     return menus.find(m => m.id === formData.menu_id)
@@ -225,6 +225,7 @@ export function ReservationModal({
     in_progress: 'inProgress' as const,
     prepaid: 'prepaid' as const,
     paid: 'paid' as const,
+    canceled: 'canceled' as const,
   }[formData.status]
 
   const isLoading = createReservation.loading || updateReservation.loading || deleteReservation.loading || createGuest.loading
