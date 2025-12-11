@@ -94,7 +94,7 @@ export default function MenuPage() {
   const itemsByType = useMemo(() => {
     return menuItems.reduce((acc, item) => {
       if (!acc[item.type]) acc[item.type] = []
-      acc[item.type].push(item)
+      acc[item.type]!.push(item)
       return acc
     }, {} as Partial<Record<MenuItemType, MenuItem[]>>)
   }, [menuItems])
