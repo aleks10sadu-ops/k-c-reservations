@@ -9,7 +9,8 @@ import {
   Guest, 
   Reservation, 
   Payment,
-  Table
+  Table,
+  LayoutItem
 } from '@/types'
 
 // Generic hook for fetching data
@@ -99,6 +100,17 @@ export function useTables(hallId?: string) {
     '*',
     hallId ? { hall_id: hallId } : undefined,
     { column: 'number' }
+  )
+}
+
+// ==================== LAYOUT ITEMS ====================
+
+export function useLayoutItems(hallId?: string) {
+  return useSupabaseQuery<LayoutItem>(
+    'layout_items',
+    '*',
+    hallId ? { hall_id: hallId } : undefined,
+    { column: 'created_at' }
   )
 }
 

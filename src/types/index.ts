@@ -47,6 +47,24 @@ export interface Table {
   rotation?: number
 }
 
+export type LayoutItemType = 'label' | 'shape'
+
+export interface LayoutItem {
+  id: string
+  hall_id: string
+  type: LayoutItemType
+  text?: string
+  position_x: number
+  position_y: number
+  width: number
+  height: number
+  rotation?: number
+  color?: string
+  bg_color?: string
+  created_at: string
+  updated_at: string
+}
+
 // Позиция меню
 export interface MenuItem {
   id: string

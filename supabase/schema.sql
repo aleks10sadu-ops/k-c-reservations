@@ -29,6 +29,23 @@ CREATE TABLE tables (
     UNIQUE(hall_id, number)
 );
 
+-- Произвольные элементы схемы (надписи, блоки)
+CREATE TABLE layout_items (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    hall_id UUID NOT NULL REFERENCES halls(id) ON DELETE CASCADE,
+    type VARCHAR(20) NOT NULL CHECK (type IN ('label', 'shape')),
+    text TEXT,
+    position_x DECIMAL(10,2) NOT NULL DEFAULT 0,
+    position_y DECIMAL(10,2) NOT NULL DEFAULT 0,
+    width DECIMAL(10,2) NOT NULL DEFAULT 120,
+    height DECIMAL(10,2) NOT NULL DEFAULT 40,
+    rotation DECIMAL(10,2) NOT NULL DEFAULT 0,
+    color VARCHAR(20),
+    bg_color VARCHAR(20),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Таблица меню (наборы блюд)
 CREATE TABLE menus (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
