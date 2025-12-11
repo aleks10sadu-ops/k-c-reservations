@@ -1,97 +1,3 @@
-      {/* Layout Item Dialog */}
-      <Dialog open={isLayoutDialogOpen} onOpenChange={setIsLayoutDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingLayoutItem ? 'Редактировать элемент' : 'Новый элемент'}</DialogTitle>
-            <DialogDescription>
-              Добавьте подписи или блоки для наглядной схемы
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label>Тип</Label>
-              <Select
-                value={layoutForm.type}
-                onValueChange={(v) => setLayoutForm({ ...layoutForm, type: v as 'label' | 'shape' })}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="label">Надпись</SelectItem>
-                  <SelectItem value="shape">Блок</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Текст</Label>
-              <Input
-                value={layoutForm.text}
-                onChange={(e) => setLayoutForm({ ...layoutForm, text: e.target.value })}
-                className="mt-1"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Цвет текста</Label>
-                <Input
-                  value={layoutForm.color}
-                  onChange={(e) => setLayoutForm({ ...layoutForm, color: e.target.value })}
-                  className="mt-1"
-                  type="text"
-                />
-              </div>
-              <div>
-                <Label>Фон</Label>
-                <Input
-                  value={layoutForm.bg_color}
-                  onChange={(e) => setLayoutForm({ ...layoutForm, bg_color: e.target.value })}
-                  className="mt-1"
-                  type="text"
-                />
-              </div>
-            </div>
-          </div>
-          <DialogFooter className="justify-between">
-            {editingLayoutItem ? (
-              <Button
-                variant="destructive"
-                onClick={async () => {
-                  await deleteLayoutItem.mutate(editingLayoutItem.id)
-                  setIsLayoutDialogOpen(false)
-                  setEditingLayoutItem(null)
-                }}
-                disabled={deleteLayoutItem.loading}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Удалить
-              </Button>
-            ) : <div />}
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setIsLayoutDialogOpen(false)}>Отмена</Button>
-              <Button
-                onClick={async () => {
-                  if (!selectedHall) return
-                  const payload = {
-                    ...layoutForm,
-                    hall_id: selectedHall.id,
-                  }
-                  if (editingLayoutItem) {
-                    await updateLayoutItem.mutate(editingLayoutItem.id, payload)
-                  } else {
-                    await createLayoutItem.mutate(payload as any)
-                  }
-                  setIsLayoutDialogOpen(false)
-                  setEditingLayoutItem(null)
-                }}
-              >
-                <Save className="h-4 w-4 mr-2" />
-                Сохранить
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 "use client"
 
 import { useRef, useState } from 'react'
@@ -102,9 +8,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useHalls, useReservations, useTables, useLayoutItems, useCreateMutation, useUpdateMutation, useDeleteMutation } from '@/hooks/useSupabase'
+import { useHalls, useReservations, useTables, useCreateMutation, useUpdateMutation, useDeleteMutation } from '@/hooks/useSupabase'
 import { cn, formatDate } from '@/lib/utils'
-import { RESERVATION_STATUS_CONFIG, Table, Hall, LayoutItem } from '@/types'
+import { RESERVATION_STATUS_CONFIG, Table, Hall } from '@/types'
 import { format } from 'date-fns'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -114,7 +20,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 
 export default function HallsPage() {
   const [selectedHallId, setSelectedHallId] = useState<string | null>(null)
-  const [isEditorOpen, setIsEditorOpen] = useState(false)
   const [isHallDialogOpen, setIsHallDialogOpen] = useState(false)
   const [isTableDialogOpen, setIsTableDialogOpen] = useState(false)
   const [editingTable, setEditingTable] = useState<Table | null>(null)
@@ -129,60 +34,24 @@ export default function HallsPage() {
     height: 100,
     shape: 'rectangle' as Table['shape'],
   })
-  const [dragging, setDragging] = useState<{
-    id: string
-    startMouseX: number
-    startMouseY: number
-    startX: number
-    startY: number
-  } | null>(null)
-  const [resizing, setResizing] = useState<{
-    id: string
-    corner: 'br' | 'tr' | 'bl' | 'tl'
-    startMouseX: number
-    startMouseY: number
-    startW: number
-    startH: number
-    startX: number
-    startY: number
-  } | null>(null)
-  const [rotating, setRotating] = useState<{
-    id: string
-    centerX: number
-    centerY: number
-  } | null>(null)
+  const [dragging, setDragging] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null)
+  const [resizing, setResizing] = useState<{ id: string; corner: 'br' | 'tr' | 'bl' | 'tl'; startW: number; startH: number; startX: number; startY: number } | null>(null)
+  const [rotating, setRotating] = useState<{ id: string; centerX: number; centerY: number } | null>(null)
   const [previewPos, setPreviewPos] = useState<Record<string, { x: number; y: number }>>({})
   const [previewSize, setPreviewSize] = useState<Record<string, { w: number; h: number }>>({})
   const [previewRotation, setPreviewRotation] = useState<Record<string, number>>({})
-  const [editingLayoutItem, setEditingLayoutItem] = useState<LayoutItem | null>(null)
-  const [layoutForm, setLayoutForm] = useState({
-    hall_id: '',
-    type: 'label' as 'label' | 'shape',
-    text: 'Надпись',
-    position_x: 80,
-    position_y: 80,
-    width: 160,
-    height: 40,
-    rotation: 0,
-    color: '#1f2937',
-    bg_color: '#ffffff',
-  })
   const containerRef = useRef<HTMLDivElement | null>(null)
   const GRID = 10
 
   // Fetch data
   const { data: halls, loading: hallsLoading } = useHalls()
   const { data: tables } = useTables()
-  const { data: layoutItems } = useLayoutItems(selectedHallId || undefined)
   
   // Mutations
   const createHall = useCreateMutation<Hall>('halls')
   const createTable = useCreateMutation<Table>('tables')
   const updateTable = useUpdateMutation<Table>('tables')
   const deleteTable = useDeleteMutation('tables')
-  const createLayoutItem = useCreateMutation<LayoutItem>('layout_items')
-  const updateLayoutItem = useUpdateMutation<LayoutItem>('layout_items')
-  const deleteLayoutItem = useDeleteMutation('layout_items')
 
   // Get reservations for today
   const today = format(new Date(), 'yyyy-MM-dd')
@@ -237,9 +106,23 @@ export default function HallsPage() {
                 <Button 
                   size="lg" 
                   className="gap-2 shadow-lg shadow-amber-500/25"
-                  onClick={() => setIsEditorOpen(true)}
+                  onClick={() => {
+                    setEditingTable(null)
+                    setTableForm({
+                      hall_id: selectedHall.id,
+                      number: (tables.filter(t=>t.hall_id===selectedHall.id).length || 0) + 1,
+                      capacity: 4,
+                      position_x: 50,
+                      position_y: 50,
+                      width: 100,
+                      height: 100,
+                      shape: 'rectangle',
+                    })
+                    setIsTableDialogOpen(true)
+                  }}
                 >
-                  Редактор схемы
+                  <Plus className="h-5 w-5" />
+                  Добавить стол
                 </Button>
               )}
             </div>
@@ -355,17 +238,17 @@ export default function HallsPage() {
                               const mouseY = e.clientY - rect.top
 
                               if (dragging) {
-                              const x = dragging.startX + (mouseX - dragging.startMouseX)
-                              const y = dragging.startY + (mouseY - dragging.startMouseY)
+                                const x = mouseX - dragging.offsetX
+                                const y = mouseY - dragging.offsetY
                                 const snapX = Math.round(x / GRID) * GRID
                                 const snapY = Math.round(y / GRID) * GRID
                                 setPreviewPos((prev) => ({ ...prev, [dragging.id]: { x: snapX, y: snapY } }))
                               }
 
                               if (resizing) {
-                  const { startW, startH, id, corner, startMouseX, startMouseY } = resizing
-                                const deltaX = mouseX - startMouseX
-                                const deltaY = mouseY - startMouseY
+                                const { startW, startH, startX, startY, id, corner } = resizing
+                                const deltaX = mouseX - startX
+                                const deltaY = mouseY - startY
 
                                 let newW = startW
                                 let newH = startH
@@ -451,29 +334,53 @@ export default function HallsPage() {
                             {hallTables.map((table) => {
                               const reservation = getTableReservation(table)
                               const statusConfig = reservation ? RESERVATION_STATUS_CONFIG[reservation.status] : null
+                              
                               return (
                                 <motion.div
                                   key={table.id}
                                   initial={{ opacity: 0, scale: 0 }}
                                   animate={{ opacity: 1, scale: 1 }}
-                                  whileHover={{ scale: 1.02 }}
+                                  whileHover={{ scale: 1.05 }}
                                   className={cn(
-                                    "absolute transition-all border-2 flex flex-col items-center justify-center p-2",
+                                    "absolute cursor-pointer transition-all border-2 flex flex-col items-center justify-center p-2 group",
                                     table.shape === 'round' && "rounded-full",
                                     table.shape === 'rectangle' && "rounded-xl",
                                     table.shape === 'square' && "rounded-lg",
                                     reservation 
                                       ? "shadow-lg" 
-                                      : "bg-white border-stone-300"
+                                      : "bg-white border-stone-300 hover:border-amber-400"
                                   )}
                                   style={{
-                                    left: table.position_x,
-                                    top: table.position_y,
-                                    width: table.width,
-                                    height: table.height,
+                                    left: (previewPos[table.id]?.x ?? table.position_x),
+                                    top: (previewPos[table.id]?.y ?? table.position_y),
+                                    width: previewSize[table.id]?.w ?? table.width,
+                                    height: previewSize[table.id]?.h ?? table.height,
                                     backgroundColor: statusConfig?.bgColor || 'white',
                                     borderColor: statusConfig?.borderColor || '#D1D5DB',
-                                    transform: `rotate(${table.rotation ?? 0}deg)`,
+                                    transform: `rotate(${previewRotation[table.id] ?? table.rotation ?? 0}deg)`,
+                                  }}
+                                  onMouseDown={(e) => {
+                                    if (!containerRef.current) return
+                                    const rect = containerRef.current.getBoundingClientRect()
+                                    setDragging({
+                                      id: table.id,
+                                      offsetX: e.clientX - rect.left - (previewPos[table.id]?.x ?? table.position_x),
+                                      offsetY: e.clientY - rect.top - (previewPos[table.id]?.y ?? table.position_y),
+                                    })
+                                  }}
+                                  onDoubleClick={() => {
+                                    setEditingTable(table)
+                                    setTableForm({
+                                      hall_id: hall.id,
+                                      number: table.number,
+                                      capacity: table.capacity,
+                                      position_x: table.position_x,
+                                      position_y: table.position_y,
+                                      width: table.width,
+                                      height: table.height,
+                                      shape: table.shape,
+                                    })
+                                    setIsTableDialogOpen(true)
                                   }}
                                 >
                                   <span className="font-bold text-lg" style={{ color: statusConfig?.color || '#374151' }}>
@@ -487,6 +394,47 @@ export default function HallsPage() {
                                       {reservation.guest?.last_name}
                                     </span>
                                   )}
+
+                                  {/* Resize handles */}
+                                  <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+                                    {/* corners */}
+                                    {[
+                                      { corner: 'tl', className: 'top-0 left-0 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize' },
+                                      { corner: 'tr', className: 'top-0 right-0 translate-x-1/2 -translate-y-1/2 cursor-nesw-resize' },
+                                      { corner: 'bl', className: 'bottom-0 left-0 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize' },
+                                      { corner: 'br', className: 'bottom-0 right-0 translate-x-1/2 translate-y-1/2 cursor-nwse-resize' },
+                                    ].map((h) => (
+                                      <div
+                                        key={h.corner}
+                                        className={`absolute w-3 h-3 bg-white border border-amber-500 rounded-full ${h.className} pointer-events-auto`}
+                                        onMouseDown={(e) => {
+                                          e.stopPropagation()
+                                          if (!containerRef.current) return
+                                          setResizing({
+                                            id: table.id,
+                                            corner: h.corner as 'tl' | 'tr' | 'bl' | 'br',
+                                            startW: previewSize[table.id]?.w ?? table.width,
+                                            startH: previewSize[table.id]?.h ?? table.height,
+                                            startX: e.clientX - (previewPos[table.id]?.x ?? table.position_x),
+                                            startY: e.clientY - (previewPos[table.id]?.y ?? table.position_y),
+                                          })
+                                        }}
+                                      />
+                                    ))}
+
+                                    {/* rotate handle */}
+                                    <div
+                                      className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-5 w-3 h-3 bg-white border border-amber-500 rounded-full pointer-events-auto cursor-alias"
+                                      onMouseDown={(e) => {
+                                        e.stopPropagation()
+                                        if (!containerRef.current) return
+                                        const rect = containerRef.current.getBoundingClientRect()
+                                        const centerX = rect.left + (previewPos[table.id]?.x ?? table.position_x) + (previewSize[table.id]?.w ?? table.width) / 2
+                                        const centerY = rect.top + (previewPos[table.id]?.y ?? table.position_y) + (previewSize[table.id]?.h ?? table.height) / 2
+                                        setRotating({ id: table.id, centerX, centerY })
+                                      }}
+                                    />
+                                  </div>
                                 </motion.div>
                               )
                             })}
@@ -757,397 +705,6 @@ export default function HallsPage() {
               </Button>
             </div>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Editor Modal */}
-      <Dialog open={isEditorOpen} onOpenChange={setIsEditorOpen}>
-        <DialogContent className="max-w-5xl">
-          <DialogHeader>
-            <DialogTitle>Редактор схемы зала</DialogTitle>
-            <DialogDescription>
-              Перемещайте, растягивайте и поворачивайте столы. Двойной клик — редактирование параметров стола.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <div className="text-sm text-stone-600">
-                Снап к сетке: {GRID}px • Перетаскивание/Resize/Rotate активны в редакторе. Двойной клик — редактирование объекта.
-              </div>
-              {selectedHall && (
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    setEditingTable(null)
-                    setTableForm({
-                      hall_id: selectedHall.id,
-                      number: (tables.filter(t=>t.hall_id===selectedHall.id).length || 0) + 1,
-                      capacity: 4,
-                      position_x: 50,
-                      position_y: 50,
-                      width: 100,
-                      height: 100,
-                      shape: 'rectangle',
-                    })
-                    setIsTableDialogOpen(true)
-                  }}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Добавить стол
-                </Button>
-              )}
-              {selectedHall && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setEditingLayoutItem(null)
-                    setLayoutForm({
-                      hall_id: selectedHall.id,
-                      type: 'label',
-                      text: 'Надпись',
-                      position_x: 80,
-                      position_y: 80,
-                      width: 160,
-                      height: 40,
-                      rotation: 0,
-                      color: '#1f2937',
-                      bg_color: '#ffffff',
-                    })
-                    setIsLayoutDialogOpen(true)
-                  }}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Добавить элемент
-                </Button>
-              )}
-            </div>
-            <div
-              ref={containerRef}
-              className="relative bg-white rounded-xl border border-stone-200 min-h-[500px] overflow-hidden"
-              onMouseMove={(e) => {
-                if (!containerRef.current) return
-                const rect = containerRef.current.getBoundingClientRect()
-                const mouseX = e.clientX - rect.left
-                const mouseY = e.clientY - rect.top
-
-                if (dragging) {
-                  const x = dragging.startX + (mouseX - dragging.startMouseX)
-                  const y = dragging.startY + (mouseY - dragging.startMouseY)
-                  const snapX = Math.round(x / GRID) * GRID
-                  const snapY = Math.round(y / GRID) * GRID
-                  setPreviewPos((prev) => ({ ...prev, [dragging.id]: { x: snapX, y: snapY } }))
-                }
-
-                if (resizing) {
-                  const { startMouseX, startMouseY, startW, startH, startX, startY, id, corner } = resizing
-                  const deltaX = mouseX - startMouseX
-                  const deltaY = mouseY - startMouseY
-
-                  let newW = startW
-                  let newH = startH
-                  let newX = startX
-                  let newY = startY
-
-                  if (corner === 'br') {
-                    newW = startW + deltaX
-                    newH = startH + deltaY
-                  } else if (corner === 'tr') {
-                    newW = startW + deltaX
-                    newH = startH - deltaY
-                    newY = startY + deltaY
-                  } else if (corner === 'bl') {
-                    newW = startW - deltaX
-                    newH = startH + deltaY
-                    newX = startX + deltaX
-                  } else if (corner === 'tl') {
-                    newW = startW - deltaX
-                    newH = startH - deltaY
-                    newX = startX + deltaX
-                    newY = startY + deltaY
-                  }
-
-                  newW = Math.max(40, newW)
-                  newH = Math.max(40, newH)
-                  newW = Math.round(newW / GRID) * GRID
-                  newH = Math.round(newH / GRID) * GRID
-                  newX = Math.round(newX / GRID) * GRID
-                  newY = Math.round(newY / GRID) * GRID
-
-                  setPreviewPos((prev) => ({ ...prev, [id]: { x: newX, y: newY } }))
-                  setPreviewSize((prev) => ({ ...prev, [id]: { w: newW, h: newH } }))
-                }
-
-                if (rotating) {
-                  const { centerX, centerY, id } = rotating
-                  const angle = Math.atan2(mouseY - centerY, mouseX - centerX) * (180 / Math.PI)
-                  setPreviewRotation((prev) => ({ ...prev, [id]: angle }))
-                }
-              }}
-              onMouseUp={() => {
-                if (dragging) {
-                  const pos = previewPos[dragging.id]
-                  if (pos) {
-                    updateTable.mutate(dragging.id, {
-                      position_x: pos.x,
-                      position_y: pos.y,
-                    })
-                  }
-                  setDragging(null)
-                }
-                if (resizing) {
-                  const pos = previewPos[resizing.id]
-                  const size = previewSize[resizing.id]
-                  if (pos && size) {
-                    updateTable.mutate(resizing.id, {
-                      position_x: pos.x,
-                      position_y: pos.y,
-                      width: size.w,
-                      height: size.h,
-                    })
-                  }
-                  setResizing(null)
-                }
-                if (rotating) {
-                  const angle = previewRotation[rotating.id]
-                  if (angle !== undefined) {
-                    updateTable.mutate(rotating.id, {
-                      rotation: angle,
-                    })
-                  }
-                  setRotating(null)
-                }
-              }}
-              onMouseLeave={() => {
-                if (dragging) setDragging(null)
-                if (resizing) setResizing(null)
-                if (rotating) setRotating(null)
-              }}
-            >
-              {/* Layout items */}
-              {selectedHall && layoutItems.filter(li => li.hall_id === selectedHall.id).map((item) => {
-                const pos = previewPos[item.id] ?? { x: item.position_x, y: item.position_y }
-                const size = previewSize[item.id] ?? { w: item.width, h: item.height }
-                const rot = previewRotation[item.id] ?? item.rotation ?? 0
-                return (
-                  <div
-                    key={item.id}
-                    className="absolute bg-white border border-stone-300 rounded-lg shadow-sm p-2 group cursor-move"
-                    style={{
-                      left: pos.x,
-                      top: pos.y,
-                      width: size.w,
-                      height: size.h,
-                      transform: `rotate(${rot}deg)`,
-                      transformOrigin: 'center center',
-                    }}
-                    onMouseDown={(e) => {
-                      e.stopPropagation()
-                      const rect = containerRef.current?.getBoundingClientRect()
-                      if (!rect) return
-                      // Средняя кнопка — вращение
-                      if (e.button === 1) {
-                        const centerX = pos.x + size.w / 2
-                        const centerY = pos.y + size.h / 2
-                        setRotating({ id: item.id, centerX, centerY })
-                        return
-                      }
-                      setDragging({
-                        id: item.id,
-                        startMouseX: e.clientX - rect.left,
-                        startMouseY: e.clientY - rect.top,
-                        startX: pos.x,
-                        startY: pos.y,
-                      })
-                    }}
-                    onDoubleClick={() => {
-                      setEditingLayoutItem(item)
-                      setLayoutForm({
-                        hall_id: item.hall_id,
-                        type: item.type,
-                        text: item.text || '',
-                        position_x: pos.x,
-                        position_y: pos.y,
-                        width: size.w,
-                        height: size.h,
-                        rotation: rot,
-                        color: item.color || '#1f2937',
-                        bg_color: item.bg_color || '#ffffff',
-                      })
-                      setIsLayoutDialogOpen(true)
-                    }}
-                  >
-                    <div
-                      className="w-full h-full flex items-center justify-center text-sm text-stone-800"
-                      style={{
-                        color: item.color || '#1f2937',
-                        backgroundColor: item.bg_color || '#ffffff',
-                      }}
-                    >
-                      {item.text || 'Элемент'}
-                    </div>
-
-                    {/* Resize handles */}
-                    <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
-                      {[
-                        { corner: 'tl', className: 'top-0 left-0 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize' },
-                        { corner: 'tr', className: 'top-0 right-0 translate-x-1/2 -translate-y-1/2 cursor-nesw-resize' },
-                        { corner: 'bl', className: 'bottom-0 left-0 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize' },
-                        { corner: 'br', className: 'bottom-0 right-0 translate-x-1/2 translate-y-1/2 cursor-nwse-resize' },
-                      ].map((h) => (
-                        <div
-                          key={h.corner}
-                          className={`absolute w-3 h-3 bg-white border border-amber-500 rounded-full ${h.className} pointer-events-auto`}
-                          onMouseDown={(e) => {
-                            e.stopPropagation()
-                            const rect = containerRef.current?.getBoundingClientRect()
-                            if (!rect) return
-                            setResizing({
-                              id: item.id,
-                              corner: h.corner as 'tl' | 'tr' | 'bl' | 'br',
-                              startMouseX: e.clientX - rect.left,
-                              startMouseY: e.clientY - rect.top,
-                              startW: size.w,
-                              startH: size.h,
-                              startX: pos.x,
-                              startY: pos.y,
-                            })
-                          }}
-                        />
-                      ))}
-
-                      {/* rotate handle */}
-                      <div
-                        className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-5 w-3 h-3 bg-white border border-amber-500 rounded-full pointer-events-auto cursor-alias"
-                        onMouseDown={(e) => {
-                          e.stopPropagation()
-                          const rect = containerRef.current?.getBoundingClientRect()
-                          if (!rect) return
-                          const centerX = pos.x + size.w / 2
-                          const centerY = pos.y + size.h / 2
-                          setRotating({ id: item.id, centerX, centerY })
-                        }}
-                      />
-                    </div>
-                  </div>
-                )
-              })}
-
-              {/* Tables */}
-              {selectedHall && tables.filter(t => t.hall_id === selectedHall.id).map((table) => {
-                const reservation = getTableReservation(table)
-                const statusConfig = reservation ? RESERVATION_STATUS_CONFIG[reservation.status] : null
-                const pos = previewPos[table.id] ?? { x: table.position_x, y: table.position_y }
-                const size = previewSize[table.id] ?? { w: table.width, h: table.height }
-                const rot = previewRotation[table.id] ?? table.rotation ?? 0
-                return (
-                  <div
-                    key={table.id}
-                    className={cn(
-                      "absolute transition-all border-2 flex flex-col items-center justify-center p-2 group bg-white",
-                      table.shape === 'round' && "rounded-full",
-                      table.shape === 'rectangle' && "rounded-xl",
-                      table.shape === 'square' && "rounded-lg",
-                      reservation 
-                        ? "shadow-lg" 
-                        : "border-stone-300"
-                    )}
-                    style={{
-                      left: pos.x,
-                      top: pos.y,
-                      width: size.w,
-                      height: size.h,
-                      backgroundColor: statusConfig?.bgColor || 'white',
-                      borderColor: statusConfig?.borderColor || '#D1D5DB',
-                      transform: `rotate(${rot}deg)`,
-                      transformOrigin: 'center center',
-                    }}
-                    onMouseDown={(e) => {
-                      e.stopPropagation()
-                      const rect = containerRef.current?.getBoundingClientRect()
-                      if (!rect) return
-                      setDragging({
-                        id: table.id,
-                        startMouseX: e.clientX - rect.left,
-                        startMouseY: e.clientY - rect.top,
-                        startX: pos.x,
-                        startY: pos.y,
-                      })
-                    }}
-                    onDoubleClick={() => {
-                      setEditingTable(table)
-                      setTableForm({
-                        hall_id: selectedHall.id,
-                        number: table.number,
-                        capacity: table.capacity,
-                        position_x: pos.x,
-                        position_y: pos.y,
-                        width: size.w,
-                        height: size.h,
-                        shape: table.shape,
-                      })
-                      setIsTableDialogOpen(true)
-                    }}
-                  >
-                    <span className="font-bold text-lg" style={{ color: statusConfig?.color || '#374151' }}>
-                      {table.number}
-                    </span>
-                    <span className="text-xs" style={{ color: statusConfig?.color || '#6B7280' }}>
-                      {table.capacity} чел.
-                    </span>
-                    {reservation && (
-                      <span className="text-xs mt-1 truncate max-w-full px-1" style={{ color: statusConfig?.color }}>
-                        {reservation.guest?.last_name}
-                      </span>
-                    )}
-
-                    {/* Resize handles */}
-                    <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
-                      {[
-                        { corner: 'tl', className: 'top-0 left-0 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize' },
-                        { corner: 'tr', className: 'top-0 right-0 translate-x-1/2 -translate-y-1/2 cursor-nesw-resize' },
-                        { corner: 'bl', className: 'bottom-0 left-0 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize' },
-                        { corner: 'br', className: 'bottom-0 right-0 translate-x-1/2 translate-y-1/2 cursor-nwse-resize' },
-                      ].map((h) => (
-                        <div
-                          key={h.corner}
-                          className={`absolute w-3 h-3 bg-white border border-amber-500 rounded-full ${h.className} pointer-events-auto`}
-                          onMouseDown={(e) => {
-                            e.stopPropagation()
-                            const rect = containerRef.current?.getBoundingClientRect()
-                            if (!rect) return
-                            setResizing({
-                              id: table.id,
-                              corner: h.corner as 'tl' | 'tr' | 'bl' | 'br',
-                              startMouseX: e.clientX - rect.left,
-                              startMouseY: e.clientY - rect.top,
-                              startW: size.w,
-                              startH: size.h,
-                              startX: pos.x,
-                              startY: pos.y,
-                            })
-                          }}
-                        />
-                      ))}
-
-                      {/* rotate handle */}
-                      <div
-                        className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-5 w-3 h-3 bg-white border border-amber-500 rounded-full pointer-events-auto cursor-alias"
-                        onMouseDown={(e) => {
-                          e.stopPropagation()
-                          const rect = containerRef.current?.getBoundingClientRect()
-                          if (!rect) return
-                          const centerX = pos.x + size.w / 2
-                          const centerY = pos.y + size.h / 2
-                          setRotating({ id: table.id, centerX, centerY })
-                        }}
-                      />
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
         </DialogContent>
       </Dialog>
     </PageTransition>
