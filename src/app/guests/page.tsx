@@ -331,6 +331,18 @@ export default function GuestsPage() {
                               <p className="text-sm text-stone-500">Потрачено</p>
                               <p className="font-semibold text-green-600">{formatCurrency(guest.total_spent || 0)}</p>
                             </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-stone-400 hover:text-rose-600"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDelete(guest.id)
+                              }}
+                              title="Удалить гостя"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </div>
                         </div>
                       </div>

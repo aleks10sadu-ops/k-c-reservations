@@ -199,11 +199,12 @@ export default function HallsPage() {
                               if (!confirm('Удалить этот зал и его столы?')) return
                               const deleted = await deleteHall.mutate(hall.id)
                               if (deleted) {
-                                // сброс выбора, если удалён выбранный зал
                                 if (selectedHallId === hall.id) {
                                   const nextHall = halls.find(h => h.id !== hall.id)
                                   setSelectedHallId(nextHall?.id ?? null)
                                 }
+                              } else {
+                                alert('Не удалось удалить зал. Удалите связанные бронирования или попробуйте позже.')
                               }
                             }}
                             disabled={deleteHall.loading}

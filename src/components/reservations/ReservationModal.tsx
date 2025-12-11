@@ -248,6 +248,23 @@ export function ReservationModal({
             </div>
             
             <div className="flex items-center gap-2">
+              {reservation && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-stone-400 hover:text-rose-600"
+                  onClick={handleDelete}
+                  disabled={isLoading}
+                  title="Удалить бронь"
+                >
+                  {deleteReservation.loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                </Button>
+              )}
+
               {mode === 'view' ? (
                 <Button
                   variant="outline"
