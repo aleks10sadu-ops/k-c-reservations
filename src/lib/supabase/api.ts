@@ -344,8 +344,18 @@ export async function createMenuItemType(type: {
   try {
     console.log('[createMenuItemType] Starting with type:', JSON.stringify(type))
     
-    const supabase = await createClient()
-    console.log('[createMenuItemType] Supabase client created')
+    let supabase
+    try {
+      supabase = await createClient()
+      console.log('[createMenuItemType] Supabase client created')
+    } catch (clientError: any) {
+      console.error('[createMenuItemType] Error creating Supabase client:', {
+        error: clientError,
+        message: clientError?.message,
+        stack: clientError?.stack
+      })
+      throw new Error(`Ошибка инициализации: ${clientError?.message || 'Не удалось подключиться к базе данных'}`)
+    }
     
     const { data, error } = await supabase
       .from('menu_item_types')
