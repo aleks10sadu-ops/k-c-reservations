@@ -47,6 +47,7 @@ export default function MenuPage() {
   const [editingMenu, setEditingMenu] = useState<Menu | null>(null)
   
   const [newTypeName, setNewTypeName] = useState('')
+  const [isCreatingType, setIsCreatingType] = useState(false)
 
   // Form states
   const [menuForm, setMenuForm] = useState({
@@ -223,6 +224,7 @@ export default function MenuPage() {
       return
     }
 
+    setIsCreatingType(true)
     try {
       // Создаем тип с автоматическим именем из названия
       const typeName = newTypeName.trim().toLowerCase().replace(/\s+/g, '_')
@@ -256,6 +258,8 @@ export default function MenuPage() {
     } catch (error: any) {
       console.error('Error creating type:', error)
       alert(`Ошибка при создании типа: ${error.message || 'Неизвестная ошибка'}`)
+    } finally {
+      setIsCreatingType(false)
     }
   }
 
@@ -421,9 +425,9 @@ export default function MenuPage() {
                       <div className="flex gap-2">
                         <Button 
                           onClick={handleCreateType}
-                          disabled={!newTypeName.trim() || createMenuItemTypeHook.loading}
+                          disabled={!newTypeName.trim() || isCreatingType}
                         >
-                          {createMenuItemTypeHook.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Создать'}
+                          {isCreatingType ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Создать'}
                         </Button>
                         <Button 
                           variant="ghost"
@@ -431,7 +435,7 @@ export default function MenuPage() {
                             setIsAddTypeOpen(false)
                             setNewTypeName('')
                           }}
-                          disabled={createMenuItemTypeHook.loading}
+                          disabled={isCreatingType}
                         >
                           Отмена
                         </Button>
