@@ -65,7 +65,7 @@ export default function GuestsPage() {
   })
 
   // Fetch data from Supabase
-  const { data: guests, loading, error } = useGuests()
+  const { data: guests, loading, error, refetch: refetchGuests } = useGuests()
   const { data: allReservations } = useReservations()
   
   // Mutations
@@ -139,9 +139,16 @@ export default function GuestsPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (confirm('Вы уверены что хотите удалить этого гостя?')) {
-      await deleteGuest.mutate(id)
-      setSelectedGuest(null)
+    if (confirm('Вы уверены что хотите удалить этого гостя? Все связанные бронирования и платежи также будут удалены.')) {
+      const success = await deleteGuest.mutate(id)
+      if (success) {
+        setSelectedGuest(null)
+        // Явно обновляем список гостей после удаления
+        await refetchGuests()
+      } else {
+        const errorMessage = deleteGuest.error || 'Неизвестная ошибка'
+        alert(`Ошибка при удалении гостя: ${errorMessage}`)
+      }
     }
   }
 

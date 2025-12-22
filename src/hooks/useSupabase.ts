@@ -10,7 +10,8 @@ import {
   Reservation, 
   Payment,
   Table,
-  LayoutItem
+  LayoutItem,
+  CustomMenuItemType
 } from '@/types'
 
 // Generic hook for fetching data
@@ -134,6 +135,15 @@ export function useMenuItems(menuId?: string) {
   )
 }
 
+export function useMenuItemTypes(menuId?: string) {
+  return useSupabaseQuery<CustomMenuItemType>(
+    'menu_item_types',
+    '*',
+    menuId ? { menu_id: menuId } : undefined,
+    { column: 'order_index' }
+  )
+}
+
 // ==================== GUESTS ====================
 
 export function useGuests() {
@@ -177,7 +187,13 @@ export function useReservations(filters?: {
           ),
           guest:guests (*),
           menu:menus (*),
-          payments (*)
+          payments (*),
+          selected_menu_items:reservation_menu_items (
+            id,
+            menu_item_id,
+            is_selected,
+            menu_item:menu_items (*)
+          )
         `)
 
       if (filters?.date) {
@@ -211,7 +227,16 @@ export function useReservations(filters?: {
         const table_ids = (row.reservation_tables || [])
           .map((rt: any) => rt.table_id)
           .filter(Boolean)
-        return { ...row, tables, table_ids }
+        const selected_menu_items = (row.selected_menu_items || [])
+          .map((rmi: any) => ({
+            id: rmi.id,
+            reservation_id: row.id,
+            menu_item_id: rmi.menu_item_id,
+            is_selected: rmi.is_selected,
+            menu_item: rmi.menu_item
+          }))
+          .filter(Boolean)
+        return { ...row, tables, table_ids, selected_menu_items }
       })
       setData(normalized as Reservation[])
     } catch (err: any) {

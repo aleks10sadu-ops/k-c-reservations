@@ -403,8 +403,8 @@ export default function HallsPage() {
                                       top: table.position_y,
                                       width: table.width,
                                       height: table.height,
-                                      backgroundColor: statusConfig?.bgColor || 'white',
-                                      borderColor: statusConfig?.borderColor || '#D1D5DB',
+                                      backgroundColor: reservation?.color || statusConfig?.bgColor || 'white',
+                                      borderColor: reservation?.color || statusConfig?.borderColor || '#D1D5DB',
                                       transform: `rotate(${table.rotation ?? 0}deg)`,
                                     transformOrigin: 'top left',
                                     }}
@@ -412,7 +412,7 @@ export default function HallsPage() {
                             {reservation && (
                               <span
                                 className="absolute -top-2 -right-2 h-3.5 w-3.5 rounded-full border border-white shadow"
-                                style={{ backgroundColor: statusConfig?.borderColor || reservation.color || '#f59e0b' }}
+                              style={{ backgroundColor: reservation.color || statusConfig?.borderColor || '#f59e0b' }}
                               />
                             )}
                                     <span className="font-bold text-lg" style={{ color: statusConfig?.color || '#374151' }}>
@@ -1203,8 +1203,8 @@ export default function HallsPage() {
                       top: pos.y,
                       width: size.w,
                       height: size.h,
-                      backgroundColor: statusConfig?.bgColor || 'white',
-                      borderColor: statusConfig?.borderColor || '#D1D5DB',
+                      backgroundColor: reservation?.color || statusConfig?.bgColor || 'white',
+                      borderColor: reservation?.color || statusConfig?.borderColor || '#D1D5DB',
                       transform: `rotate(${rot}deg)`,
                       transformOrigin: 'top left',
                     }}

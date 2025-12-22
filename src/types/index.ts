@@ -12,8 +12,8 @@ export type GuestStatus =
   | 'frequent'      // Постоянный гость
   | 'vip'           // VIP
 
-// Типы блюд в меню
-export type MenuItemType = 
+// Типы блюд в меню (стандартные)
+export type StandardMenuItemType = 
   | 'appetizer'     // Закуски
   | 'salad'         // Салаты
   | 'set'           // Сеты
@@ -21,6 +21,21 @@ export type MenuItemType =
   | 'hot'           // Горячее
   | 'dessert'       // Десерты
   | 'drink'         // Напитки
+
+// Кастомный тип блюда (привязан к конкретному меню)
+export interface CustomMenuItemType {
+  id: string
+  menu_id: string
+  name: string
+  label: string
+  label_plural: string
+  order_index: number
+  created_at: string
+  updated_at: string
+}
+
+// Тип блюда может быть стандартным или кастомным (по имени)
+export type MenuItemType = StandardMenuItemType | string
 
 // Зал
 export interface Hall {
@@ -70,7 +85,7 @@ export interface MenuItem {
   id: string
   menu_id: string
   name: string
-  type: MenuItemType
+  type: MenuItemType  // Может быть стандартным типом или кастомным (строка)
   weight_per_person: number  // Грамовка на человека
   price?: number
   description?: string
@@ -240,8 +255,8 @@ export const GUEST_STATUS_CONFIG: Record<GuestStatus, {
   },
 }
 
-// Типы блюд с метками
-export const MENU_ITEM_TYPE_CONFIG: Record<MenuItemType, {
+// Стандартные типы блюд с метками
+export const STANDARD_MENU_ITEM_TYPE_CONFIG: Record<StandardMenuItemType, {
   label: string
   labelPlural: string
 }> = {
@@ -252,5 +267,29 @@ export const MENU_ITEM_TYPE_CONFIG: Record<MenuItemType, {
   hot: { label: 'Горячее', labelPlural: 'Горячее' },
   dessert: { label: 'Десерт', labelPlural: 'Десерты' },
   drink: { label: 'Напиток', labelPlural: 'Напитки' },
+}
+
+// Функция для получения метки типа блюда (поддерживает стандартные и кастомные)
+export function getMenuItemTypeLabel(
+  type: MenuItemType, 
+  customTypes?: CustomMenuItemType[], 
+  plural: boolean = false
+): string {
+  // Проверяем стандартные типы
+  if (type in STANDARD_MENU_ITEM_TYPE_CONFIG) {
+    const config = STANDARD_MENU_ITEM_TYPE_CONFIG[type as StandardMenuItemType]
+    return plural ? config.labelPlural : config.label
+  }
+  
+  // Проверяем кастомные типы
+  if (customTypes) {
+    const customType = customTypes.find(ct => ct.name === type)
+    if (customType) {
+      return plural ? customType.label_plural : customType.label
+    }
+  }
+  
+  // Если не найдено, возвращаем само значение
+  return type
 }
 

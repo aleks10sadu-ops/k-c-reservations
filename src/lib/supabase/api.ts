@@ -11,7 +11,8 @@ import {
   Payment,
   ReservationStatus,
   GuestStatus,
-  MenuItemType
+  MenuItemType,
+  CustomMenuItemType
 } from '@/types'
 
 // ==================== HALLS ====================
@@ -293,6 +294,100 @@ export async function deleteMenuItem(id: string): Promise<boolean> {
   return true
 }
 
+// ==================== MENU ITEM TYPES (CUSTOM) ====================
+
+export async function getMenuItemTypes(menuId?: string): Promise<CustomMenuItemType[]> {
+  const supabase = await createClient()
+  let query = supabase
+    .from('menu_item_types')
+    .select('*')
+    .order('order_index')
+    .order('name')
+  
+  if (menuId) {
+    query = query.eq('menu_id', menuId)
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    console.error('Error fetching menu item types:', error)
+    return []
+  }
+
+  return data || []
+}
+
+export async function getMenuItemTypeById(id: string): Promise<CustomMenuItemType | null> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('menu_item_types')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (error) {
+    console.error('Error fetching menu item type:', error)
+    return null
+  }
+
+  return data
+}
+
+export async function createMenuItemType(type: {
+  menu_id: string
+  name: string
+  label: string
+  label_plural: string
+  order_index?: number
+}): Promise<CustomMenuItemType | null> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('menu_item_types')
+    .insert(type)
+    .select()
+    .single()
+
+  if (error) {
+    console.error('Error creating menu item type:', error)
+    return null
+  }
+
+  return data
+}
+
+export async function updateMenuItemType(id: string, updates: Partial<CustomMenuItemType>): Promise<CustomMenuItemType | null> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('menu_item_types')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) {
+    console.error('Error updating menu item type:', error)
+    return null
+  }
+
+  return data
+}
+
+export async function deleteMenuItemType(id: string): Promise<boolean> {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('menu_item_types')
+    .delete()
+    .eq('id', id)
+
+  if (error) {
+    console.error('Error deleting menu item type:', error)
+    return false
+  }
+
+  return true
+}
+
 // ==================== GUESTS ====================
 
 export async function getGuests(): Promise<Guest[]> {
@@ -386,6 +481,50 @@ export async function updateGuest(id: string, updates: Partial<Guest>): Promise<
 
 export async function deleteGuest(id: string): Promise<boolean> {
   const supabase = await createClient()
+  
+  // Сначала удаляем все связанные записи (платежи и бронирования)
+  // Платежи удаляются автоматически через CASCADE при удалении бронирований
+  // Но нужно удалить бронирования вручную, так как у них нет CASCADE для guest_id
+  
+  // Получаем все бронирования гостя
+  const { data: reservations, error: reservationsError } = await supabase
+    .from('reservations')
+    .select('id')
+    .eq('guest_id', id)
+
+  if (reservationsError) {
+    console.error('Error fetching guest reservations:', reservationsError)
+    return false
+  }
+
+  // Удаляем все бронирования гостя (платежи удалятся автоматически через CASCADE)
+  if (reservations && reservations.length > 0) {
+    const reservationIds = reservations.map(r => r.id)
+    
+    // Удаляем платежи для этих бронирований (если CASCADE не настроен)
+    const { error: paymentsError } = await supabase
+      .from('payments')
+      .delete()
+      .in('reservation_id', reservationIds)
+
+    if (paymentsError) {
+      console.error('Error deleting payments:', paymentsError)
+      // Продолжаем удаление, даже если есть ошибка с платежами
+    }
+
+    // Удаляем бронирования
+    const { error: deleteReservationsError } = await supabase
+      .from('reservations')
+      .delete()
+      .eq('guest_id', id)
+
+    if (deleteReservationsError) {
+      console.error('Error deleting reservations:', deleteReservationsError)
+      return false
+    }
+  }
+
+  // Теперь удаляем самого гостя
   const { error } = await supabase
     .from('guests')
     .delete()
@@ -418,11 +557,12 @@ export async function findOrCreateGuestByPhone(
   }
 
   // Если не найден, создаем нового
+  // Используем пустую строку вместо null, так как last_name NOT NULL в схеме
   const { data: newGuest, error: createError } = await supabase
     .from('guests')
     .insert({
       first_name: firstName,
-      last_name: lastName || 'Не указано',
+      last_name: lastName && lastName.trim() ? lastName.trim() : '',
       phone: phone,
       status: 'regular'
     })

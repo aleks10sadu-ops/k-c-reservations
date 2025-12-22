@@ -28,9 +28,9 @@ export async function POST(request: NextRequest) {
     const defaultHallId = halls[0].id
 
     // Находим или создаем гостя
-    const nameParts = name.trim().split(' ')
+    const nameParts = name.trim().split(' ').filter(part => part.length > 0)
     const firstName = nameParts[0] || name
-    const lastName = nameParts.slice(1).join(' ') || undefined
+    const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : undefined
 
     const guest = await findOrCreateGuestByPhone(phone, firstName, lastName)
     

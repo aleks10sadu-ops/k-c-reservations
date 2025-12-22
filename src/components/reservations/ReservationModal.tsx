@@ -20,7 +20,7 @@ import {
   Baby,
   Loader2
 } from 'lucide-react'
-import { Reservation, ReservationStatus, RESERVATION_STATUS_CONFIG, MENU_ITEM_TYPE_CONFIG, MenuItemType, Guest } from '@/types'
+import { Reservation, ReservationStatus, RESERVATION_STATUS_CONFIG, getMenuItemTypeLabel, MenuItemType, Guest, ReservationMenuItem } from '@/types'
 import { cn, formatCurrency, formatDate, calculatePlates, calculateTotalWeight } from '@/lib/utils'
 import { 
   Dialog, 
@@ -42,7 +42,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { useHalls, useMenus, useMenuItems, useGuests, useTables, useCreateMutation, useUpdateMutation, useDeleteMutation, useReservations } from '@/hooks/useSupabase'
+import { useHalls, useMenus, useMenuItems, useMenuItemTypes, useGuests, useTables, useCreateMutation, useUpdateMutation, useDeleteMutation, useReservations } from '@/hooks/useSupabase'
 import { format } from 'date-fns'
 
 interface ReservationModalProps {
@@ -65,6 +65,11 @@ export function ReservationModal({
   const [mode, setMode] = useState(initialMode)
   const [showMenuEdit, setShowMenuEdit] = useState(false)
   const [selectedSalads, setSelectedSalads] = useState<string[]>([])
+  // Внутреннее состояние для хранения обновленного бронирования
+  const [localReservation, setLocalReservation] = useState<Reservation | null>(reservation)
+  
+  // Используем локальное состояние, если оно есть, иначе проп
+  const currentReservation = localReservation || reservation
 
   // Form state
   const [formData, setFormData] = useState({
@@ -111,6 +116,10 @@ export function ReservationModal({
   const { data: halls } = useHalls()
   const { data: menus } = useMenus()
   const { data: menuItems } = useMenuItems()
+  const currentMenu = useMemo(() => {
+    return menus.find(m => m.id === formData.menu_id)
+  }, [formData.menu_id, menus])
+  const { data: customTypes } = useMenuItemTypes(formData.menu_id || undefined)
   const { data: guests } = useGuests()
   const { data: tables } = useTables(formData.hall_id)
   const { data: dayReservations } = useReservations(
@@ -125,36 +134,51 @@ export function ReservationModal({
   const deleteReservation = useDeleteMutation('reservations')
   const createGuest = useCreateMutation<Guest>('guests')
 
+  // Обновляем локальное состояние при изменении пропа reservation
+  useEffect(() => {
+    setLocalReservation(reservation)
+  }, [reservation])
+
   // Reset form when modal opens or reservation changes
   useEffect(() => {
     if (!isOpen) return
     queueMicrotask(() => {
       setMode(initialMode)
 
-      if (reservation && initialMode !== 'create') {
+      if (currentReservation && initialMode !== 'create') {
         setFormData({
-          date: reservation.date,
-          time: reservation.time,
-          hall_id: reservation.hall_id,
-          table_id: reservation.table_id || '',
-          guest_id: reservation.guest_id,
-          guests_count: reservation.guests_count,
-          children_count: reservation.children_count,
-          menu_id: reservation.menu_id || '',
-          color: reservation.color || '#f59e0b',
-          status: reservation.status,
-          total_amount: reservation.total_amount,
-          prepaid_amount: reservation.prepaid_amount,
-          comments: reservation.comments || ''
+          date: currentReservation.date,
+          time: currentReservation.time,
+          hall_id: currentReservation.hall_id,
+          table_id: currentReservation.table_id || '',
+          guest_id: currentReservation.guest_id,
+          guests_count: currentReservation.guests_count,
+          children_count: currentReservation.children_count,
+          menu_id: currentReservation.menu_id || '',
+          color: currentReservation.color || '#f59e0b',
+          status: currentReservation.status,
+          total_amount: currentReservation.total_amount,
+          prepaid_amount: currentReservation.prepaid_amount,
+          comments: currentReservation.comments || ''
         })
         const initialTables =
-          reservation.tables?.length
-            ? reservation.tables.map((t) => t.id)
-            : reservation.table_id
-              ? [reservation.table_id]
+          currentReservation.tables?.length
+            ? currentReservation.tables.map((t) => t.id)
+            : currentReservation.table_id
+              ? [currentReservation.table_id]
               : []
         setSelectedTables(initialTables)
         setDraftTables(initialTables)
+        
+        // Инициализируем выбранные салаты из сохраненных данных
+        if (currentReservation.selected_menu_items?.length) {
+          const selectedIds = currentReservation.selected_menu_items
+            .filter(rmi => rmi.is_selected)
+            .map(rmi => rmi.menu_item_id)
+          setSelectedSalads(selectedIds)
+        } else {
+          setSelectedSalads([])
+        }
       } else if (initialMode === 'create') {
         setFormData({
           date: initialDate ? format(initialDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
@@ -173,17 +197,78 @@ export function ReservationModal({
         })
         setSelectedTables([])
         setDraftTables([])
+        setSelectedSalads([])
       }
       setShowSchemePicker(false)
       setSelectionBox(null)
     })
-  }, [reservation, initialMode, isOpen, initialDate, halls, menus])
+  }, [currentReservation, initialMode, isOpen, initialDate, halls, menus])
 
   const statusOptions: ReservationStatus[] = ['new', 'in_progress', 'prepaid', 'paid', 'canceled']
   
-  const currentMenu = useMemo(() => {
-    return menus.find(m => m.id === formData.menu_id)
-  }, [formData.menu_id, menus])
+  // Инициализируем selectedSalads при переходе в режим редактирования
+  useEffect(() => {
+    if (mode === 'edit' && currentMenu && selectedSalads.length === 0) {
+      const items = menuItems.filter(i => i.menu_id === currentMenu.id)
+      const selectableItems = items.filter(item => item.is_selectable)
+      
+      // Если есть сохраненные данные, используем их
+      if (currentReservation?.selected_menu_items?.length) {
+        const savedSelectableIds = currentReservation.selected_menu_items
+          .filter(rmi => rmi.is_selected && selectableItems.some(si => si.id === rmi.menu_item_id))
+          .map(rmi => rmi.menu_item_id)
+        if (savedSelectableIds.length > 0) {
+          setSelectedSalads(savedSelectableIds)
+          return
+        }
+      }
+      
+      // Если нет сохраненных данных, инициализируем первые по умолчанию
+      if (selectableItems.length > 0) {
+        const maxSelections = selectableItems[0]?.max_selections || selectableItems.length
+        const defaultSelected = selectableItems
+          .slice(0, maxSelections)
+          .map(item => item.id)
+        setSelectedSalads(defaultSelected)
+      }
+    }
+  }, [mode, currentMenu, menuItems, currentReservation?.selected_menu_items, selectedSalads.length])
+  
+  const handleToggleMenuEdit = () => {
+    const newShowMenuEdit = !showMenuEdit
+    
+    // При открытии редактирования инициализируем выбранные салаты, если они еще не инициализированы
+    if (newShowMenuEdit && currentMenu && selectedSalads.length === 0) {
+      const items = menuItems.filter(i => i.menu_id === currentMenu.id)
+      const selectableItems = items.filter(item => item.is_selectable)
+      
+      // Если есть сохраненные данные, используем их
+      if (currentReservation?.selected_menu_items?.length) {
+        const savedSelectableIds = currentReservation.selected_menu_items
+          .filter(rmi => rmi.is_selected && selectableItems.some(si => si.id === rmi.menu_item_id))
+          .map(rmi => rmi.menu_item_id)
+        if (savedSelectableIds.length > 0) {
+          setSelectedSalads(savedSelectableIds)
+        } else if (selectableItems.length > 0) {
+          // Если нет сохраненных, инициализируем первые по умолчанию
+          const maxSelections = selectableItems[0]?.max_selections || selectableItems.length
+          const defaultSelected = selectableItems
+            .slice(0, maxSelections)
+            .map(item => item.id)
+          setSelectedSalads(defaultSelected)
+        }
+      } else if (selectableItems.length > 0) {
+        // Если нет сохраненных данных, инициализируем первые по умолчанию
+        const maxSelections = selectableItems[0]?.max_selections || selectableItems.length
+        const defaultSelected = selectableItems
+          .slice(0, maxSelections)
+          .map(item => item.id)
+        setSelectedSalads(defaultSelected)
+      }
+    }
+    
+    setShowMenuEdit(newShowMenuEdit)
+  }
 
   const computedTotal = useMemo(() => {
     if (currentMenu) {
@@ -197,14 +282,14 @@ export function ReservationModal({
   const occupiedTableMap = useMemo(() => {
     const map = new Map<string, string>()
     dayReservations
-      ?.filter(r => r.id !== reservation?.id)
+      ?.filter(r => r.id !== currentReservation?.id)
       ?.forEach(r => {
         const color = r.color || '#ef4444'
         if (r.table_id) map.set(r.table_id, color)
         if (r.table_ids?.length) r.table_ids.forEach(id => map.set(id, color))
       })
     return map
-  }, [dayReservations, reservation?.id])
+  }, [dayReservations, currentReservation?.id])
 
   const menuItemsByType = useMemo((): Partial<Record<MenuItemType, typeof menuItems>> => {
     if (!currentMenu) return {}
@@ -330,17 +415,73 @@ export function ReservationModal({
       table_id: (selectedTables[0] || formData.table_id) || undefined,
     }
 
+    // Формируем selected_menu_items для обновления отображения
+    const buildSelectedMenuItems = (reservationId: string): ReservationMenuItem[] => {
+      if (!currentMenu) return []
+      
+      const allMenuItemsForMenu = menuItems.filter(i => i.menu_id === currentMenu.id)
+      const selectableItems = allMenuItemsForMenu.filter(item => item.is_selectable)
+      const nonSelectableItems = allMenuItemsForMenu.filter(item => !item.is_selectable)
+      
+      const result: ReservationMenuItem[] = []
+      
+      // Добавляем выбранные селективные позиции
+      selectedSalads.forEach(menuItemId => {
+        const menuItem = selectableItems.find(item => item.id === menuItemId)
+        if (menuItem) {
+          result.push({
+            id: '', // Временный ID, будет заменен при загрузке
+            reservation_id: reservationId,
+            menu_item_id: menuItemId,
+            is_selected: true,
+            menu_item: menuItem
+          })
+        }
+      })
+      
+      // Добавляем все неселективные позиции
+      nonSelectableItems.forEach(menuItem => {
+        result.push({
+          id: '',
+          reservation_id: reservationId,
+          menu_item_id: menuItem.id,
+          is_selected: true,
+          menu_item: menuItem
+        })
+      })
+      
+      return result
+    }
+
     if (mode === 'create') {
       const created = await createReservation.mutate(dataToSave)
       if (created) {
         await syncReservationTables(created.id, selectedTables)
-        onSaveSuccess?.({ ...created, tables: tables.filter(t => selectedTables.includes(t.id)), table_ids: selectedTables })
+        await syncReservationMenuItems(created.id, selectedSalads)
+        const updatedReservation = {
+          ...created,
+          tables: tables.filter(t => selectedTables.includes(t.id)),
+          table_ids: selectedTables,
+          selected_menu_items: buildSelectedMenuItems(created.id)
+        }
+        // Обновляем локальное состояние для немедленного отображения
+        setLocalReservation(updatedReservation as Reservation)
+        onSaveSuccess?.(updatedReservation)
       }
-    } else if (reservation) {
-      const result = await updateReservation.mutate(reservation.id, dataToSave)
+    } else if (currentReservation) {
+      const result = await updateReservation.mutate(currentReservation.id, dataToSave)
       if (result) {
-        await syncReservationTables(reservation.id, selectedTables)
-        onSaveSuccess?.({ ...result, tables: tables.filter(t => selectedTables.includes(t.id)), table_ids: selectedTables })
+        await syncReservationTables(currentReservation.id, selectedTables)
+        await syncReservationMenuItems(currentReservation.id, selectedSalads)
+        const updatedReservation = {
+          ...result,
+          tables: tables.filter(t => selectedTables.includes(t.id)),
+          table_ids: selectedTables,
+          selected_menu_items: buildSelectedMenuItems(currentReservation.id)
+        }
+        // Обновляем локальное состояние для немедленного отображения
+        setLocalReservation(updatedReservation as Reservation)
+        onSaveSuccess?.(updatedReservation)
       }
     }
   }
@@ -355,9 +496,48 @@ export function ReservationModal({
     await supabase.from('reservation_tables').insert(payload)
   }
 
+  const syncReservationMenuItems = async (reservationId?: string, selectedItemIds: string[] = []) => {
+    if (!reservationId || !currentMenu) return
+    const supabase = createClient()
+    
+    // Получаем все позиции меню для текущего меню
+    const allMenuItems = menuItems.filter(i => i.menu_id === currentMenu.id)
+    
+    // Сначала очищаем все предыдущие связи для этого бронирования и меню
+    const allMenuItemIds = allMenuItems.map(item => item.id)
+    if (allMenuItemIds.length > 0) {
+      await supabase
+        .from('reservation_menu_items')
+        .delete()
+        .eq('reservation_id', reservationId)
+        .in('menu_item_id', allMenuItemIds)
+    }
+    
+    // Добавляем выбранные селективные позиции
+    if (selectedItemIds.length > 0) {
+      const payload = selectedItemIds.map((menuItemId) => ({
+        reservation_id: reservationId,
+        menu_item_id: menuItemId,
+        is_selected: true
+      }))
+      await supabase.from('reservation_menu_items').insert(payload)
+    }
+    
+    // Добавляем все неселективные позиции (они всегда включены)
+    const nonSelectableItems = allMenuItems.filter(item => !item.is_selectable)
+    if (nonSelectableItems.length > 0) {
+      const payload = nonSelectableItems.map((item) => ({
+        reservation_id: reservationId,
+        menu_item_id: item.id,
+        is_selected: true
+      }))
+      await supabase.from('reservation_menu_items').insert(payload)
+    }
+  }
+
   const handleDelete = async () => {
-    if (reservation && confirm('Вы уверены что хотите удалить это бронирование?')) {
-      const result = await deleteReservation.mutate(reservation.id)
+    if (currentReservation && confirm('Вы уверены что хотите удалить это бронирование?')) {
+      const result = await deleteReservation.mutate(currentReservation.id)
       if (result) {
         onSaveSuccess?.()
       }
@@ -375,9 +555,9 @@ export function ReservationModal({
               <DialogTitle className="text-xl font-bold text-stone-900">
                 {mode === 'create' ? 'Новое бронирование' : 'Бронирование'}
               </DialogTitle>
-              {reservation && mode !== 'create' && (
+              {currentReservation && mode !== 'create' && (
                 <p className="text-sm text-stone-500 mt-1">
-                  {formatDate(reservation.date)} в {reservation.time}
+                  {formatDate(currentReservation.date)} в {currentReservation.time}
                 </p>
               )}
             </div>
@@ -484,7 +664,7 @@ export function ReservationModal({
                   <div>
                     <Label>ФИО</Label>
                     <p className="mt-1 font-medium">
-                      {reservation?.guest?.last_name} {reservation?.guest?.first_name} {reservation?.guest?.middle_name}
+                      {currentReservation?.guest?.last_name} {currentReservation?.guest?.first_name} {currentReservation?.guest?.middle_name}
                     </p>
                   </div>
                   <div>
@@ -492,7 +672,7 @@ export function ReservationModal({
                       <Phone className="h-3.5 w-3.5" />
                       Телефон
                     </Label>
-                    <p className="mt-1">{reservation?.guest?.phone}</p>
+                    <p className="mt-1">{currentReservation?.guest?.phone}</p>
                   </div>
                 </div>
               ) : (
@@ -566,7 +746,7 @@ export function ReservationModal({
                   Дата
                 </Label>
                 {mode === 'view' ? (
-                  <p className="mt-1 font-medium">{formatDate(reservation?.date || '')}</p>
+                  <p className="mt-1 font-medium">{formatDate(currentReservation?.date || '')}</p>
                 ) : (
                   <Input 
                     type="date"
@@ -583,7 +763,7 @@ export function ReservationModal({
                   Время
                 </Label>
                 {mode === 'view' ? (
-                  <p className="mt-1 font-medium">{reservation?.time}</p>
+                  <p className="mt-1 font-medium">{currentReservation?.time}</p>
                 ) : (
                   <Input 
                     type="time"
@@ -600,7 +780,7 @@ export function ReservationModal({
                   Зал
                 </Label>
                 {mode === 'view' ? (
-                  <p className="mt-1">{reservation?.hall?.name}</p>
+                  <p className="mt-1">{currentReservation?.hall?.name}</p>
                 ) : (
                   <Select 
                     value={formData.hall_id}
@@ -635,10 +815,10 @@ export function ReservationModal({
                     </Label>
                     {mode === 'view' ? (
                       <p className="mt-1">
-                        {reservation?.tables?.length
-                          ? reservation.tables.map((t) => t.number).join(', ')
-                          : reservation?.table?.number
-                            ? `${reservation.table.number}`
+                        {currentReservation?.tables?.length
+                          ? currentReservation.tables.map((t) => t.number).join(', ')
+                          : currentReservation?.table?.number
+                            ? `${currentReservation.table.number}`
                             : 'Не выбраны'}
                       </p>
                     ) : (
@@ -845,7 +1025,7 @@ export function ReservationModal({
                   Гостей
                 </Label>
                 {mode === 'view' ? (
-                  <p className="mt-1 text-2xl font-bold text-stone-900">{reservation?.guests_count}</p>
+                  <p className="mt-1 text-2xl font-bold text-stone-900">{currentReservation?.guests_count}</p>
                 ) : (
                   <Input 
                     type="number"
@@ -863,7 +1043,7 @@ export function ReservationModal({
                   Детей
                 </Label>
                 {mode === 'view' ? (
-                  <p className="mt-1 text-2xl font-bold text-stone-900">{reservation?.children_count || 0}</p>
+                  <p className="mt-1 text-2xl font-bold text-stone-900">{currentReservation?.children_count || 0}</p>
                 ) : (
                   <Input 
                     type="number"
@@ -879,7 +1059,7 @@ export function ReservationModal({
                 <Label>Предоплата</Label>
                 {mode === 'view' ? (
                   <p className="mt-1 text-2xl font-bold text-green-600">
-                    {formatCurrency(reservation?.prepaid_amount || 0)}
+                    {formatCurrency(currentReservation?.prepaid_amount || 0)}
                   </p>
                 ) : (
                   <Input 
@@ -913,7 +1093,7 @@ export function ReservationModal({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setShowMenuEdit(!showMenuEdit)}
+                    onClick={handleToggleMenuEdit}
                     className="gap-2"
                   >
                     <Pencil className="h-4 w-4" />
@@ -967,7 +1147,7 @@ export function ReservationModal({
                       const items = menuItemsByType[type]
                       if (!items?.length) return null
                       
-                      const typeConfig = MENU_ITEM_TYPE_CONFIG[type]
+                      const typeLabelPlural = getMenuItemTypeLabel(type, customTypes, true)
                       const isSelectable = items[0]?.is_selectable
                       const maxSelections = items[0]?.max_selections || items.length
                       const platesCount = calculatePlates(formData.guests_count)
@@ -976,7 +1156,7 @@ export function ReservationModal({
                         <div key={type} className="rounded-xl border border-stone-200 overflow-hidden">
                           <div className="bg-stone-50 px-4 py-2 flex items-center justify-between">
                             <span className="font-medium text-stone-900">
-                              {typeConfig.labelPlural}
+                              {typeLabelPlural}
                             </span>
                             <span className="text-sm text-stone-500">
                               {platesCount} тарелок
@@ -984,7 +1164,23 @@ export function ReservationModal({
                           </div>
                           <div className="divide-y divide-stone-100">
                             {items.map((item, idx) => {
-                              const isSelected = !isSelectable || selectedSalads.includes(item.id) || idx < maxSelections
+                              // Для селективных позиций используем selectedSalads, для неселективных - всегда выбраны
+                              // В режиме просмотра используем данные из reservation.selected_menu_items
+                              let isSelected: boolean
+                              if (!isSelectable) {
+                                isSelected = true
+                              } else if (showMenuEdit) {
+                                // В режиме редактирования используем selectedSalads
+                                isSelected = selectedSalads.includes(item.id)
+                              } else if (mode === 'view' && currentReservation?.selected_menu_items?.length) {
+                                // В режиме просмотра используем сохраненные данные
+                                isSelected = currentReservation.selected_menu_items.some(
+                                  rmi => rmi.menu_item_id === item.id && rmi.is_selected
+                                )
+                              } else {
+                                // Fallback: используем selectedSalads или первые по умолчанию
+                                isSelected = selectedSalads.includes(item.id) || (selectedSalads.length === 0 && idx < maxSelections)
+                              }
                               const totalWeight = calculateTotalWeight(item.weight_per_person, formData.guests_count)
                               
                               return (
@@ -1001,23 +1197,27 @@ export function ReservationModal({
                                         checked={isSelected}
                                         onCheckedChange={(checked) => {
                                           if (checked) {
-                                            if (selectedSalads.length < maxSelections) {
-                                              setSelectedSalads([...selectedSalads, item.id])
+                                            // Если элемент уже выбран, ничего не делаем
+                                            if (selectedSalads.includes(item.id)) {
+                                              return
                                             }
+                                            // Просто добавляем новый элемент
+                                            setSelectedSalads([...selectedSalads, item.id])
                                           } else {
+                                            // Убираем элемент из выбранных
                                             setSelectedSalads(selectedSalads.filter(id => id !== item.id))
                                           }
                                         }}
                                       />
                                     )}
                                     <span className={cn(
-                                      "truncate",
+                                      "break-words overflow-wrap-anywhere",
                                       isSelected ? "text-stone-900" : "text-stone-400"
                                     )}>
                                       {item.name}
                                     </span>
                                   </div>
-                                  <div className="flex items-center gap-4 text-sm text-stone-500 shrink-0">
+                                  <div className="flex items-center gap-4 text-sm text-stone-500 shrink-0 whitespace-nowrap">
                                     <span>{item.weight_per_person} гр./чел.</span>
                                     <span className="font-medium text-stone-700">
                                       {totalWeight} гр.
@@ -1028,8 +1228,17 @@ export function ReservationModal({
                             })}
                           </div>
                           {isSelectable && (
-                            <div className="bg-blue-50 px-4 py-2 text-sm text-blue-700">
-                              Выберите {maxSelections} из {items.length}
+                            <div className={cn(
+                              "px-4 py-2 text-sm",
+                              selectedSalads.length > maxSelections
+                                ? "bg-amber-50 text-amber-700"
+                                : "bg-blue-50 text-blue-700"
+                            )}>
+                              {selectedSalads.length > maxSelections ? (
+                                <span>⚠️ Выбрано {selectedSalads.length} из {items.length} (рекомендуется {maxSelections})</span>
+                              ) : (
+                                <span>Выберите {maxSelections} из {items.length} (выбрано: {selectedSalads.length})</span>
+                              )}
                             </div>
                           )}
                         </div>
@@ -1063,14 +1272,14 @@ export function ReservationModal({
             </div>
 
             {/* Payments */}
-            {reservation?.payments && reservation.payments.length > 0 && (
+            {currentReservation?.payments && currentReservation.payments.length > 0 && (
               <div className="space-y-3">
                 <h3 className="font-semibold text-stone-900 flex items-center gap-2">
                   <CreditCard className="h-4 w-4" />
                   Внесённые предоплаты
                 </h3>
                 <div className="space-y-2">
-                  {reservation.payments.map((payment) => (
+                  {currentReservation.payments.map((payment) => (
                     <div 
                       key={payment.id}
                       className="flex items-center justify-between p-3 rounded-lg bg-green-50 border border-green-200"
@@ -1103,7 +1312,7 @@ export function ReservationModal({
               </h3>
               {mode === 'view' ? (
                 <p className="text-stone-600 p-3 rounded-lg bg-stone-50">
-                  {reservation?.comments || 'Нет комментариев'}
+                  {currentReservation?.comments || 'Нет комментариев'}
                 </p>
               ) : (
                 <Textarea 
@@ -1120,7 +1329,7 @@ export function ReservationModal({
         {/* Footer Actions */}
         {mode !== 'view' && (
           <div className="flex items-center justify-between gap-4 p-6 pt-4 border-t border-stone-200 bg-stone-50">
-            {mode === 'edit' && reservation && (
+            {mode === 'edit' && currentReservation && (
               <Button
                 variant="destructive"
                 onClick={handleDelete}

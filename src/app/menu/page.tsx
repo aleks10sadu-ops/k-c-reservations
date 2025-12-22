@@ -25,9 +25,10 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { useMenus, useMenuItems, useCreateMutation, useUpdateMutation, useDeleteMutation } from '@/hooks/useSupabase'
+import { useMenus, useMenuItems, useMenuItemTypes, useCreateMutation, useUpdateMutation, useDeleteMutation } from '@/hooks/useSupabase'
+import { createMenuItemType } from '@/lib/supabase/api'
 import { formatCurrency, cn } from '@/lib/utils'
-import { Menu, MenuItem, MENU_ITEM_TYPE_CONFIG, MenuItemType } from '@/types'
+import { Menu, MenuItem, STANDARD_MENU_ITEM_TYPE_CONFIG, getMenuItemTypeLabel, MenuItemType, StandardMenuItemType, CustomMenuItemType } from '@/types'
 import {
   Select,
   SelectContent,
@@ -41,8 +42,11 @@ export default function MenuPage() {
   const [selectedMenuId, setSelectedMenuId] = useState<string | null>(null)
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false)
   const [isAddItemOpen, setIsAddItemOpen] = useState(false)
+  const [isAddTypeOpen, setIsAddTypeOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null)
   const [editingMenu, setEditingMenu] = useState<Menu | null>(null)
+  
+  const [newTypeName, setNewTypeName] = useState('')
 
   // Form states
   const [menuForm, setMenuForm] = useState({
@@ -65,6 +69,7 @@ export default function MenuPage() {
   // Fetch data
   const { data: menus, loading: menusLoading } = useMenus()
   const { data: allMenuItems, loading: itemsLoading } = useMenuItems()
+  const { data: customTypes, loading: customTypesLoading, refetch: refetchCustomTypes } = useMenuItemTypes(selectedMenuId || undefined)
 
   // Mutations
   const createMenu = useCreateMutation<Menu>('menus')
@@ -96,8 +101,15 @@ export default function MenuPage() {
       if (!acc[item.type]) acc[item.type] = []
       acc[item.type]!.push(item)
       return acc
-    }, {} as Partial<Record<MenuItemType, MenuItem[]>>)
+    }, {} as Record<string, MenuItem[]>)
   }, [menuItems])
+  
+  // Все доступные типы (стандартные + кастомные)
+  const allAvailableTypes = useMemo(() => {
+    const standardTypes = Object.keys(STANDARD_MENU_ITEM_TYPE_CONFIG) as StandardMenuItemType[]
+    const customTypeNames = (customTypes || []).map(ct => ct.name)
+    return [...standardTypes, ...customTypeNames]
+  }, [customTypes])
 
   const totalWeight = menuItems.reduce((sum, item) => sum + item.weight_per_person, 0)
 
@@ -196,6 +208,54 @@ export default function MenuPage() {
   const handleDeleteItem = async (id: string) => {
     if (confirm('Вы уверены что хотите удалить эту позицию?')) {
       await deleteMenuItem.mutate(id)
+    }
+  }
+
+  // Function for creating new type inline
+  const handleCreateType = async () => {
+    if (!selectedMenu) {
+      alert('Выберите меню')
+      return
+    }
+    
+    if (!newTypeName.trim()) {
+      alert('Введите название типа')
+      return
+    }
+
+    try {
+      // Создаем тип с автоматическим именем из названия
+      const typeName = newTypeName.trim().toLowerCase().replace(/\s+/g, '_')
+      const typeLabel = newTypeName.trim()
+      
+      // Простое формирование множественного числа (можно улучшить)
+      const typeLabelPlural = typeLabel.endsWith('ы') || typeLabel.endsWith('и') || typeLabel.endsWith('а') 
+        ? typeLabel 
+        : typeLabel + 'ы'
+      
+      // Используем Server Action вместо клиентского хука
+      const newType = await createMenuItemType({
+        menu_id: selectedMenu.id,
+        name: typeName,
+        label: typeLabel,
+        label_plural: typeLabelPlural,
+        order_index: (customTypes?.length || 0) + 100 // Ставим после стандартных типов
+      })
+      
+      if (newType) {
+        // Обновляем список кастомных типов
+        await refetchCustomTypes()
+        // Автоматически выбираем созданный тип в форме позиции
+        setItemForm({ ...itemForm, type: newType.name })
+        setNewTypeName('')
+        setIsAddTypeOpen(false)
+      } else {
+        alert('Ошибка при создании типа: Не удалось создать тип')
+        console.error('Error creating type: Server action returned null')
+      }
+    } catch (error: any) {
+      console.error('Error creating type:', error)
+      alert(`Ошибка при создании типа: ${error.message || 'Неизвестная ошибка'}`)
     }
   }
 
@@ -323,21 +383,73 @@ export default function MenuPage() {
                     {formatCurrency(selectedMenu.price_per_person)}/чел. • {totalWeight} гр./чел.
                   </CardDescription>
                 </div>
-                <Button onClick={handleOpenAddItem} className="gap-2">
-                  <Plus className="h-4 w-4" />
-                  Добавить позицию
-                </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline"
+                    onClick={() => setIsAddTypeOpen(!isAddTypeOpen)} 
+                    className="gap-2"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Добавить тип
+                  </Button>
+                  <Button onClick={handleOpenAddItem} className="gap-2">
+                    <Plus className="h-4 w-4" />
+                    Добавить позицию
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
+                {/* Quick add type form */}
+                {isAddTypeOpen && (
+                  <div className="mb-4 p-4 rounded-lg border border-amber-200 bg-amber-50">
+                    <Label className="text-sm text-stone-700 mb-2 block">Название нового типа</Label>
+                    <div className="flex gap-2 items-center">
+                      <div className="flex-1">
+                        <Input 
+                          placeholder="например: Супы" 
+                          value={newTypeName}
+                          onChange={(e) => setNewTypeName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              handleCreateType()
+                            }
+                          }}
+                          autoFocus
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button 
+                          onClick={handleCreateType}
+                          disabled={!newTypeName.trim() || createMenuItemTypeHook.loading}
+                        >
+                          {createMenuItemTypeHook.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Создать'}
+                        </Button>
+                        <Button 
+                          variant="ghost"
+                          onClick={() => {
+                            setIsAddTypeOpen(false)
+                            setNewTypeName('')
+                          }}
+                          disabled={createMenuItemTypeHook.loading}
+                        >
+                          Отмена
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
                 {itemsLoading ? (
                   <div className="flex items-center justify-center py-12">
                     <Loader2 className="h-8 w-8 animate-spin text-amber-600" />
                   </div>
                 ) : (
                   <div className="space-y-6">
-                    {(Object.entries(MENU_ITEM_TYPE_CONFIG) as [MenuItemType, typeof MENU_ITEM_TYPE_CONFIG[MenuItemType]][]).map(([type, config]) => {
-                      const items = itemsByType[type]
+                    {Object.entries(itemsByType).map(([type, items]) => {
                       if (!items?.length) return null
+                      
+                      const typeLabel = getMenuItemTypeLabel(type, customTypes, true)
 
                       return (
                         <motion.div 
@@ -347,7 +459,7 @@ export default function MenuPage() {
                           className="rounded-xl border border-stone-200 overflow-hidden"
                         >
                           <div className="bg-stone-50 px-4 py-3 flex items-center justify-between">
-                            <h3 className="font-semibold text-stone-900">{config.labelPlural}</h3>
+                            <h3 className="font-semibold text-stone-900">{typeLabel}</h3>
                             <span className="text-sm text-stone-500">
                               {items.reduce((sum, i) => sum + i.weight_per_person, 0)} гр.
                             </span>
@@ -523,17 +635,29 @@ export default function MenuPage() {
                 <Label>Тип блюда</Label>
                 <Select 
                   value={itemForm.type} 
-                  onValueChange={(v: MenuItemType) => setItemForm({ ...itemForm, type: v })}
+                  onValueChange={(v: string) => setItemForm({ ...itemForm, type: v })}
                 >
                   <SelectTrigger className="mt-1">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {(Object.entries(MENU_ITEM_TYPE_CONFIG) as [MenuItemType, typeof MENU_ITEM_TYPE_CONFIG[MenuItemType]][]).map(([type, config]) => (
+                    {/* Стандартные типы */}
+                    {(Object.entries(STANDARD_MENU_ITEM_TYPE_CONFIG) as [StandardMenuItemType, typeof STANDARD_MENU_ITEM_TYPE_CONFIG[StandardMenuItemType]][]).map(([type, config]) => (
                       <SelectItem key={type} value={type}>
                         {config.label}
                       </SelectItem>
                     ))}
+                    {/* Кастомные типы */}
+                    {customTypes && customTypes.length > 0 && (
+                      <>
+                        <div className="px-2 py-1.5 text-xs font-semibold text-stone-500">Кастомные типы</div>
+                        {customTypes.map((customType) => (
+                          <SelectItem key={customType.id} value={customType.name}>
+                            {customType.label}
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -588,6 +712,7 @@ export default function MenuPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
       </div>
     </PageTransition>
   )
