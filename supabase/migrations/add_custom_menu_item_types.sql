@@ -65,6 +65,22 @@ BEGIN
     END IF;
 END $$;
 
+-- Увеличиваем размер колонки type для поддержки длинных названий кастомных типов
+DO $$
+BEGIN
+    -- Проверяем текущий тип колонки
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_schema = 'public' 
+        AND table_name = 'menu_items' 
+        AND column_name = 'type'
+        AND character_maximum_length = 20
+    ) THEN
+        -- Изменяем тип колонки на VARCHAR(200) для поддержки длинных названий
+        ALTER TABLE menu_items ALTER COLUMN type TYPE VARCHAR(200);
+    END IF;
+END $$;
+
 -- Создаем индексы для оптимизации (если не существуют)
 CREATE INDEX IF NOT EXISTS idx_menu_item_types_menu_id ON menu_item_types(menu_id);
 CREATE INDEX IF NOT EXISTS idx_menu_item_types_name ON menu_item_types(menu_id, name);
