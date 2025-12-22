@@ -341,46 +341,53 @@ export async function createMenuItemType(type: {
   label_plural: string
   order_index?: number
 }): Promise<CustomMenuItemType> {
-  const supabase = await createClient()
-  
-  // Проверяем аутентификацию пользователя
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
-    console.error('Authentication error:', authError)
-    throw new Error('Пользователь не аутентифицирован. Пожалуйста, войдите в систему.')
-  }
-  
-  const { data, error } = await supabase
-    .from('menu_item_types')
-    .insert(type)
-    .select()
-    .single()
-
-  if (error) {
-    console.error('Error creating menu item type:', {
-      error,
-      errorCode: error.code,
-      errorMessage: error.message,
-      errorDetails: error.details,
-      type
-    })
+  try {
+    const supabase = await createClient()
     
-    // Более детальные сообщения об ошибках
-    if (error.code === '42501' || error.message?.includes('row-level security')) {
-      throw new Error('Ошибка доступа: недостаточно прав для создания типа блюда. Проверьте настройки безопасности.')
-    }
-    if (error.code === '23505' || error.message?.includes('duplicate')) {
-      throw new Error(`Тип блюда с таким названием уже существует для этого меню`)
-    }
-    
-    throw new Error(error.message || 'Не удалось создать тип блюда')
-  }
+    const { data, error } = await supabase
+      .from('menu_item_types')
+      .insert(type)
+      .select()
+      .single()
 
-  if (!data) {
-    throw new Error('Тип блюда не был создан')
-  }
+    if (error) {
+      // Логируем полную информацию об ошибке для отладки
+      console.error('Error creating menu item type:', {
+        errorCode: error.code,
+        errorMessage: error.message,
+        errorDetails: error.details,
+        errorHint: error.hint,
+        type
+      })
+      
+      // Более детальные сообщения об ошибках для пользователя
+      if (error.code === '42501' || error.message?.includes('row-level security') || error.message?.includes('RLS')) {
+        throw new Error('Ошибка доступа: недостаточно прав для создания типа блюда. Убедитесь, что вы вошли в систему.')
+      }
+      if (error.code === '23505' || error.message?.includes('duplicate') || error.message?.includes('unique')) {
+        throw new Error(`Тип блюда с названием "${type.label}" уже существует для этого меню`)
+      }
+      if (error.code === '23503' || error.message?.includes('foreign key')) {
+        throw new Error('Ошибка: указанное меню не найдено')
+      }
+      
+      // Для других ошибок возвращаем понятное сообщение
+      const errorMessage = error.message || 'Не удалось создать тип блюда'
+      throw new Error(errorMessage)
+    }
 
-  return data
+    if (!data) {
+      throw new Error('Тип блюда не был создан')
+    }
+
+    return data
+  } catch (error: any) {
+    // Перехватываем и перебрасываем ошибку с понятным сообщением
+    if (error instanceof Error) {
+      throw error
+    }
+    throw new Error(error?.message || 'Неизвестная ошибка при создании типа блюда')
+  }
 }
 
 export async function updateMenuItemType(id: string, updates: Partial<CustomMenuItemType>): Promise<CustomMenuItemType | null> {

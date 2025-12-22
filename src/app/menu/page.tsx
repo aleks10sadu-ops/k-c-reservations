@@ -252,7 +252,15 @@ export default function MenuPage() {
       setIsAddTypeOpen(false)
     } catch (error: any) {
       console.error('Error creating type:', error)
-      const errorMessage = error?.message || 'Неизвестная ошибка'
+      // Извлекаем сообщение об ошибке
+      let errorMessage = 'Неизвестная ошибка'
+      if (error?.message) {
+        errorMessage = error.message
+      } else if (typeof error === 'string') {
+        errorMessage = error
+      } else if (error?.toString) {
+        errorMessage = error.toString()
+      }
       alert(`Ошибка при создании типа: ${errorMessage}`)
     } finally {
       setIsCreatingType(false)
