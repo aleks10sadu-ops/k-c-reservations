@@ -11,8 +11,8 @@ const onest = Onest({
 })
 
 export const metadata: Metadata = {
-  title: "Kucher&Congo | Система бронирований",
-  description: "CRM система для управления бронированиями ресторана Kucher&Congo",
+  title: "Kucher&Conga | Система бронирований",
+  description: "CRM система для управления бронированиями ресторана Kucher&Conga",
   icons: {
     icon: "/favicon.ico",
   },

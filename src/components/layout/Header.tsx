@@ -51,7 +51,7 @@ export function Header() {
             <span className="text-lg font-bold text-white">K&C</span>
           </motion.div>
           <div className="hidden sm:block">
-            <h1 className="text-lg font-semibold text-stone-900">Kucher&Congo</h1>
+            <h1 className="text-lg font-semibold text-stone-900">Kucher&Conga</h1>
             <p className="text-xs text-stone-500">Система бронирований</p>
           </div>
         </Link>

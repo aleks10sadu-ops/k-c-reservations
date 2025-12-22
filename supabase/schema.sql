@@ -1,4 +1,4 @@
--- Схема базы данных для CRM системы ресторана Kucher&Congo
+-- Схема базы данных для CRM системы ресторана Kucher&Conga
 
 -- Включаем расширения
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
