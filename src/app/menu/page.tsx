@@ -50,6 +50,7 @@ export default function MenuPage() {
   const [newTypeName, setNewTypeName] = useState('')
   const [isCreatingType, setIsCreatingType] = useState(false)
   const [editingType, setEditingType] = useState<CustomMenuItemType | null>(null)
+  const [editingTypeName, setEditingTypeName] = useState('')
 
   // Form states
   const [menuForm, setMenuForm] = useState({
