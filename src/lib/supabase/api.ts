@@ -435,36 +435,68 @@ export async function createMenuItemType(type: {
   }
 }
 
-export async function updateMenuItemType(id: string, updates: Partial<CustomMenuItemType>): Promise<CustomMenuItemType | null> {
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('menu_item_types')
-    .update(updates)
-    .eq('id', id)
-    .select()
-    .single()
+export async function updateMenuItemType(id: string, updates: Partial<CustomMenuItemType>): Promise<CustomMenuItemType> {
+  try {
+    // Используем service role client для обхода RLS
+    const supabase = createServiceRoleClient()
+    
+    const { data, error } = await supabase
+      .from('menu_item_types')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single()
 
-  if (error) {
-    console.error('Error updating menu item type:', error)
-    return null
+    if (error) {
+      console.error('[updateMenuItemType] Error:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      })
+      throw new Error(error.message || 'Не удалось обновить тип блюда')
+    }
+
+    if (!data) {
+      throw new Error('Тип блюда не был обновлен')
+    }
+
+    return data
+  } catch (error: any) {
+    if (error instanceof Error) {
+      throw error
+    }
+    throw new Error(error?.message || 'Неизвестная ошибка при обновлении типа блюда')
   }
-
-  return data
 }
 
 export async function deleteMenuItemType(id: string): Promise<boolean> {
-  const supabase = await createClient()
-  const { error } = await supabase
-    .from('menu_item_types')
-    .delete()
-    .eq('id', id)
+  try {
+    // Используем service role client для обхода RLS
+    const supabase = createServiceRoleClient()
+    
+    const { error } = await supabase
+      .from('menu_item_types')
+      .delete()
+      .eq('id', id)
 
-  if (error) {
-    console.error('Error deleting menu item type:', error)
-    return false
+    if (error) {
+      console.error('[deleteMenuItemType] Error:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      })
+      throw new Error(error.message || 'Не удалось удалить тип блюда')
+    }
+
+    return true
+  } catch (error: any) {
+    if (error instanceof Error) {
+      throw error
+    }
+    throw new Error(error?.message || 'Неизвестная ошибка при удалении типа блюда')
   }
-
-  return true
 }
 
 // ==================== GUESTS ====================

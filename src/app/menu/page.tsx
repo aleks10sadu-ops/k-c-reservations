@@ -26,7 +26,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useMenus, useMenuItems, useCreateMutation, useUpdateMutation, useDeleteMutation } from '@/hooks/useSupabase'
-import { createMenuItemType, getMenuItemTypes } from '@/lib/supabase/api'
+import { createMenuItemType, getMenuItemTypes, updateMenuItemType, deleteMenuItemType } from '@/lib/supabase/api'
 import { formatCurrency, cn } from '@/lib/utils'
 import { Menu, MenuItem, STANDARD_MENU_ITEM_TYPE_CONFIG, getMenuItemTypeLabel, MenuItemType, StandardMenuItemType, CustomMenuItemType } from '@/types'
 import {
@@ -42,12 +42,14 @@ export default function MenuPage() {
   const [selectedMenuId, setSelectedMenuId] = useState<string | null>(null)
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false)
   const [isAddItemOpen, setIsAddItemOpen] = useState(false)
-  const [isAddTypeOpen, setIsAddTypeOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null)
   const [editingMenu, setEditingMenu] = useState<Menu | null>(null)
   
+  // Состояние для управления типами в форме блюда
+  const [isAddingNewType, setIsAddingNewType] = useState(false)
   const [newTypeName, setNewTypeName] = useState('')
   const [isCreatingType, setIsCreatingType] = useState(false)
+  const [editingType, setEditingType] = useState<CustomMenuItemType | null>(null)
 
   // Form states
   const [menuForm, setMenuForm] = useState({
@@ -170,6 +172,10 @@ export default function MenuPage() {
       order_index: menuItems.length
     })
     setEditingItem(null)
+    setIsAddingNewType(false)
+    setNewTypeName('')
+    setEditingType(null)
+    setEditingTypeName('')
   }
 
   const handleOpenAddMenu = () => {
@@ -224,6 +230,10 @@ export default function MenuPage() {
     })
     setEditingItem(item)
     setIsAddItemOpen(true)
+    setIsAddingNewType(false)
+    setNewTypeName('')
+    setEditingType(null)
+    setEditingTypeName('')
   }
 
   const handleSaveItem = async () => {
@@ -272,7 +282,7 @@ export default function MenuPage() {
     }
   }
 
-  // Function for creating new type inline
+  // Function for creating new type from item form
   const handleCreateType = async () => {
     if (!selectedMenu) {
       alert('Выберите меню')
@@ -295,43 +305,75 @@ export default function MenuPage() {
         ? typeLabel 
         : typeLabel + 'ы'
       
-      // Используем Server Action вместо клиентского хука
+      // Используем Server Action
       const newType = await createMenuItemType({
         menu_id: selectedMenu.id,
         name: typeName,
         label: typeLabel,
         label_plural: typeLabelPlural,
-        order_index: (customTypes?.length || 0) + 100 // Ставим после стандартных типов
+        order_index: (customTypes?.length || 0) + 100
       })
       
       // Обновляем список кастомных типов
-      console.log('[handleCreateType] Created type:', newType)
-      console.log('[handleCreateType] Refetching custom types for menu:', selectedMenu.id)
-      
-      // Небольшая задержка, чтобы дать время базе данных обновиться
       await new Promise(resolve => setTimeout(resolve, 100))
-      
       await refetchCustomTypes()
-      console.log('[handleCreateType] Custom types refetched, new count:', customTypes?.length)
       
       // Автоматически выбираем созданный тип в форме позиции
       setItemForm({ ...itemForm, type: newType.name })
       setNewTypeName('')
-      setIsAddTypeOpen(false)
+      setIsAddingNewType(false)
     } catch (error: any) {
       console.error('Error creating type:', error)
-      // Извлекаем сообщение об ошибке
-      let errorMessage = 'Неизвестная ошибка'
-      if (error?.message) {
-        errorMessage = error.message
-      } else if (typeof error === 'string') {
-        errorMessage = error
-      } else if (error?.toString) {
-        errorMessage = error.toString()
-      }
-      alert(`Ошибка при создании типа: ${errorMessage}`)
+      alert(`Ошибка при создании типа: ${error?.message || 'Неизвестная ошибка'}`)
     } finally {
       setIsCreatingType(false)
+    }
+  }
+
+  // Function for updating type
+  const handleUpdateType = async () => {
+    if (!editingType || !editingTypeName.trim()) {
+      alert('Введите название типа')
+      return
+    }
+
+    try {
+      const typeLabel = editingTypeName.trim()
+      const typeLabelPlural = typeLabel.endsWith('ы') || typeLabel.endsWith('и') || typeLabel.endsWith('а') 
+        ? typeLabel 
+        : typeLabel + 'ы'
+      
+      await updateMenuItemType(editingType.id, {
+        label: typeLabel,
+        label_plural: typeLabelPlural
+      })
+      
+      await refetchCustomTypes()
+      setEditingType(null)
+      setEditingTypeName('')
+    } catch (error: any) {
+      console.error('Error updating type:', error)
+      alert(`Ошибка при обновлении типа: ${error?.message || 'Неизвестная ошибка'}`)
+    }
+  }
+
+  // Function for deleting type
+  const handleDeleteType = async (type: CustomMenuItemType) => {
+    if (!confirm(`Вы уверены, что хотите удалить тип "${type.label}"? Все блюда с этим типом останутся без типа.`)) {
+      return
+    }
+
+    try {
+      await deleteMenuItemType(type.id)
+      await refetchCustomTypes()
+      
+      // Если удаляемый тип был выбран в форме, сбрасываем на стандартный тип
+      if (itemForm.type === type.name) {
+        setItemForm({ ...itemForm, type: 'appetizer' })
+      }
+    } catch (error: any) {
+      console.error('Error deleting type:', error)
+      alert(`Ошибка при удалении типа: ${error?.message || 'Неизвестная ошибка'}`)
     }
   }
 
@@ -460,14 +502,6 @@ export default function MenuPage() {
                   </CardDescription>
                 </div>
                 <div className="flex gap-2">
-                  <Button 
-                    variant="outline"
-                    onClick={() => setIsAddTypeOpen(!isAddTypeOpen)} 
-                    className="gap-2"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Добавить тип
-                  </Button>
                   <Button onClick={handleOpenAddItem} className="gap-2">
                     <Plus className="h-4 w-4" />
                     Добавить позицию
@@ -475,46 +509,6 @@ export default function MenuPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                {/* Quick add type form */}
-                {isAddTypeOpen && (
-                  <div className="mb-4 p-4 rounded-lg border border-amber-200 bg-amber-50">
-                    <Label className="text-sm text-stone-700 mb-2 block">Название нового типа</Label>
-                    <div className="flex gap-2 items-center">
-                      <div className="flex-1">
-                        <Input 
-                          placeholder="например: Супы" 
-                          value={newTypeName}
-                          onChange={(e) => setNewTypeName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault()
-                              handleCreateType()
-                            }
-                          }}
-                          autoFocus
-                        />
-                      </div>
-                      <div className="flex gap-2">
-                        <Button 
-                          onClick={handleCreateType}
-                          disabled={!newTypeName.trim() || isCreatingType}
-                        >
-                          {isCreatingType ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Создать'}
-                        </Button>
-                        <Button 
-                          variant="ghost"
-                          onClick={() => {
-                            setIsAddTypeOpen(false)
-                            setNewTypeName('')
-                          }}
-                          disabled={isCreatingType}
-                        >
-                          Отмена
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
                 
                 {itemsLoading ? (
                   <div className="flex items-center justify-center py-12">
@@ -708,10 +702,123 @@ export default function MenuPage() {
               </div>
               
               <div>
-                <Label>Тип блюда</Label>
+                <div className="flex items-center justify-between mb-1">
+                  <Label>Тип блюда</Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setIsAddingNewType(true)
+                      setNewTypeName('')
+                      setEditingType(null)
+                    }}
+                    className="h-7 text-xs"
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Новый тип
+                  </Button>
+                </div>
+                
+                {/* Форма добавления нового типа */}
+                {isAddingNewType && (
+                  <div className="mb-3 p-3 rounded-lg border border-amber-200 bg-amber-50">
+                    <Label className="text-xs text-stone-700 mb-2 block">Название нового типа</Label>
+                    <div className="flex gap-2 items-center">
+                      <Input
+                        placeholder="например: Супы"
+                        value={newTypeName}
+                        onChange={(e) => setNewTypeName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            handleCreateType()
+                          } else if (e.key === 'Escape') {
+                            setIsAddingNewType(false)
+                            setNewTypeName('')
+                          }
+                        }}
+                        className="h-8 text-sm"
+                        autoFocus
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleCreateType}
+                        disabled={!newTypeName.trim() || isCreatingType}
+                        className="h-8"
+                      >
+                        {isCreatingType ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Создать'}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setIsAddingNewType(false)
+                          setNewTypeName('')
+                        }}
+                        disabled={isCreatingType}
+                        className="h-8"
+                      >
+                        Отмена
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Форма редактирования типа */}
+                {editingType && (
+                  <div className="mb-3 p-3 rounded-lg border border-blue-200 bg-blue-50">
+                    <Label className="text-xs text-stone-700 mb-2 block">Редактировать тип: {editingType.label}</Label>
+                    <div className="flex gap-2 items-center">
+                      <Input
+                        value={editingTypeName}
+                        onChange={(e) => setEditingTypeName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            handleUpdateType()
+                          } else if (e.key === 'Escape') {
+                            setEditingType(null)
+                            setEditingTypeName('')
+                          }
+                        }}
+                        className="h-8 text-sm"
+                        autoFocus
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleUpdateType}
+                        disabled={!editingTypeName.trim()}
+                        className="h-8"
+                      >
+                        Сохранить
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setEditingType(null)
+                          setEditingTypeName('')
+                        }}
+                        className="h-8"
+                      >
+                        Отмена
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 <Select 
                   value={itemForm.type} 
-                  onValueChange={(v: string) => setItemForm({ ...itemForm, type: v })}
+                  onValueChange={(v: string) => {
+                    setItemForm({ ...itemForm, type: v })
+                    setIsAddingNewType(false)
+                    setEditingType(null)
+                  }}
                 >
                   <SelectTrigger className="mt-1">
                     <SelectValue />
@@ -742,6 +849,44 @@ export default function MenuPage() {
                     )}
                   </SelectContent>
                 </Select>
+
+                {/* Управление кастомными типами */}
+                {customTypes && customTypes.length > 0 && (
+                  <div className="mt-2 p-2 rounded-lg border border-stone-200 bg-stone-50">
+                    <Label className="text-xs text-stone-600 mb-2 block">Управление типами:</Label>
+                    <div className="space-y-1">
+                      {customTypes.map((customType) => (
+                        <div key={customType.id} className="flex items-center justify-between gap-2 p-1.5 rounded hover:bg-stone-100">
+                          <span className="text-sm text-stone-700 flex-1">{customType.label}</span>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => {
+                                setEditingType(customType)
+                                setEditingTypeName(customType.label)
+                                setIsAddingNewType(false)
+                              }}
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-red-500 hover:text-red-600"
+                              onClick={() => handleDeleteType(customType)}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               
               <div>
