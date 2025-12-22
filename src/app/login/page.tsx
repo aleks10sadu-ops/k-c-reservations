@@ -51,7 +51,7 @@ export default function LoginPage() {
             </motion.div>
             
             <CardTitle className="text-2xl font-bold text-stone-900">
-              Kucher&Congo
+              Kucher&Conga
             </CardTitle>
             <CardDescription className="text-stone-500">
               Войдите в систему бронирований
