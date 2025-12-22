@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { 
   Plus, 
@@ -70,7 +70,8 @@ export default function MenuPage() {
   // Fetch data
   const { data: menus, loading: menusLoading } = useMenus()
   const { data: allMenuItems, loading: itemsLoading } = useMenuItems()
-  const { data: customTypes, loading: customTypesLoading, refetch: refetchCustomTypes } = useMenuItemTypes(selectedMenuId || undefined)
+  // Используем selectedMenu?.id вместо selectedMenuId, чтобы гарантировать актуальное значение
+  const { data: customTypes, loading: customTypesLoading, refetch: refetchCustomTypes } = useMenuItemTypes(selectedMenu?.id)
 
   // Mutations
   const createMenu = useCreateMutation<Menu>('menus')
@@ -91,6 +92,14 @@ export default function MenuPage() {
     }
     return null
   }, [menus, selectedMenuId])
+
+  // Обновляем список кастомных типов при изменении выбранного меню
+  useEffect(() => {
+    if (selectedMenu?.id) {
+      console.log('[MenuPage] Selected menu changed, refetching custom types for:', selectedMenu.id)
+      refetchCustomTypes()
+    }
+  }, [selectedMenu?.id, refetchCustomTypes])
 
   const menuItems = useMemo(() => {
     if (!selectedMenu) return []
@@ -245,7 +254,9 @@ export default function MenuPage() {
       })
       
       // Обновляем список кастомных типов
+      console.log('[handleCreateType] Refetching custom types for menu:', selectedMenu.id)
       await refetchCustomTypes()
+      console.log('[handleCreateType] Custom types refetched')
       // Автоматически выбираем созданный тип в форме позиции
       setItemForm({ ...itemForm, type: newType.name })
       setNewTypeName('')
