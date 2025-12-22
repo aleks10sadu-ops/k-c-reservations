@@ -908,7 +908,7 @@ export default function MenuPage() {
             <DialogHeader>
               <DialogTitle>Изменить тип блюд</DialogTitle>
               <DialogDescription>
-                Выберите новый тип для всех блюд из категории &quot;{editingTypeFromList && getMenuItemTypeLabel(editingTypeFromList.type, customTypes, true)}&quot; ({editingTypeFromList?.items.length || 0} {editingTypeFromList?.items.length === 1 ? 'блюдо' : 'блюд'})
+                Выберите новый тип для всех блюд из категории &quot;{editingTypeFromList && getMenuItemTypeLabel(editingTypeFromList.type, customTypes, true)}&quot; ({editingTypeFromList?.items.length || 0}{' '}{editingTypeFromList?.items.length === 1 ? 'блюдо' : 'блюд'})
               </DialogDescription>
             </DialogHeader>
             
