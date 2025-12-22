@@ -70,8 +70,6 @@ export default function MenuPage() {
   // Fetch data
   const { data: menus, loading: menusLoading } = useMenus()
   const { data: allMenuItems, loading: itemsLoading } = useMenuItems()
-  // Используем selectedMenu?.id вместо selectedMenuId, чтобы гарантировать актуальное значение
-  const { data: customTypes, loading: customTypesLoading, refetch: refetchCustomTypes } = useMenuItemTypes(selectedMenu?.id)
 
   // Mutations
   const createMenu = useCreateMutation<Menu>('menus')
@@ -93,13 +91,8 @@ export default function MenuPage() {
     return null
   }, [menus, selectedMenuId])
 
-  // Обновляем список кастомных типов при изменении выбранного меню
-  useEffect(() => {
-    if (selectedMenu?.id) {
-      console.log('[MenuPage] Selected menu changed, refetching custom types for:', selectedMenu.id)
-      refetchCustomTypes()
-    }
-  }, [selectedMenu?.id, refetchCustomTypes])
+  // Загружаем кастомные типы для выбранного меню (после определения selectedMenu)
+  const { data: customTypes, loading: customTypesLoading, refetch: refetchCustomTypes } = useMenuItemTypes(selectedMenu?.id)
 
   const menuItems = useMemo(() => {
     if (!selectedMenu) return []
