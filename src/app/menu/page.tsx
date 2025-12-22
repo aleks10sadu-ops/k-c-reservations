@@ -257,9 +257,15 @@ export default function MenuPage() {
       })
       
       // Обновляем список кастомных типов
+      console.log('[handleCreateType] Created type:', newType)
       console.log('[handleCreateType] Refetching custom types for menu:', selectedMenu.id)
+      
+      // Небольшая задержка, чтобы дать время базе данных обновиться
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
       await refetchCustomTypes()
-      console.log('[handleCreateType] Custom types refetched')
+      console.log('[handleCreateType] Custom types refetched, new count:', customTypes?.length)
+      
       // Автоматически выбираем созданный тип в форме позиции
       setItemForm({ ...itemForm, type: newType.name })
       setNewTypeName('')
