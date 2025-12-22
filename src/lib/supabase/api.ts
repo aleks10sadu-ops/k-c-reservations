@@ -297,7 +297,9 @@ export async function deleteMenuItem(id: string): Promise<boolean> {
 // ==================== MENU ITEM TYPES (CUSTOM) ====================
 
 export async function getMenuItemTypes(menuId?: string): Promise<CustomMenuItemType[]> {
-  const supabase = await createClient()
+  // Используем service role client для обхода RLS, как и при создании
+  const supabase = createServiceRoleClient()
+  
   let query = supabase
     .from('menu_item_types')
     .select('*')
@@ -308,13 +310,20 @@ export async function getMenuItemTypes(menuId?: string): Promise<CustomMenuItemT
     query = query.eq('menu_id', menuId)
   }
 
+  console.log('[getMenuItemTypes] Fetching types for menu:', menuId)
   const { data, error } = await query
 
   if (error) {
-    console.error('Error fetching menu item types:', error)
+    console.error('[getMenuItemTypes] Error fetching menu item types:', {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint
+    })
     return []
   }
 
+  console.log('[getMenuItemTypes] Fetched types:', data?.length || 0, data)
   return data || []
 }
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { 
   Plus, 
@@ -25,8 +25,8 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { useMenus, useMenuItems, useMenuItemTypes, useCreateMutation, useUpdateMutation, useDeleteMutation } from '@/hooks/useSupabase'
-import { createMenuItemType } from '@/lib/supabase/api'
+import { useMenus, useMenuItems, useCreateMutation, useUpdateMutation, useDeleteMutation } from '@/hooks/useSupabase'
+import { createMenuItemType, getMenuItemTypes } from '@/lib/supabase/api'
 import { formatCurrency, cn } from '@/lib/utils'
 import { Menu, MenuItem, STANDARD_MENU_ITEM_TYPE_CONFIG, getMenuItemTypeLabel, MenuItemType, StandardMenuItemType, CustomMenuItemType } from '@/types'
 import {
@@ -91,19 +91,41 @@ export default function MenuPage() {
     return null
   }, [menus, selectedMenuId])
 
-  // Загружаем кастомные типы для выбранного меню (после определения selectedMenu)
-  const menuIdForTypes = selectedMenu?.id || selectedMenuId || undefined
-  const { data: customTypes, loading: customTypesLoading, refetch: refetchCustomTypes } = useMenuItemTypes(menuIdForTypes)
+  // Загружаем кастомные типы для выбранного меню через Server Action
+  const [customTypes, setCustomTypes] = useState<CustomMenuItemType[]>([])
+  const [customTypesLoading, setCustomTypesLoading] = useState(false)
   
-  // Логируем для отладки
+  const menuIdForTypes = selectedMenu?.id || selectedMenuId || undefined
+  
+  const loadCustomTypes = useCallback(async () => {
+    if (!menuIdForTypes) {
+      setCustomTypes([])
+      return
+    }
+    
+    setCustomTypesLoading(true)
+    try {
+      console.log('[MenuPage] Loading custom types for menu:', menuIdForTypes)
+      const types = await getMenuItemTypes(menuIdForTypes)
+      console.log('[MenuPage] Loaded custom types:', types.length, types)
+      setCustomTypes(types)
+    } catch (error) {
+      console.error('[MenuPage] Error loading custom types:', error)
+      setCustomTypes([])
+    } finally {
+      setCustomTypesLoading(false)
+    }
+  }, [menuIdForTypes])
+  
+  // Загружаем типы при изменении меню
   useEffect(() => {
-    console.log('[MenuPage] Custom types state:', {
-      menuId: menuIdForTypes,
-      customTypesCount: customTypes?.length || 0,
-      customTypes: customTypes?.map(ct => ({ id: ct.id, name: ct.name, label: ct.label, menu_id: ct.menu_id })),
-      loading: customTypesLoading
-    })
-  }, [menuIdForTypes, customTypes, customTypesLoading])
+    loadCustomTypes()
+  }, [loadCustomTypes])
+  
+  // Функция для обновления списка типов
+  const refetchCustomTypes = useCallback(async () => {
+    await loadCustomTypes()
+  }, [loadCustomTypes])
 
   const menuItems = useMemo(() => {
     if (!selectedMenu) return []
