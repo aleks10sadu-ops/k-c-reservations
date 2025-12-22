@@ -399,6 +399,44 @@ export async function deleteGuest(id: string): Promise<boolean> {
   return true
 }
 
+export async function findOrCreateGuestByPhone(
+  phone: string,
+  firstName: string,
+  lastName?: string
+): Promise<Guest | null> {
+  const supabase = await createClient()
+  
+  // Сначала ищем гостя по телефону
+  const { data: existingGuest } = await supabase
+    .from('guests')
+    .select('*')
+    .eq('phone', phone)
+    .single()
+
+  if (existingGuest) {
+    return existingGuest
+  }
+
+  // Если не найден, создаем нового
+  const { data: newGuest, error: createError } = await supabase
+    .from('guests')
+    .insert({
+      first_name: firstName,
+      last_name: lastName || 'Не указано',
+      phone: phone,
+      status: 'regular'
+    })
+    .select()
+    .single()
+
+  if (createError) {
+    console.error('Error creating guest:', createError)
+    return null
+  }
+
+  return newGuest
+}
+
 // ==================== RESERVATIONS ====================
 
 export async function getReservations(filters?: {
