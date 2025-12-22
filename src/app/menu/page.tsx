@@ -69,7 +69,7 @@ export default function MenuPage() {
 
   // Fetch data
   const { data: menus, loading: menusLoading } = useMenus()
-  const { data: allMenuItems, loading: itemsLoading } = useMenuItems()
+  const { data: allMenuItems, loading: itemsLoading, refetch: refetchMenuItems } = useMenuItems()
 
   // Mutations
   const createMenu = useCreateMutation<Menu>('menus')
@@ -243,6 +243,8 @@ export default function MenuPage() {
           alert(`Ошибка при обновлении позиции: ${updateMenuItem.error}`)
           return
         }
+        // Обновляем список блюд после успешного обновления
+        await refetchMenuItems()
       } else {
         const result = await createMenuItem.mutate({
           ...itemForm,
@@ -253,6 +255,8 @@ export default function MenuPage() {
           alert(`Ошибка при создании позиции: ${createMenuItem.error}`)
           return
         }
+        // Обновляем список блюд после успешного создания
+        await refetchMenuItems()
       }
       setIsAddItemOpen(false)
       resetItemForm()
