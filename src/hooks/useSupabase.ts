@@ -53,13 +53,22 @@ function useSupabaseQuery<T>(
       const { data: result, error: queryError } = await query
 
       if (queryError) {
-        console.error(`[useSupabaseQuery] Error fetching ${tableName}:`, queryError)
+        console.error(`[useSupabaseQuery] Error fetching ${tableName}:`, {
+          code: queryError.code,
+          message: queryError.message,
+          details: queryError.details,
+          hint: queryError.hint,
+          filters
+        })
         throw queryError
       }
       
       // Логируем для menu_item_types
       if (tableName === 'menu_item_types') {
         console.log(`[useSupabaseQuery] Fetched ${tableName}:`, result?.length || 0, 'items', result)
+        if (result?.length === 0 && filters?.menu_id) {
+          console.warn(`[useSupabaseQuery] No types found for menu_id:`, filters.menu_id)
+        }
       }
       
       // Явно приводим ответ к ожидаемому типу данных

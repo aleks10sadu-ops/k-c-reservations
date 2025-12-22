@@ -100,9 +100,10 @@ export default function MenuPage() {
     console.log('[MenuPage] Custom types state:', {
       menuId: menuIdForTypes,
       customTypesCount: customTypes?.length || 0,
-      customTypes: customTypes?.map(ct => ({ id: ct.id, name: ct.name, label: ct.label, menu_id: ct.menu_id }))
+      customTypes: customTypes?.map(ct => ({ id: ct.id, name: ct.name, label: ct.label, menu_id: ct.menu_id })),
+      loading: customTypesLoading
     })
-  }, [menuIdForTypes, customTypes])
+  }, [menuIdForTypes, customTypes, customTypesLoading])
 
   const menuItems = useMemo(() => {
     if (!selectedMenu) return []

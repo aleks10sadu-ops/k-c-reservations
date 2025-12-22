@@ -100,8 +100,8 @@ BEGIN
 END $$;
 
 -- Создаем политику для всех операций (SELECT, INSERT, UPDATE, DELETE)
--- Используем auth.uid() IS NOT NULL для проверки аутентификации
+-- Используем auth.role() = 'authenticated' как в других таблицах для консистентности
 CREATE POLICY "Allow all for authenticated users" ON menu_item_types 
     FOR ALL 
-    USING (auth.uid() IS NOT NULL)
-    WITH CHECK (auth.uid() IS NOT NULL);
+    USING (auth.role() = 'authenticated')
+    WITH CHECK (auth.role() = 'authenticated');
