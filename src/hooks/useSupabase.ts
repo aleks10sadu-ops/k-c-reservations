@@ -45,9 +45,23 @@ function useSupabaseQuery<T>(
         query = query.order(orderBy.column, { ascending: orderBy.ascending ?? true })
       }
 
+      // Логируем для menu_item_types
+      if (tableName === 'menu_item_types') {
+        console.log(`[useSupabaseQuery] Fetching ${tableName} with filters:`, filters)
+      }
+
       const { data: result, error: queryError } = await query
 
-      if (queryError) throw queryError
+      if (queryError) {
+        console.error(`[useSupabaseQuery] Error fetching ${tableName}:`, queryError)
+        throw queryError
+      }
+      
+      // Логируем для menu_item_types
+      if (tableName === 'menu_item_types') {
+        console.log(`[useSupabaseQuery] Fetched ${tableName}:`, result?.length || 0, 'items', result)
+      }
+      
       // Явно приводим ответ к ожидаемому типу данных
       setData((result || []) as T[])
     } catch (err: any) {

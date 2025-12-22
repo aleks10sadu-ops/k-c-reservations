@@ -92,7 +92,17 @@ export default function MenuPage() {
   }, [menus, selectedMenuId])
 
   // Загружаем кастомные типы для выбранного меню (после определения selectedMenu)
-  const { data: customTypes, loading: customTypesLoading, refetch: refetchCustomTypes } = useMenuItemTypes(selectedMenu?.id)
+  const menuIdForTypes = selectedMenu?.id || selectedMenuId || undefined
+  const { data: customTypes, loading: customTypesLoading, refetch: refetchCustomTypes } = useMenuItemTypes(menuIdForTypes)
+  
+  // Логируем для отладки
+  useEffect(() => {
+    console.log('[MenuPage] Custom types state:', {
+      menuId: menuIdForTypes,
+      customTypesCount: customTypes?.length || 0,
+      customTypes: customTypes?.map(ct => ({ id: ct.id, name: ct.name, label: ct.label, menu_id: ct.menu_id }))
+    })
+  }, [menuIdForTypes, customTypes])
 
   const menuItems = useMemo(() => {
     if (!selectedMenu) return []
@@ -660,7 +670,7 @@ export default function MenuPage() {
                       </SelectItem>
                     ))}
                     {/* Кастомные типы */}
-                    {customTypes && customTypes.length > 0 && (
+                    {customTypes && customTypes.length > 0 ? (
                       <>
                         <div className="px-2 py-1.5 text-xs font-semibold text-stone-500">Кастомные типы</div>
                         {customTypes.map((customType) => (
@@ -669,6 +679,12 @@ export default function MenuPage() {
                           </SelectItem>
                         ))}
                       </>
+                    ) : (
+                      customTypesLoading ? null : (
+                        <div className="px-2 py-1.5 text-xs text-stone-400">
+                          Нет кастомных типов для этого меню
+                        </div>
+                      )
                     )}
                   </SelectContent>
                 </Select>
