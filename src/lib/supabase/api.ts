@@ -279,6 +279,35 @@ export async function updateMenuItem(id: string, updates: Partial<MenuItem>): Pr
   return data
 }
 
+export async function updateMenuItemsByType(menuId: string, oldType: string, newType: string): Promise<boolean> {
+  try {
+    const supabase = createServiceRoleClient()
+    
+    const { error } = await supabase
+      .from('menu_items')
+      .update({ type: newType })
+      .eq('menu_id', menuId)
+      .eq('type', oldType)
+
+    if (error) {
+      console.error('[updateMenuItemsByType] Error:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      })
+      throw new Error(error.message || 'Не удалось обновить тип блюд')
+    }
+
+    return true
+  } catch (error: any) {
+    if (error instanceof Error) {
+      throw error
+    }
+    throw new Error(error?.message || 'Неизвестная ошибка при обновлении типа блюд')
+  }
+}
+
 export async function deleteMenuItem(id: string): Promise<boolean> {
   const supabase = await createClient()
   const { error } = await supabase

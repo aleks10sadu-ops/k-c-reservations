@@ -26,7 +26,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useMenus, useMenuItems, useCreateMutation, useUpdateMutation, useDeleteMutation } from '@/hooks/useSupabase'
-import { createMenuItemType, getMenuItemTypes, updateMenuItemType, deleteMenuItemType } from '@/lib/supabase/api'
+import { createMenuItemType, getMenuItemTypes, updateMenuItemsByType } from '@/lib/supabase/api'
 import { formatCurrency, cn } from '@/lib/utils'
 import { Menu, MenuItem, STANDARD_MENU_ITEM_TYPE_CONFIG, getMenuItemTypeLabel, MenuItemType, StandardMenuItemType, CustomMenuItemType } from '@/types'
 import {
@@ -49,8 +49,15 @@ export default function MenuPage() {
   const [isAddingNewType, setIsAddingNewType] = useState(false)
   const [newTypeName, setNewTypeName] = useState('')
   const [isCreatingType, setIsCreatingType] = useState(false)
-  const [editingType, setEditingType] = useState<CustomMenuItemType | null>(null)
-  const [editingTypeName, setEditingTypeName] = useState('')
+  
+  // Состояние для редактирования типа блюда (из списка блюд)
+  const [isEditTypeDialogOpen, setIsEditTypeDialogOpen] = useState(false)
+  const [editingTypeFromList, setEditingTypeFromList] = useState<{ type: string; items: MenuItem[] } | null>(null)
+  const [editTypeForm, setEditTypeForm] = useState({
+    newType: '',
+    isCreatingNew: false,
+    newTypeName: ''
+  })
 
   // Form states
   const [menuForm, setMenuForm] = useState({
@@ -169,8 +176,6 @@ export default function MenuPage() {
     setEditingItem(null)
     setIsAddingNewType(false)
     setNewTypeName('')
-    setEditingType(null)
-    setEditingTypeName('')
   }
 
   const handleOpenAddMenu = () => {
@@ -227,8 +232,6 @@ export default function MenuPage() {
     setIsAddItemOpen(true)
     setIsAddingNewType(false)
     setNewTypeName('')
-    setEditingType(null)
-    setEditingTypeName('')
   }
 
   const handleSaveItem = async () => {
@@ -325,50 +328,89 @@ export default function MenuPage() {
     }
   }
 
-  // Function for updating type
-  const handleUpdateType = async () => {
-    if (!editingType || !editingTypeName.trim()) {
-      alert('Введите название типа')
-      return
-    }
-
-    try {
-      const typeLabel = editingTypeName.trim()
-      const typeLabelPlural = typeLabel.endsWith('ы') || typeLabel.endsWith('и') || typeLabel.endsWith('а') 
-        ? typeLabel 
-        : typeLabel + 'ы'
-      
-      await updateMenuItemType(editingType.id, {
-        label: typeLabel,
-        label_plural: typeLabelPlural
-      })
-      
-      await refetchCustomTypes()
-      setEditingType(null)
-      setEditingTypeName('')
-    } catch (error: any) {
-      console.error('Error updating type:', error)
-      alert(`Ошибка при обновлении типа: ${error?.message || 'Неизвестная ошибка'}`)
-    }
+  // Function for opening edit type dialog from list
+  const handleOpenEditTypeFromList = (type: string, items: MenuItem[]) => {
+    setEditingTypeFromList({ type, items })
+    setEditTypeForm({
+      newType: type,
+      isCreatingNew: false,
+      newTypeName: ''
+    })
+    setIsEditTypeDialogOpen(true)
   }
 
-  // Function for deleting type
-  const handleDeleteType = async (type: CustomMenuItemType) => {
-    if (!confirm(`Вы уверены, что хотите удалить тип "${type.label}"? Все блюда с этим типом останутся без типа.`)) {
+  // Function for saving type change
+  const handleSaveTypeChange = async () => {
+    if (!editingTypeFromList || !selectedMenu) {
       return
     }
 
-    try {
-      await deleteMenuItemType(type.id)
-      await refetchCustomTypes()
-      
-      // Если удаляемый тип был выбран в форме, сбрасываем на стандартный тип
-      if (itemForm.type === type.name) {
-        setItemForm({ ...itemForm, type: 'appetizer' })
+    const { type: oldType } = editingTypeFromList
+    let newType = editTypeForm.newType
+
+    // Если создаем новый тип
+    if (editTypeForm.isCreatingNew) {
+      if (!editTypeForm.newTypeName.trim()) {
+        alert('Введите название нового типа')
+        return
       }
+
+      try {
+        const typeName = editTypeForm.newTypeName.trim().toLowerCase().replace(/\s+/g, '_')
+        const typeLabel = editTypeForm.newTypeName.trim()
+        const typeLabelPlural = typeLabel.endsWith('ы') || typeLabel.endsWith('и') || typeLabel.endsWith('а') 
+          ? typeLabel 
+          : typeLabel + 'ы'
+        
+        const createdType = await createMenuItemType({
+          menu_id: selectedMenu.id,
+          name: typeName,
+          label: typeLabel,
+          label_plural: typeLabelPlural,
+          order_index: (customTypes?.length || 0) + 100
+        })
+        
+        newType = createdType.name
+        await refetchCustomTypes()
+      } catch (error: any) {
+        console.error('Error creating type:', error)
+        alert(`Ошибка при создании типа: ${error?.message || 'Неизвестная ошибка'}`)
+        return
+      }
+    }
+
+    // Если тип не изменился, просто закрываем диалог
+    if (oldType === newType) {
+      setIsEditTypeDialogOpen(false)
+      setEditingTypeFromList(null)
+      return
+    }
+
+    // Обновляем тип у всех блюд
+    try {
+      await updateMenuItemsByType(selectedMenu.id, oldType, newType)
+      
+      // Если старый тип был кастомным и больше не используется, можно его удалить
+      const oldCustomType = customTypes?.find(ct => ct.name === oldType)
+      if (oldCustomType) {
+        const itemsWithOldType = menuItems.filter(item => item.type === oldType)
+        if (itemsWithOldType.length === 0) {
+          // Можно предложить удалить неиспользуемый тип, но не делаем это автоматически
+        }
+      }
+      
+      // Обновляем список блюд
+      await refetchMenuItems()
+      setIsEditTypeDialogOpen(false)
+      setEditingTypeFromList(null)
+      setEditTypeForm({
+        newType: '',
+        isCreatingNew: false,
+        newTypeName: ''
+      })
     } catch (error: any) {
-      console.error('Error deleting type:', error)
-      alert(`Ошибка при удалении типа: ${error?.message || 'Неизвестная ошибка'}`)
+      console.error('Error updating items type:', error)
+      alert(`Ошибка при обновлении типа блюд: ${error?.message || 'Неизвестная ошибка'}`)
     }
   }
 
@@ -523,11 +565,21 @@ export default function MenuPage() {
                           animate={{ opacity: 1, x: 0 }}
                           className="rounded-xl border border-stone-200 overflow-hidden"
                         >
-                          <div className="bg-stone-50 px-4 py-3 flex items-center justify-between">
+                          <div className="bg-stone-50 px-4 py-3 flex items-center justify-between group/type">
                             <h3 className="font-semibold text-stone-900">{typeLabel}</h3>
-                            <span className="text-sm text-stone-500">
-                              {items.reduce((sum, i) => sum + i.weight_per_person, 0)} гр.
-                            </span>
+                            <div className="flex items-center gap-3">
+                              <span className="text-sm text-stone-500">
+                                {items.reduce((sum, i) => sum + i.weight_per_person, 0)} гр.
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 opacity-0 group-hover/type:opacity-100 transition-opacity"
+                                onClick={() => handleOpenEditTypeFromList(type, items)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </div>
                           
                           <div className="divide-y divide-stone-100">
@@ -706,7 +758,6 @@ export default function MenuPage() {
                     onClick={() => {
                       setIsAddingNewType(true)
                       setNewTypeName('')
-                      setEditingType(null)
                     }}
                     className="h-7 text-xs"
                   >
@@ -762,57 +813,11 @@ export default function MenuPage() {
                   </div>
                 )}
 
-                {/* Форма редактирования типа */}
-                {editingType && (
-                  <div className="mb-3 p-3 rounded-lg border border-blue-200 bg-blue-50">
-                    <Label className="text-xs text-stone-700 mb-2 block">Редактировать тип: {editingType.label}</Label>
-                    <div className="flex gap-2 items-center">
-                      <Input
-                        value={editingTypeName}
-                        onChange={(e) => setEditingTypeName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault()
-                            handleUpdateType()
-                          } else if (e.key === 'Escape') {
-                            setEditingType(null)
-                            setEditingTypeName('')
-                          }
-                        }}
-                        className="h-8 text-sm"
-                        autoFocus
-                      />
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={handleUpdateType}
-                        disabled={!editingTypeName.trim()}
-                        className="h-8"
-                      >
-                        Сохранить
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setEditingType(null)
-                          setEditingTypeName('')
-                        }}
-                        className="h-8"
-                      >
-                        Отмена
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
                 <Select 
                   value={itemForm.type} 
                   onValueChange={(v: string) => {
                     setItemForm({ ...itemForm, type: v })
                     setIsAddingNewType(false)
-                    setEditingType(null)
                   }}
                 >
                   <SelectTrigger className="mt-1">
@@ -844,44 +849,6 @@ export default function MenuPage() {
                     )}
                   </SelectContent>
                 </Select>
-
-                {/* Управление кастомными типами */}
-                {customTypes && customTypes.length > 0 && (
-                  <div className="mt-2 p-2 rounded-lg border border-stone-200 bg-stone-50">
-                    <Label className="text-xs text-stone-600 mb-2 block">Управление типами:</Label>
-                    <div className="space-y-1">
-                      {customTypes.map((customType) => (
-                        <div key={customType.id} className="flex items-center justify-between gap-2 p-1.5 rounded hover:bg-stone-100">
-                          <span className="text-sm text-stone-700 flex-1">{customType.label}</span>
-                          <div className="flex items-center gap-1">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6"
-                              onClick={() => {
-                                setEditingType(customType)
-                                setEditingTypeName(customType.label)
-                                setIsAddingNewType(false)
-                              }}
-                            >
-                              <Pencil className="h-3 w-3" />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6 text-red-500 hover:text-red-600"
-                              onClick={() => handleDeleteType(customType)}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
               
               <div>
@@ -930,6 +897,97 @@ export default function MenuPage() {
               >
                 {(createMenuItem.loading || updateMenuItem.loading) && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                 {editingItem ? 'Сохранить' : 'Добавить'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Type Dialog */}
+        <Dialog open={isEditTypeDialogOpen} onOpenChange={setIsEditTypeDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Изменить тип блюд</DialogTitle>
+              <DialogDescription>
+                Выберите новый тип для всех блюд из категории &quot;{editingTypeFromList && getMenuItemTypeLabel(editingTypeFromList.type, customTypes, true)}&quot; ({editingTypeFromList?.items.length || 0} {editingTypeFromList?.items.length === 1 ? 'блюдо' : 'блюд'})
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="createNewType"
+                  checked={editTypeForm.isCreatingNew}
+                  onCheckedChange={(checked) => {
+                    setEditTypeForm({
+                      ...editTypeForm,
+                      isCreatingNew: !!checked,
+                      newType: editTypeForm.isCreatingNew ? editTypeForm.newType : ''
+                    })
+                  }}
+                />
+                <Label htmlFor="createNewType" className="cursor-pointer">
+                  Создать новый тип
+                </Label>
+              </div>
+
+              {editTypeForm.isCreatingNew ? (
+                <div>
+                  <Label>Название нового типа *</Label>
+                  <Input
+                    placeholder="например: Супы"
+                    value={editTypeForm.newTypeName}
+                    onChange={(e) => setEditTypeForm({ ...editTypeForm, newTypeName: e.target.value })}
+                    className="mt-1"
+                    autoFocus
+                  />
+                </div>
+              ) : (
+                <div>
+                  <Label>Выберите тип *</Label>
+                  <Select
+                    value={editTypeForm.newType}
+                    onValueChange={(v) => setEditTypeForm({ ...editTypeForm, newType: v })}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Выберите тип" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {/* Стандартные типы */}
+                      {(Object.entries(STANDARD_MENU_ITEM_TYPE_CONFIG) as [StandardMenuItemType, typeof STANDARD_MENU_ITEM_TYPE_CONFIG[StandardMenuItemType]][]).map(([type, config]) => (
+                        <SelectItem key={type} value={type}>
+                          {config.label}
+                        </SelectItem>
+                      ))}
+                      {/* Кастомные типы */}
+                      {customTypes && customTypes.length > 0 && (
+                        <>
+                          <div className="px-2 py-1.5 text-xs font-semibold text-stone-500">Кастомные типы</div>
+                          {customTypes.map((customType) => (
+                            <SelectItem key={customType.id} value={customType.name}>
+                              {customType.label}
+                            </SelectItem>
+                          ))}
+                        </>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+            
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsEditTypeDialogOpen(false)}>
+                Отмена
+              </Button>
+              <Button
+                onClick={handleSaveTypeChange}
+                disabled={
+                  editTypeForm.isCreatingNew
+                    ? !editTypeForm.newTypeName.trim()
+                    : !editTypeForm.newType
+                }
+              >
+                Сохранить
               </Button>
             </DialogFooter>
           </DialogContent>
