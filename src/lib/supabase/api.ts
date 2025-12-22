@@ -342,7 +342,10 @@ export async function createMenuItemType(type: {
   order_index?: number
 }): Promise<CustomMenuItemType> {
   try {
+    console.log('[createMenuItemType] Starting with type:', JSON.stringify(type))
+    
     const supabase = await createClient()
+    console.log('[createMenuItemType] Supabase client created')
     
     const { data, error } = await supabase
       .from('menu_item_types')
@@ -350,9 +353,16 @@ export async function createMenuItemType(type: {
       .select()
       .single()
 
+    console.log('[createMenuItemType] Query result:', { data: !!data, error: error ? {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint
+    } : null })
+
     if (error) {
       // Логируем полную информацию об ошибке для отладки
-      console.error('Error creating menu item type:', {
+      console.error('[createMenuItemType] Error details:', {
         errorCode: error.code,
         errorMessage: error.message,
         errorDetails: error.details,
@@ -362,31 +372,56 @@ export async function createMenuItemType(type: {
       
       // Более детальные сообщения об ошибках для пользователя
       if (error.code === '42501' || error.message?.includes('row-level security') || error.message?.includes('RLS')) {
-        throw new Error('Ошибка доступа: недостаточно прав для создания типа блюда. Убедитесь, что вы вошли в систему.')
+        const err = new Error('Ошибка доступа: недостаточно прав для создания типа блюда. Убедитесь, что вы вошли в систему.')
+        console.error('[createMenuItemType] RLS error:', err)
+        throw err
       }
       if (error.code === '23505' || error.message?.includes('duplicate') || error.message?.includes('unique')) {
-        throw new Error(`Тип блюда с названием "${type.label}" уже существует для этого меню`)
+        const err = new Error(`Тип блюда с названием "${type.label}" уже существует для этого меню`)
+        console.error('[createMenuItemType] Duplicate error:', err)
+        throw err
       }
       if (error.code === '23503' || error.message?.includes('foreign key')) {
-        throw new Error('Ошибка: указанное меню не найдено')
+        const err = new Error('Ошибка: указанное меню не найдено')
+        console.error('[createMenuItemType] Foreign key error:', err)
+        throw err
       }
       
       // Для других ошибок возвращаем понятное сообщение
       const errorMessage = error.message || 'Не удалось создать тип блюда'
-      throw new Error(errorMessage)
+      const err = new Error(errorMessage)
+      console.error('[createMenuItemType] Generic error:', err)
+      throw err
     }
 
     if (!data) {
-      throw new Error('Тип блюда не был создан')
+      const err = new Error('Тип блюда не был создан')
+      console.error('[createMenuItemType] No data returned:', err)
+      throw err
     }
 
+    console.log('[createMenuItemType] Success:', data.id)
     return data
   } catch (error: any) {
     // Перехватываем и перебрасываем ошибку с понятным сообщением
+    console.error('[createMenuItemType] Caught error:', {
+      error,
+      message: error?.message,
+      stack: error?.stack,
+      name: error?.name
+    })
+    
     if (error instanceof Error) {
-      throw error
+      // Сохраняем оригинальное сообщение
+      const err = new Error(error.message)
+      err.name = error.name
+      err.stack = error.stack
+      throw err
     }
-    throw new Error(error?.message || 'Неизвестная ошибка при создании типа блюда')
+    
+    const err = new Error(error?.message || 'Неизвестная ошибка при создании типа блюда')
+    console.error('[createMenuItemType] Unknown error:', err)
+    throw err
   }
 }
 
