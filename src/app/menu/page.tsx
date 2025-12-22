@@ -143,12 +143,6 @@ export default function MenuPage() {
     }, {} as Record<string, MenuItem[]>)
   }, [menuItems])
   
-  // Все доступные типы (стандартные + кастомные)
-  const allAvailableTypes = useMemo(() => {
-    const standardTypes = Object.keys(STANDARD_MENU_ITEM_TYPE_CONFIG) as StandardMenuItemType[]
-    const customTypeNames = (customTypes || []).map(ct => ct.name)
-    return [...standardTypes, ...customTypeNames]
-  }, [customTypes])
 
   const totalWeight = menuItems.reduce((sum, item) => sum + item.weight_per_person, 0)
 
