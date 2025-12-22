@@ -244,20 +244,16 @@ export default function MenuPage() {
         order_index: (customTypes?.length || 0) + 100 // Ставим после стандартных типов
       })
       
-      if (newType) {
-        // Обновляем список кастомных типов
-        await refetchCustomTypes()
-        // Автоматически выбираем созданный тип в форме позиции
-        setItemForm({ ...itemForm, type: newType.name })
-        setNewTypeName('')
-        setIsAddTypeOpen(false)
-      } else {
-        alert('Ошибка при создании типа: Не удалось создать тип')
-        console.error('Error creating type: Server action returned null')
-      }
+      // Обновляем список кастомных типов
+      await refetchCustomTypes()
+      // Автоматически выбираем созданный тип в форме позиции
+      setItemForm({ ...itemForm, type: newType.name })
+      setNewTypeName('')
+      setIsAddTypeOpen(false)
     } catch (error: any) {
       console.error('Error creating type:', error)
-      alert(`Ошибка при создании типа: ${error.message || 'Неизвестная ошибка'}`)
+      const errorMessage = error?.message || 'Неизвестная ошибка'
+      alert(`Ошибка при создании типа: ${errorMessage}`)
     } finally {
       setIsCreatingType(false)
     }

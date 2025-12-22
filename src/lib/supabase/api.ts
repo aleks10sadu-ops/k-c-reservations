@@ -340,8 +340,16 @@ export async function createMenuItemType(type: {
   label: string
   label_plural: string
   order_index?: number
-}): Promise<CustomMenuItemType | null> {
+}): Promise<CustomMenuItemType> {
   const supabase = await createClient()
+  
+  // Проверяем аутентификацию пользователя
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError || !user) {
+    console.error('Authentication error:', authError)
+    throw new Error('Пользователь не аутентифицирован. Пожалуйста, войдите в систему.')
+  }
+  
   const { data, error } = await supabase
     .from('menu_item_types')
     .insert(type)
@@ -349,8 +357,27 @@ export async function createMenuItemType(type: {
     .single()
 
   if (error) {
-    console.error('Error creating menu item type:', error)
-    return null
+    console.error('Error creating menu item type:', {
+      error,
+      errorCode: error.code,
+      errorMessage: error.message,
+      errorDetails: error.details,
+      type
+    })
+    
+    // Более детальные сообщения об ошибках
+    if (error.code === '42501' || error.message?.includes('row-level security')) {
+      throw new Error('Ошибка доступа: недостаточно прав для создания типа блюда. Проверьте настройки безопасности.')
+    }
+    if (error.code === '23505' || error.message?.includes('duplicate')) {
+      throw new Error(`Тип блюда с таким названием уже существует для этого меню`)
+    }
+    
+    throw new Error(error.message || 'Не удалось создать тип блюда')
+  }
+
+  if (!data) {
+    throw new Error('Тип блюда не был создан')
   }
 
   return data
