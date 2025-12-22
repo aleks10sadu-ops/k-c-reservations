@@ -298,10 +298,8 @@ export default function MenuPage() {
       const typeName = newTypeName.trim().toLowerCase().replace(/\s+/g, '_')
       const typeLabel = newTypeName.trim()
       
-      // Простое формирование множественного числа (можно улучшить)
-      const typeLabelPlural = typeLabel.endsWith('ы') || typeLabel.endsWith('и') || typeLabel.endsWith('а') 
-        ? typeLabel 
-        : typeLabel + 'ы'
+      // Используем то же значение для множественного числа
+      const typeLabelPlural = typeLabel
       
       // Используем Server Action
       const newType = await createMenuItemType({
@@ -358,9 +356,8 @@ export default function MenuPage() {
       try {
         const typeName = editTypeForm.newTypeName.trim().toLowerCase().replace(/\s+/g, '_')
         const typeLabel = editTypeForm.newTypeName.trim()
-        const typeLabelPlural = typeLabel.endsWith('ы') || typeLabel.endsWith('и') || typeLabel.endsWith('а') 
-          ? typeLabel 
-          : typeLabel + 'ы'
+        // Используем то же значение для множественного числа
+        const typeLabelPlural = typeLabel
         
         const createdType = await createMenuItemType({
           menu_id: selectedMenu.id,
