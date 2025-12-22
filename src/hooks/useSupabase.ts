@@ -326,13 +326,34 @@ export function useCreateMutation<T>(tableName: string) {
 
     try {
       const supabase = createClient()
+      
+      // Логируем для menu_items
+      if (tableName === 'menu_items') {
+        console.log(`[useCreateMutation] Creating ${tableName}:`, data)
+      }
+      
       const { data: result, error: mutationError } = await supabase
         .from(tableName)
         .insert(data)
         .select()
         .single()
 
-      if (mutationError) throw mutationError
+      if (mutationError) {
+        console.error(`[useCreateMutation] Error creating ${tableName}:`, {
+          code: mutationError.code,
+          message: mutationError.message,
+          details: mutationError.details,
+          hint: mutationError.hint,
+          data
+        })
+        throw mutationError
+      }
+      
+      // Логируем для menu_items
+      if (tableName === 'menu_items') {
+        console.log(`[useCreateMutation] Created ${tableName}:`, result)
+      }
+      
       return result
     } catch (err: any) {
       setError(err.message)
@@ -356,6 +377,12 @@ export function useUpdateMutation<T>(tableName: string) {
 
     try {
       const supabase = createClient()
+      
+      // Логируем для menu_items
+      if (tableName === 'menu_items') {
+        console.log(`[useUpdateMutation] Updating ${tableName}:`, { id, data })
+      }
+      
       const { data: result, error: mutationError } = await supabase
         .from(tableName)
         .update(data)
@@ -363,7 +390,23 @@ export function useUpdateMutation<T>(tableName: string) {
         .select()
         .single()
 
-      if (mutationError) throw mutationError
+      if (mutationError) {
+        console.error(`[useUpdateMutation] Error updating ${tableName}:`, {
+          code: mutationError.code,
+          message: mutationError.message,
+          details: mutationError.details,
+          hint: mutationError.hint,
+          id,
+          data
+        })
+        throw mutationError
+      }
+      
+      // Логируем для menu_items
+      if (tableName === 'menu_items') {
+        console.log(`[useUpdateMutation] Updated ${tableName}:`, result)
+      }
+      
       return result
     } catch (err: any) {
       setError(err.message)

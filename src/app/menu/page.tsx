@@ -229,16 +229,37 @@ export default function MenuPage() {
   const handleSaveItem = async () => {
     if (!selectedMenu) return
     
-    if (editingItem) {
-      await updateMenuItem.mutate(editingItem.id, itemForm)
-    } else {
-      await createMenuItem.mutate({
-        ...itemForm,
-        menu_id: selectedMenu.id
-      })
+    console.log('[handleSaveItem] Saving item:', {
+      editingItem: editingItem?.id,
+      itemForm,
+      selectedMenuId: selectedMenu.id
+    })
+    
+    try {
+      if (editingItem) {
+        const result = await updateMenuItem.mutate(editingItem.id, itemForm)
+        console.log('[handleSaveItem] Update result:', result)
+        if (!result && updateMenuItem.error) {
+          alert(`Ошибка при обновлении позиции: ${updateMenuItem.error}`)
+          return
+        }
+      } else {
+        const result = await createMenuItem.mutate({
+          ...itemForm,
+          menu_id: selectedMenu.id
+        })
+        console.log('[handleSaveItem] Create result:', result)
+        if (!result && createMenuItem.error) {
+          alert(`Ошибка при создании позиции: ${createMenuItem.error}`)
+          return
+        }
+      }
+      setIsAddItemOpen(false)
+      resetItemForm()
+    } catch (error: any) {
+      console.error('[handleSaveItem] Error:', error)
+      alert(`Ошибка при сохранении позиции: ${error?.message || 'Неизвестная ошибка'}`)
     }
-    setIsAddItemOpen(false)
-    resetItemForm()
   }
 
   const handleDeleteItem = async (id: string) => {
