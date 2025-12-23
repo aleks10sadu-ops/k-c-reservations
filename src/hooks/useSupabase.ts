@@ -339,13 +339,15 @@ export function useCreateMutation<T>(tableName: string) {
         .single()
 
       if (mutationError) {
-        console.error(`[useCreateMutation] Error creating ${tableName}:`, {
+        const errorDetails = {
           code: mutationError.code,
           message: mutationError.message,
           details: mutationError.details,
           hint: mutationError.hint,
           data
-        })
+        }
+        console.error(`[useCreateMutation] Error creating ${tableName}:`, errorDetails)
+        setError(mutationError.message || `Не удалось создать запись в ${tableName}`)
         throw mutationError
       }
       
@@ -356,8 +358,15 @@ export function useCreateMutation<T>(tableName: string) {
       
       return result
     } catch (err: any) {
-      setError(err.message)
-      console.error(`Error creating ${tableName}:`, err)
+      const errorMessage = err?.message || err?.error?.message || `Не удалось создать запись в ${tableName}`
+      setError(errorMessage)
+      console.error(`Error creating ${tableName}:`, {
+        error: err,
+        message: err?.message,
+        code: err?.code,
+        details: err?.details,
+        hint: err?.hint
+      })
       return null
     } finally {
       setLoading(false)

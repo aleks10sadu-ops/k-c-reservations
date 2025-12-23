@@ -37,15 +37,17 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { useReservations, useCreateMutation, useDeleteMutation } from '@/hooks/useSupabase'
+import { useReservations, useCreateMutation, useDeleteMutation, useUpdateMutation } from '@/hooks/useSupabase'
 import { formatCurrency, formatDate, cn } from '@/lib/utils'
-import { RESERVATION_STATUS_CONFIG, Payment } from '@/types'
+import { RESERVATION_STATUS_CONFIG, Payment, Reservation } from '@/types'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { createClient } from '@/lib/supabase/client'
 
 export default function PaymentsPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false)
   const [selectedReservationId, setSelectedReservationId] = useState('')
+  const [selectedDate, setSelectedDate] = useState<string>('')
   const [paymentForm, setPaymentForm] = useState({
     amount: 0,
     payment_method: 'card' as 'cash' | 'card' | 'transfer',
@@ -53,11 +55,17 @@ export default function PaymentsPage() {
   })
 
   // Fetch data
-  const { data: reservations, loading, refetch } = useReservations()
+  const { data: allReservations, loading, refetch } = useReservations()
+  
+  // Filter reservations by date if selected
+  const reservations = selectedDate
+    ? allReservations.filter(r => r.date === selectedDate)
+    : allReservations
   
   // Mutations
   const createPayment = useCreateMutation<Payment>('payments')
   const deletePayment = useDeleteMutation('payments')
+  const updateReservation = useUpdateMutation<Reservation>('reservations')
 
   // Calculate stats
   const totalRevenue = reservations.reduce((sum, r) => sum + (r.prepaid_amount || 0), 0)
@@ -65,7 +73,12 @@ export default function PaymentsPage() {
   const totalRemaining = totalExpected - totalRevenue
   
   const paidReservations = reservations.filter(r => r.status === 'paid')
-  const pendingPayments = reservations.filter(r => r.status !== 'paid' && r.status !== 'canceled' && r.total_amount > (r.prepaid_amount || 0))
+  // Показываем все бронирования, которые не полностью оплачены (не только с pending статусом)
+  const pendingPayments = reservations.filter(r => 
+    r.status !== 'paid' && 
+    r.status !== 'canceled' && 
+    r.total_amount > (r.prepaid_amount || 0)
+  )
 
   // Get all payments with reservation info
   const allPayments = reservations.flatMap(reservation => 
@@ -105,6 +118,9 @@ export default function PaymentsPage() {
   const handleAddPayment = async () => {
     if (!selectedReservationId || !paymentForm.amount) return
 
+    const reservation = reservations.find(r => r.id === selectedReservationId)
+    if (!reservation) return
+
     const result = await createPayment.mutate({
       reservation_id: selectedReservationId,
       amount: paymentForm.amount,
@@ -113,6 +129,29 @@ export default function PaymentsPage() {
     })
 
     if (result) {
+      // Проверяем, был ли это первый платеж (prepaid_amount было 0)
+      const supabase = createClient()
+      const { data: updatedReservation } = await supabase
+        .from('reservations')
+        .select('prepaid_amount, total_amount, status')
+        .eq('id', selectedReservationId)
+        .single()
+
+      if (updatedReservation) {
+        // Если это первый платеж (было 0, теперь больше 0), обновляем статус на prepaid
+        if (reservation.prepaid_amount === 0 && updatedReservation.prepaid_amount > 0) {
+          await updateReservation.mutate(selectedReservationId, {
+            status: 'prepaid' as const
+          })
+        }
+        // Если оплачено полностью, обновляем статус на paid
+        if (updatedReservation.prepaid_amount >= updatedReservation.total_amount && reservation.status !== 'paid') {
+          await updateReservation.mutate(selectedReservationId, {
+            status: 'paid' as const
+          })
+        }
+      }
+
       setIsAddPaymentOpen(false)
       setPaymentForm({ amount: 0, payment_method: 'card', notes: '' })
       setSelectedReservationId('')
@@ -136,21 +175,46 @@ export default function PaymentsPage() {
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+            className="flex flex-col gap-4"
           >
-            <div>
-              <h1 className="text-3xl font-bold text-stone-900">Оплаты</h1>
-              <p className="mt-1 text-stone-500">Отслеживание предоплат и платежей</p>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h1 className="text-3xl font-bold text-stone-900">Оплаты</h1>
+                <p className="mt-1 text-stone-500">Отслеживание предоплат и платежей</p>
+              </div>
+              
+              <Button 
+                size="lg" 
+                className="gap-2 shadow-lg shadow-amber-500/25"
+                onClick={() => setIsAddPaymentOpen(true)}
+              >
+                <Plus className="h-5 w-5" />
+                Добавить оплату
+              </Button>
             </div>
-            
-            <Button 
-              size="lg" 
-              className="gap-2 shadow-lg shadow-amber-500/25"
-              onClick={() => setIsAddPaymentOpen(true)}
-            >
-              <Plus className="h-5 w-5" />
-              Добавить оплату
-            </Button>
+
+            {/* Date Filter */}
+            <div className="flex items-center gap-3">
+              <Label className="flex items-center gap-2 whitespace-nowrap">
+                <Calendar className="h-4 w-4" />
+                Фильтр по дате бронирования:
+              </Label>
+              <Input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="w-auto"
+              />
+              {selectedDate && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedDate('')}
+                >
+                  Сбросить
+                </Button>
+              )}
+            </div>
           </motion.div>
         </div>
 

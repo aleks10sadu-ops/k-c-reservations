@@ -201,6 +201,9 @@ export function ReservationModal({
       }
       setShowSchemePicker(false)
       setSelectionBox(null)
+      // Reset new guest form when modal opens/closes
+      setShowNewGuest(false)
+      setNewGuestData({ first_name: '', last_name: '', phone: '' })
     })
   }, [currentReservation, initialMode, isOpen, initialDate, halls, menus])
 
@@ -390,15 +393,52 @@ export function ReservationModal({
     setFormData(prev => ({ ...prev, status }))
   }
 
+  // Handle status change in view mode (click to change status directly)
+  const handleStatusClickInView = async (newStatus: ReservationStatus) => {
+    if (!currentReservation || mode !== 'view') return
+    
+    // Update status immediately
+    const result = await updateReservation.mutate(currentReservation.id, {
+      status: newStatus
+    })
+    
+    if (result) {
+      // Update local reservation state
+      setLocalReservation({
+        ...currentReservation,
+        status: newStatus
+      })
+      // Also update formData for display
+      setFormData(prev => ({ ...prev, status: newStatus }))
+      onSaveSuccess?.({ ...currentReservation, status: newStatus })
+    }
+  }
+
   const handleSave = async () => {
     let guestId = formData.guest_id
 
-    // Create new guest if needed
-    if (showNewGuest && newGuestData.first_name && newGuestData.last_name && newGuestData.phone) {
-      const newGuest = await createGuest.mutate(newGuestData)
+    // Create new guest ONLY if we're in create mode or explicitly adding a new guest
+    // Don't create guest if we're just editing an existing reservation
+    if (showNewGuest && mode !== 'view' && newGuestData.first_name && newGuestData.last_name && newGuestData.phone) {
+      // Check if guest with this phone already exists
+      const existingGuest = guests.find(g => g.phone === newGuestData.phone)
+      if (existingGuest) {
+        alert(`Гость с телефоном ${newGuestData.phone} уже существует. Выберите существующего гостя.`)
+        return
+      }
+
+      const newGuest = await createGuest.mutate({
+        ...newGuestData,
+        status: 'regular' as const // Добавляем обязательное поле status
+      })
       if (newGuest) {
         guestId = newGuest.id
+        // Reset new guest form after successful creation
+        setShowNewGuest(false)
+        setNewGuestData({ first_name: '', last_name: '', phone: '' })
       } else {
+        const errorMsg = createGuest.error || 'Не удалось создать гостя. Проверьте введенные данные.'
+        alert(errorMsg)
         return // Failed to create guest
       }
     }
@@ -408,11 +448,21 @@ export function ReservationModal({
       return
     }
 
+    // Автоматически меняем статус с "new" на "in_progress" при любом изменении
+    let statusToSave = formData.status
+    if (currentReservation && currentReservation.status === 'new' && formData.status === 'new') {
+      // Если статус был "new" и мы что-то изменяем, автоматически переводим в "in_progress"
+      statusToSave = 'in_progress'
+    }
+
     const dataToSave = {
       ...formData,
       guest_id: guestId,
       // Supabase column nullable, тип в TS optional, передаём undefined, не null
       table_id: (selectedTables[0] || formData.table_id) || undefined,
+      // Обновляем total_amount из вычисленной суммы
+      total_amount: computedTotal,
+      status: statusToSave,
     }
 
     // Формируем selected_menu_items для обновления отображения
@@ -460,12 +510,14 @@ export function ReservationModal({
         await syncReservationMenuItems(created.id, selectedSalads)
         const updatedReservation = {
           ...created,
+          status: statusToSave, // Используем обновленный статус
           tables: tables.filter(t => selectedTables.includes(t.id)),
           table_ids: selectedTables,
           selected_menu_items: buildSelectedMenuItems(created.id)
         }
         // Обновляем локальное состояние для немедленного отображения
         setLocalReservation(updatedReservation as Reservation)
+        setFormData(prev => ({ ...prev, status: statusToSave }))
         onSaveSuccess?.(updatedReservation)
       }
     } else if (currentReservation) {
@@ -475,12 +527,14 @@ export function ReservationModal({
         await syncReservationMenuItems(currentReservation.id, selectedSalads)
         const updatedReservation = {
           ...result,
+          status: statusToSave, // Используем обновленный статус
           tables: tables.filter(t => selectedTables.includes(t.id)),
           table_ids: selectedTables,
           selected_menu_items: buildSelectedMenuItems(currentReservation.id)
         }
         // Обновляем локальное состояние для немедленного отображения
         setLocalReservation(updatedReservation as Reservation)
+        setFormData(prev => ({ ...prev, status: statusToSave }))
         onSaveSuccess?.(updatedReservation)
       }
     }
@@ -562,7 +616,7 @@ export function ReservationModal({
               )}
             </div>
             
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 mr-8">
               {reservation && (
                 <Button
                   variant="ghost"
@@ -628,14 +682,21 @@ export function ReservationModal({
                       key={status}
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
-                      onClick={() => mode !== 'view' && handleStatusChange(status)}
-                      disabled={mode === 'view'}
+                      onClick={() => {
+                        if (mode === 'view') {
+                          // В режиме просмотра - сразу изменяем статус
+                          handleStatusClickInView(status)
+                        } else {
+                          // В режиме редактирования - просто меняем в форме
+                          handleStatusChange(status)
+                        }
+                      }}
                       className={cn(
                         "px-4 py-2 rounded-xl text-sm font-medium border-2 transition-all",
                         isSelected 
                           ? "shadow-md" 
                           : "opacity-60 hover:opacity-100",
-                        mode === 'view' && "cursor-default"
+                        mode === 'view' && "cursor-pointer"
                       )}
                       style={{
                         backgroundColor: isSelected ? config.bgColor : 'transparent',

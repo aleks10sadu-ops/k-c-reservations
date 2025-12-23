@@ -97,7 +97,7 @@ CREATE TABLE reservations (
     time TIME NOT NULL,
     hall_id UUID NOT NULL REFERENCES halls(id),
     table_id UUID REFERENCES tables(id),
-    guest_id UUID NOT NULL REFERENCES guests(id),
+    guest_id UUID NOT NULL REFERENCES guests(id) ON DELETE CASCADE,
     guests_count INTEGER NOT NULL DEFAULT 1,
     children_count INTEGER NOT NULL DEFAULT 0,
     menu_id UUID REFERENCES menus(id),
