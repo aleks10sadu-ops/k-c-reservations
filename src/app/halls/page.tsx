@@ -79,40 +79,56 @@ export default function HallsPage() {
   const editorRef = useRef<HTMLDivElement | null>(null)
   const editorWrapperRef = useRef<HTMLDivElement | null>(null)
   const GRID = 10
+  const [isMobile, setIsMobile] = useState(false)
   const CANVAS_WIDTH = 800
   const CANVAS_HEIGHT = 600
+  const CANVAS_WIDTH_MOBILE = 600
+  const CANVAS_HEIGHT_MOBILE = 450
   const ROTATE_HANDLE_OFFSET = 24
   const [previewScale, setPreviewScale] = useState(1)
   const [editorScale, setEditorScale] = useState(1)
 
+  // Check if mobile
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768)
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
   // Keep preview/editor scaled to fit containers without overflow
-  const computeScale = (el: HTMLDivElement | null, setter: (n: number) => void) => {
+  const computeScale = (el: HTMLDivElement | null, setter: (n: number) => void, isMobile = false) => {
     if (!el) return
     const padding = 16
     const availableW = el.clientWidth - padding
     const availableH = el.clientHeight - padding
     if (availableW <= 0 || availableH <= 0) return
-    const next = Math.min(1, Math.min(availableW / CANVAS_WIDTH, availableH / CANVAS_HEIGHT))
+
+    // Use mobile dimensions if on small screen or explicitly mobile
+    const canvasW = isMobile || window.innerWidth < 768 ? CANVAS_WIDTH_MOBILE : CANVAS_WIDTH
+    const canvasH = isMobile || window.innerWidth < 768 ? CANVAS_HEIGHT_MOBILE : CANVAS_HEIGHT
+
+    const next = Math.min(1, Math.min(availableW / canvasW, availableH / canvasH))
     setter(next || 1)
   }
 
   useEffect(() => {
     const el = previewWrapperRef.current
     if (!el) return
-    computeScale(el, setPreviewScale)
-    const ro = new ResizeObserver(() => computeScale(el, setPreviewScale))
+    computeScale(el, setPreviewScale, isMobile)
+    const ro = new ResizeObserver(() => computeScale(el, setPreviewScale, isMobile))
     ro.observe(el)
     return () => ro.disconnect()
-  }, [])
+  }, [isMobile])
 
   useEffect(() => {
     const el = editorWrapperRef.current
     if (!el) return
-    computeScale(el, setEditorScale)
-    const ro = new ResizeObserver(() => computeScale(el, setEditorScale))
+    computeScale(el, setEditorScale, isMobile)
+    const ro = new ResizeObserver(() => computeScale(el, setEditorScale, isMobile))
     ro.observe(el)
     return () => ro.disconnect()
-  }, [isEditorOpen])
+  }, [isEditorOpen, isMobile])
 
   // Fetch data
   const { data: halls, loading: hallsLoading } = useHalls()
@@ -341,16 +357,22 @@ export default function HallsPage() {
                         <CardContent>
                           <div
                             ref={previewWrapperRef}
-                            className="relative bg-stone-50 rounded-xl border-2 border-dashed border-stone-200 overflow-hidden flex items-center justify-center"
-                            style={{ width: '100%', maxWidth: CANVAS_WIDTH, height: CANVAS_HEIGHT, backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)', backgroundSize: '16px 16px' }}
+                            className="relative bg-stone-50 rounded-xl border-2 border-dashed border-stone-200 overflow-hidden flex items-center justify-center min-h-[300px] sm:min-h-[400px] touch-manipulation"
+                            style={{
+                              width: '100%',
+                              maxWidth: isMobile ? CANVAS_WIDTH_MOBILE : CANVAS_WIDTH,
+                              height: isMobile ? CANVAS_HEIGHT_MOBILE : CANVAS_HEIGHT,
+                              backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)',
+                              backgroundSize: '16px 16px'
+                            }}
                           >
                             <div
                               ref={previewRef}
                               role="button"
                               className="relative cursor-pointer"
                               style={{
-                                width: CANVAS_WIDTH,
-                                height: CANVAS_HEIGHT,
+                                width: isMobile ? CANVAS_WIDTH_MOBILE : CANVAS_WIDTH,
+                                height: isMobile ? CANVAS_HEIGHT_MOBILE : CANVAS_HEIGHT,
                                 transform: `scale(${previewScale})`,
                                 transformOrigin: 'top left',
                               }}
@@ -835,14 +857,15 @@ export default function HallsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="flex flex-wrap justify-between items-center gap-3">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
               <div className="text-sm text-stone-600">
                 Снап к сетке: {GRID}px • Двигать/ресайзить/крутить можно только в этом редакторе.
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2 w-full sm:w-auto">
                 {selectedHall && (
                   <Button
-                    size="sm"
+                    size="default"
+                    className="flex-1 sm:flex-none"
                     onClick={() => {
                       setEditingTable(null)
                       setTableForm({
@@ -864,8 +887,9 @@ export default function HallsPage() {
                 )}
                 {selectedHall && (
                   <Button
-                    size="sm"
+                    size="default"
                     variant="outline"
+                    className="flex-1 sm:flex-none"
                     onClick={() => {
                       setEditingLayoutItem(null)
                       setLayoutForm({
@@ -888,8 +912,8 @@ export default function HallsPage() {
                   </Button>
                 )}
                 <Button
-                  size="sm"
-                  className="gap-2"
+                  size="default"
+                  className="flex-1 sm:flex-none gap-2"
                   onClick={async () => {
                     await Promise.all([refetchTables(), refetchLayoutItems()])
                     setIsEditorOpen(false)
@@ -910,8 +934,8 @@ export default function HallsPage() {
                 ref={editorRef}
                 className="relative bg-white rounded-xl border border-stone-200 overflow-hidden"
                 style={{
-                  width: CANVAS_WIDTH,
-                  height: CANVAS_HEIGHT,
+                  width: isMobile ? CANVAS_WIDTH_MOBILE : CANVAS_WIDTH,
+                  height: isMobile ? CANVAS_HEIGHT_MOBILE : CANVAS_HEIGHT,
                   transform: `scale(${editorScale})`,
                   transformOrigin: 'top left',
                   backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)',

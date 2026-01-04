@@ -238,44 +238,44 @@ export default function HomePage() {
         </motion.div>
 
         {/* Filters */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="mb-6"
+          className="mb-6 px-2 sm:px-0"
         >
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="relative flex-1">
+            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3">
+              <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400" />
-                <Input 
+                <Input
                   placeholder="Поиск по имени, телефону или комментарию..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 pr-20"
                 />
-              </div>
-              
-              <div className="flex items-center gap-2">
-                {statusFilter !== 'all' && (
-                  <Badge 
-                    variant={statusFilter === 'new' ? 'new' : 
-                            statusFilter === 'in_progress' ? 'inProgress' :
-                            statusFilter === 'prepaid' ? 'prepaid' : 'paid'}
-                    className="cursor-pointer"
-                    onClick={() => setStatusFilter('all')}
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                  {statusFilter !== 'all' && (
+                    <Badge
+                      variant={statusFilter === 'new' ? 'new' :
+                              statusFilter === 'in_progress' ? 'inProgress' :
+                              statusFilter === 'prepaid' ? 'prepaid' : 'paid'}
+                      className="cursor-pointer text-xs px-2 py-1"
+                      onClick={() => setStatusFilter('all')}
+                    >
+                      {RESERVATION_STATUS_CONFIG[statusFilter].label} ✕
+                    </Badge>
+                  )}
+                  <Button
+                    variant={hasActiveFilters ? 'default' : 'outline'}
+                    size="sm"
+                    className="gap-1 h-8"
+                    onClick={() => setIsFiltersOpen((prev) => !prev)}
                   >
-                    {RESERVATION_STATUS_CONFIG[statusFilter].label} ✕
-                  </Badge>
-                )}
-                <Button 
-                  variant={hasActiveFilters ? 'default' : 'outline'} 
-                  className="gap-2"
-                  onClick={() => setIsFiltersOpen((prev) => !prev)}
-                >
-                  <Filter className="h-4 w-4" />
-                  Фильтры
-                </Button>
+                    <Filter className="h-3 w-3" />
+                    <span className="hidden sm:inline">Фильтры</span>
+                  </Button>
+                </div>
               </div>
             </div>
 
@@ -287,7 +287,7 @@ export default function HomePage() {
                   exit={{ height: 0, opacity: 0 }}
                   className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm"
                 >
-                  <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                     <div className="space-y-2">
                       <p className="text-sm text-stone-500">Зал</p>
                       <Select
@@ -389,11 +389,11 @@ export default function HomePage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-end border-t border-stone-100 px-4 py-3 gap-2">
-                    <Button variant="ghost" size="sm" onClick={handleResetFilters}>
+                  <div className="flex items-center justify-between sm:justify-end border-t border-stone-100 px-4 py-3 gap-2">
+                    <Button variant="ghost" size="sm" onClick={handleResetFilters} className="flex-1 sm:flex-none">
                       Сбросить
                     </Button>
-                    <Button size="sm" onClick={() => setIsFiltersOpen(false)}>
+                    <Button size="sm" onClick={() => setIsFiltersOpen(false)} className="flex-1 sm:flex-none">
                       Применить
                     </Button>
                   </div>

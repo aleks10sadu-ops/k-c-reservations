@@ -459,28 +459,29 @@ export default function MenuPage() {
               whileTap={{ scale: 0.98 }}
               onClick={() => setSelectedMenuId(menu.id)}
               className={cn(
-                "cursor-pointer rounded-2xl border-2 p-6 transition-all",
-                selectedMenu?.id === menu.id 
-                  ? "border-amber-500 bg-amber-50 shadow-lg shadow-amber-500/10" 
+                "cursor-pointer rounded-2xl border-2 p-4 sm:p-6 transition-all touch-manipulation",
+                selectedMenu?.id === menu.id
+                  ? "border-amber-500 bg-amber-50 shadow-lg shadow-amber-500/10"
                   : "border-stone-200 bg-white hover:border-amber-200"
               )}
             >
               <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
                   <div className={cn(
-                    "flex h-12 w-12 items-center justify-center rounded-xl",
+                    "flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-xl flex-shrink-0",
                     selectedMenu?.id === menu.id ? "bg-amber-500 text-white" : "bg-stone-100 text-stone-600"
                   )}>
-                    <ChefHat className="h-6 w-6" />
+                    <ChefHat className="h-5 w-5 sm:h-6 sm:w-6" />
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-stone-900">{menu.name}</h3>
-                    <p className="text-sm text-stone-500">{menu.description}</p>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-semibold text-stone-900 truncate">{menu.name}</h3>
+                    <p className="text-sm text-stone-500 line-clamp-2">{menu.description}</p>
                   </div>
                 </div>
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   size="icon"
+                  className="flex-shrink-0 ml-2"
                   onClick={(e) => {
                     e.stopPropagation()
                     handleOpenEditMenu(menu)
@@ -490,19 +491,19 @@ export default function MenuPage() {
                 </Button>
               </div>
               
-              <div className="flex items-end justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
                 <div>
-                  <p className="text-2xl font-bold text-stone-900">
+                  <p className="text-xl sm:text-2xl font-bold text-stone-900">
                     {formatCurrency(menu.price_per_person)}
                   </p>
                   <p className="text-sm text-stone-500">за человека</p>
                 </div>
-                <Badge variant={menu.is_active ? 'default' : 'secondary'}>
+                <Badge variant={menu.is_active ? 'default' : 'secondary'} className="self-start">
                   {menu.is_active ? 'Активно' : 'Неактивно'}
                 </Badge>
               </div>
               
-              <div className="mt-4 pt-4 border-t border-stone-200 flex items-center justify-between text-sm text-stone-500">
+              <div className="mt-4 pt-4 border-t border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-sm text-stone-500">
                 <span>{menu.total_weight_per_person} гр./чел.</span>
                 <span>{allMenuItems.filter(i => i.menu_id === menu.id).length} позиций</span>
               </div>

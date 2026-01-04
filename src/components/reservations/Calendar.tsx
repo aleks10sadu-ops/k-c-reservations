@@ -265,7 +265,7 @@ export function Calendar({
                   transition={{ delay: index * 0.01 }}
                   onClick={() => handleDateClick(day)}
                   className={cn(
-                    "group min-h-[120px] sm:min-h-[140px] p-2 border-b border-r border-stone-100 cursor-pointer transition-colors",
+                    "group min-h-[140px] sm:min-h-[160px] p-3 sm:p-2 border-b border-r border-stone-100 cursor-pointer transition-colors",
                     !isCurrentMonth && "bg-stone-50/50",
                     isCurrentMonth && "bg-white hover:bg-stone-50",
                     isTodayDate && "bg-amber-50/50",
@@ -274,9 +274,9 @@ export function Calendar({
                   )}
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <span 
+                    <span
                       className={cn(
-                        "flex h-7 w-7 items-center justify-center rounded-full text-sm font-medium",
+                        "flex h-8 w-8 sm:h-7 sm:w-7 items-center justify-center rounded-full text-base sm:text-sm font-medium",
                         !isCurrentMonth && "text-stone-300",
                         isCurrentMonth && "text-stone-700",
                         isTodayDate && "bg-amber-500 text-white",
@@ -285,23 +285,23 @@ export function Calendar({
                     >
                       {format(day, 'd')}
                     </span>
-                    
+
                     {isCurrentMonth && (
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-6 w-6 opacity-0 group-hover:opacity-100 hover:opacity-100 focus:opacity-100"
+                        className="h-8 w-8 sm:h-6 sm:w-6 opacity-0 group-hover:opacity-100 hover:opacity-100 focus:opacity-100"
                         onClick={(e) => {
                           e.stopPropagation()
                           onAddReservation?.(day)
                         }}
                       >
-                        <Plus className="h-4 w-4" />
+                        <Plus className="h-5 w-5 sm:h-4 sm:w-4" />
                       </Button>
                     )}
                   </div>
 
-                  <div className="space-y-1 overflow-hidden">
+                  <div className="space-y-2 overflow-hidden">
                     <AnimatePresence>
                       {dayReservations.slice(0, 3).map((reservation, rIndex) => (
                         <motion.div
@@ -314,14 +314,15 @@ export function Calendar({
                             e.stopPropagation()
                             onReservationClick?.(reservation)
                           }}
+                          className="touch-manipulation"
                         >
                           <ReservationCard reservation={reservation} compact />
                         </motion.div>
                       ))}
                     </AnimatePresence>
-                    
+
                     {dayReservations.length > 3 && (
-                      <div className="text-xs text-stone-500 text-center py-1">
+                      <div className="text-sm sm:text-xs text-stone-500 text-center py-1">
                         +{dayReservations.length - 3} ещё
                       </div>
                     )}
