@@ -451,17 +451,19 @@ export function ReservationModal({
     }
 
     const dataToSave = {
-      ...formData,
-      guest_id: guestId,
-      // Supabase column nullable, тип в TS optional, передаём undefined, не null
+      date: formData.date,
+      time: formData.time,
+      hall_id: formData.hall_id,
       table_id: (selectedTables[0] || formData.table_id) || undefined,
-      // Обновляем total_amount из вычисленной суммы
-      total_amount: computedTotal,
+      guest_id: guestId,
+      guests_count: formData.guests_count,
+      children_count: formData.children_count,
+      menu_id: formData.menu_id,
+      color: formData.color,
       status: statusToSave,
+      total_amount: computedTotal,
+      comments: formData.comments,
     }
-
-    // Убираем prepaid_amount из данных для сохранения, так как работа с оплатами через меню "Оплаты"
-    delete dataToSave.prepaid_amount
 
     // Формируем selected_menu_items для обновления отображения
     const buildSelectedMenuItems = (reservationId: string): ReservationMenuItem[] => {
