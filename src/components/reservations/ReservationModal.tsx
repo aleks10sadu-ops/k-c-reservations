@@ -84,7 +84,6 @@ export function ReservationModal({
     color: '#f59e0b',
     status: 'new' as ReservationStatus,
     total_amount: 0,
-    prepaid_amount: 0,
     comments: ''
   })
 
@@ -158,7 +157,6 @@ export function ReservationModal({
           color: currentReservation.color || '#f59e0b',
           status: currentReservation.status,
           total_amount: currentReservation.total_amount,
-          prepaid_amount: currentReservation.prepaid_amount,
           comments: currentReservation.comments || ''
         })
         const initialTables =
@@ -192,7 +190,6 @@ export function ReservationModal({
         color: '#f59e0b',
           status: 'new',
           total_amount: 0,
-          prepaid_amount: 0,
           comments: ''
         })
         setSelectedTables([])
@@ -279,8 +276,6 @@ export function ReservationModal({
     }
     return formData.total_amount
   }, [currentMenu, formData.guests_count, formData.total_amount])
-
-  const remainingAmount = computedTotal - formData.prepaid_amount
 
   const occupiedTableMap = useMemo(() => {
     const map = new Map<string, string>()
@@ -464,6 +459,9 @@ export function ReservationModal({
       total_amount: computedTotal,
       status: statusToSave,
     }
+
+    // Убираем prepaid_amount из данных для сохранения, так как работа с оплатами через меню "Оплаты"
+    delete dataToSave.prepaid_amount
 
     // Формируем selected_menu_items для обновления отображения
     const buildSelectedMenuItems = (reservationId: string): ReservationMenuItem[] => {
@@ -1079,7 +1077,7 @@ export function ReservationModal({
             <Separator />
 
             {/* Guests Count */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label className="flex items-center gap-2">
                   <Users className="h-3.5 w-3.5" />
@@ -1088,7 +1086,7 @@ export function ReservationModal({
                 {mode === 'view' ? (
                   <p className="mt-1 text-2xl font-bold text-stone-900">{currentReservation?.guests_count}</p>
                 ) : (
-                  <Input 
+                  <Input
                     type="number"
                     min={1}
                     value={formData.guests_count}
@@ -1097,7 +1095,7 @@ export function ReservationModal({
                   />
                 )}
               </div>
-              
+
               <div>
                 <Label className="flex items-center gap-2">
                   <Baby className="h-3.5 w-3.5" />
@@ -1106,7 +1104,7 @@ export function ReservationModal({
                 {mode === 'view' ? (
                   <p className="mt-1 text-2xl font-bold text-stone-900">{currentReservation?.children_count || 0}</p>
                 ) : (
-                  <Input 
+                  <Input
                     type="number"
                     min={0}
                     value={formData.children_count}
@@ -1114,30 +1112,6 @@ export function ReservationModal({
                     className="mt-1"
                   />
                 )}
-              </div>
-
-              <div>
-                <Label>Предоплата</Label>
-                {mode === 'view' ? (
-                  <p className="mt-1 text-2xl font-bold text-green-600">
-                    {formatCurrency(currentReservation?.prepaid_amount || 0)}
-                  </p>
-                ) : (
-                  <Input 
-                    type="number"
-                    min={0}
-                    value={formData.prepaid_amount}
-                    onChange={(e) => setFormData({ ...formData, prepaid_amount: parseFloat(e.target.value) || 0 })}
-                    className="mt-1"
-                  />
-                )}
-              </div>
-
-              <div>
-                <Label>Осталось внести</Label>
-                <p className="mt-1 text-2xl font-bold text-amber-600">
-                  {formatCurrency(remainingAmount)}
-                </p>
               </div>
             </div>
 

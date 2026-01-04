@@ -127,16 +127,6 @@ export function ReservationCard({ reservation, onClick, compact = false }: Reser
           <div className="text-lg font-bold text-stone-900">
             {formatCurrency(reservation.total_amount)}
           </div>
-          {reservation.prepaid_amount > 0 && (
-            <div className="text-xs text-green-600 mt-1">
-              Предоплата: {formatCurrency(reservation.prepaid_amount)}
-            </div>
-          )}
-          {reservation.total_amount - reservation.prepaid_amount > 0 && (
-            <div className="text-xs text-amber-600 mt-0.5">
-              Остаток: {formatCurrency(reservation.total_amount - reservation.prepaid_amount)}
-            </div>
-          )}
         </div>
       </div>
       
