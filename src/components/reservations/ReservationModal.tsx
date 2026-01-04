@@ -1262,20 +1262,6 @@ export function ReservationModal({
                               )
                             })}
                           </div>
-                          {isSelectable && (
-                            <div className={cn(
-                              "px-4 py-2 text-sm",
-                              selectedSalads.length > maxSelections
-                                ? "bg-amber-50 text-amber-700"
-                                : "bg-blue-50 text-blue-700"
-                            )}>
-                              {selectedSalads.length > maxSelections ? (
-                                <span>⚠️ Выбрано {selectedSalads.length} из {items.length} (рекомендуется {maxSelections})</span>
-                              ) : (
-                                <span>Выберите {maxSelections} из {items.length} (выбрано: {selectedSalads.length})</span>
-                              )}
-                            </div>
-                          )}
                         </div>
                       )
                     })}
