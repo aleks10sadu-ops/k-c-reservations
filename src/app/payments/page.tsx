@@ -74,10 +74,15 @@ export default function PaymentsPage() {
   
   const paidReservations = reservations.filter(r => r.status === 'paid')
   // Показываем все бронирования, которые не полностью оплачены (не только с pending статусом)
-  const pendingPayments = reservations.filter(r => 
-    r.status !== 'paid' && 
-    r.status !== 'canceled' && 
+  const pendingPayments = reservations.filter(r =>
+    r.status !== 'paid' &&
+    r.status !== 'canceled' &&
     r.total_amount > (r.prepaid_amount || 0)
+  )
+
+  // Все бронирования доступные для добавления оплаты (кроме полностью отменённых без платежей)
+  const availableForPayment = reservations.filter(r =>
+    r.status !== 'canceled' || (r.payments && r.payments.length > 0)
   )
 
   // Get all payments with reservation info
@@ -629,9 +634,9 @@ export default function PaymentsPage() {
                     <SelectValue placeholder="Выберите бронирование" />
                   </SelectTrigger>
                   <SelectContent>
-                    {pendingPayments.map(reservation => (
+                    {availableForPayment.map(reservation => (
                       <SelectItem key={reservation.id} value={reservation.id}>
-                        {reservation.guest?.last_name} {reservation.guest?.first_name} - {formatDate(reservation.date)}
+                        {reservation.guest?.last_name} {reservation.guest?.first_name} - {formatDate(reservation.date)} • {RESERVATION_STATUS_CONFIG[reservation.status].label}
                       </SelectItem>
                     ))}
                   </SelectContent>
