@@ -658,7 +658,7 @@ export function ReservationModal({
           </div>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[calc(95vh-240px)] sm:max-h-[calc(90vh-120px)] sm:pb-6">
+        <ScrollArea className="max-h-[calc(95vh-240px)] sm:max-h-[calc(90vh-120px)]">
           <div className="p-4 sm:p-6 pt-4 space-y-4 sm:space-y-6 pb-4 sm:pb-0">
             {/* Status Selection */}
             <div className="space-y-3">
@@ -1327,7 +1327,7 @@ export function ReservationModal({
             )}
 
             {/* Comments */}
-            <div className="space-y-3 pb-4 sm:pb-0">
+            <div className="space-y-3 pb-4 sm:pb-6">
               <h3 className="font-semibold text-stone-900 flex items-center gap-2">
                 <MessageSquare className="h-4 w-4" />
                 Комментарии к заказу
@@ -1345,12 +1345,44 @@ export function ReservationModal({
                 />
               )}
             </div>
+
+            {/* Desktop Footer Actions */}
+            {mode !== 'view' && (
+              <div className="hidden sm:flex items-center justify-between gap-4 pt-6 border-t border-stone-200">
+                {mode === 'edit' && currentReservation && (
+                  <Button
+                    variant="destructive"
+                    onClick={handleDelete}
+                    disabled={isLoading}
+                    className="gap-2"
+                  >
+                    {deleteReservation.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    Удалить
+                  </Button>
+                )}
+                {mode === 'create' && <div />}
+
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" onClick={onClose}>
+                    Отмена
+                  </Button>
+                  <Button
+                    onClick={handleSave}
+                    disabled={isLoading}
+                    className="gap-2"
+                  >
+                    {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    {mode === 'create' ? 'Создать' : 'Сохранить'}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </ScrollArea>
 
-        {/* Footer Actions */}
+        {/* Mobile Footer Actions */}
         {mode !== 'view' && (
-          <div className="sm:relative sticky bottom-0 flex items-center justify-between gap-4 p-4 sm:p-6 pt-4 border-t border-stone-200 bg-white shadow-lg">
+          <div className="sm:hidden sticky bottom-0 flex items-center justify-between gap-4 p-4 pt-4 border-t border-stone-200 bg-white shadow-lg">
             {mode === 'edit' && currentReservation && (
               <Button
                 variant="destructive"
