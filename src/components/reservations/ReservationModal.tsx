@@ -1056,6 +1056,7 @@ export function ReservationModal({
                             />
                           )}
                         </div>
+                        </div>
 
                         <div className="flex flex-wrap gap-3 text-sm text-stone-700">
                           {draftTables.length > 0 && (
