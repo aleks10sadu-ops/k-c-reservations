@@ -658,8 +658,8 @@ export function ReservationModal({
           </div>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[calc(95vh-240px)] sm:max-h-[calc(90vh-120px)]">
-          <div className="p-4 sm:p-6 pt-4 space-y-4 sm:space-y-6">
+        <ScrollArea className="max-h-[calc(95vh-240px)] sm:max-h-[calc(90vh-120px)] sm:pb-6">
+          <div className="p-4 sm:p-6 pt-4 space-y-4 sm:space-y-6 pb-4 sm:pb-0">
             {/* Status Selection */}
             <div className="space-y-3">
               <Label>Статус бронирования</Label>
@@ -1350,7 +1350,7 @@ export function ReservationModal({
 
         {/* Footer Actions */}
         {mode !== 'view' && (
-          <div className="sticky bottom-0 flex items-center justify-between gap-4 p-4 sm:p-6 pt-4 border-t border-stone-200 bg-white shadow-lg">
+          <div className="sm:relative sticky bottom-0 flex items-center justify-between gap-4 p-4 sm:p-6 pt-4 border-t border-stone-200 bg-white sm:bg-transparent shadow-lg sm:shadow-none">
             {mode === 'edit' && currentReservation && (
               <Button
                 variant="destructive"
