@@ -107,8 +107,9 @@ export function ReservationModal({
   } | null>(null)
   const schemeRef = useRef<HTMLDivElement | null>(null)
 
-  const CANVAS_WIDTH = 800
-  const CANVAS_HEIGHT = 600
+  const [isMobile, setIsMobile] = useState(false)
+  const CANVAS_WIDTH = isMobile ? 600 : 800
+  const CANVAS_HEIGHT = isMobile ? 450 : 600
   const COLOR_PRESETS = ['#f97316', '#f59e0b', '#10b981', '#3b82f6', '#6366f1', '#ec4899', '#ef4444', '#6b7280']
 
   // Fetch data
@@ -132,6 +133,14 @@ export function ReservationModal({
   const updateReservation = useUpdateMutation<Reservation>('reservations')
   const deleteReservation = useDeleteMutation('reservations')
   const createGuest = useCreateMutation<Guest>('guests')
+
+  // Check if mobile device
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768)
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   // Обновляем локальное состояние при изменении пропа reservation
   useEffect(() => {
@@ -602,8 +611,8 @@ export function ReservationModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] p-0 overflow-hidden w-[95vw] sm:w-full">
-        <DialogHeader className="p-6 pb-0">
+      <DialogContent className="max-w-4xl max-h-[95vh] sm:max-h-[90vh] p-0 overflow-hidden w-[98vw] sm:w-full mx-2 sm:mx-0">
+        <DialogHeader className="p-4 sm:p-6 pb-0">
           <div className="flex items-start justify-between gap-4">
             <div>
               <DialogTitle className="text-xl font-bold text-stone-900">
@@ -616,7 +625,7 @@ export function ReservationModal({
               )}
             </div>
             
-            <div className="flex items-center gap-2 mr-8">
+            <div className="flex items-center gap-2">
               {reservation && (
                 <Button
                   variant="ghost"
@@ -634,7 +643,7 @@ export function ReservationModal({
                 </Button>
               )}
 
-              {mode === 'view' ? (
+              {mode === 'view' && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -644,32 +653,13 @@ export function ReservationModal({
                   <Pencil className="h-4 w-4" />
                   Редактировать
                 </Button>
-              ) : (
-                <>
-                  <Button variant="outline" size="sm" onClick={onClose}>
-                    Отмена
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="gap-2"
-                    onClick={handleSave}
-                    disabled={isLoading}
-                  >
-                    {isLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Save className="h-4 w-4" />
-                    )}
-                    Сохранить
-                  </Button>
-                </>
               )}
             </div>
           </div>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[calc(90vh-120px)]">
-          <div className="p-6 pt-4 space-y-6">
+        <ScrollArea className="max-h-[calc(95vh-240px)] sm:max-h-[calc(90vh-120px)]">
+          <div className="p-4 sm:p-6 pt-4 space-y-4 sm:space-y-6">
             {/* Status Selection */}
             <div className="space-y-3">
               <Label>Статус бронирования</Label>
@@ -963,7 +953,7 @@ export function ReservationModal({
 
                     {showSchemePicker && (
                       <div className="rounded-xl border border-stone-200 bg-stone-50 p-3 space-y-3">
-                        <div className="flex items-center justify-between gap-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                           <div className="text-sm text-stone-600">
                             Кликните по столу или выделите рамкой несколько. Можно выбрать несколько — бронь закрепится за всеми выбранными.
                           </div>
@@ -994,10 +984,18 @@ export function ReservationModal({
                           </div>
                         </div>
 
-                        <div
-                          ref={schemeRef}
-                          className="relative bg-white border border-dashed border-stone-200 overflow-hidden rounded-lg"
-                          style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)', backgroundSize: '16px 16px' }}
+                        <div className="overflow-auto">
+                          <div
+                            ref={schemeRef}
+                            className="relative bg-white border border-dashed border-stone-200 overflow-hidden rounded-lg mx-auto"
+                            style={{
+                              width: CANVAS_WIDTH,
+                              height: CANVAS_HEIGHT,
+                              backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)',
+                              backgroundSize: '16px 16px',
+                              maxWidth: '100%',
+                              aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`
+                            }}
                           onMouseDown={handleSchemeMouseDown}
                           onMouseMove={handleSchemeMouseMove}
                           onMouseUp={handleSchemeMouseUp}
@@ -1351,7 +1349,7 @@ export function ReservationModal({
 
         {/* Footer Actions */}
         {mode !== 'view' && (
-          <div className="flex items-center justify-between gap-4 p-6 pt-4 border-t border-stone-200 bg-stone-50">
+          <div className="sticky bottom-0 flex items-center justify-between gap-4 p-4 sm:p-6 pt-4 border-t border-stone-200 bg-white shadow-lg">
             {mode === 'edit' && currentReservation && (
               <Button
                 variant="destructive"
