@@ -43,9 +43,9 @@ interface CalendarProps {
 
 const weekDays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 
-export function Calendar({ 
-  reservations, 
-  onDateSelect, 
+export function Calendar({
+  reservations,
+  onDateSelect,
   onReservationClick,
   onAddReservation,
   onMonthChange,
@@ -55,6 +55,15 @@ export function Calendar({
 }: CalendarProps) {
   const [currentDate, setCurrentDate] = useState(controlledDate ?? new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
+  const [isMobile, setIsMobile] = useState(false)
+
+  // Check if mobile device
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768)
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   // Keep internal month in sync with the value provided by the parent
   useEffect(() => {
@@ -286,7 +295,7 @@ export function Calendar({
                       {format(day, 'd')}
                     </span>
 
-                    {isCurrentMonth && (
+                    {isCurrentMonth && !isMobile && (
                       <Button
                         variant="ghost"
                         size="icon"
