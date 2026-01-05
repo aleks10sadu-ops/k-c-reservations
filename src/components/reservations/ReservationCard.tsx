@@ -30,25 +30,25 @@ export function ReservationCard({ reservation, onClick, compact = false }: Reser
         whileTap={{ scale: 0.98 }}
         onClick={onClick}
         className={cn(
-          "cursor-pointer rounded-lg border-l-4 px-2 py-1.5 text-xs transition-all hover:shadow-md",
+          "cursor-pointer rounded-lg border-l-4 px-3 py-2 text-xs sm:text-sm transition-all hover:shadow-md touch-manipulation",
           `status-${reservation.status}`
         )}
         style={{ borderLeftColor: statusConfig.borderColor }}
       >
-        <div className="flex items-center justify-between gap-1">
+        <div className="flex items-center justify-between gap-2">
           <span className="font-medium truncate">
             {reservation.guest?.last_name} {reservation.guest?.first_name?.[0]}.
           </span>
-          <span className="text-stone-500 shrink-0">{reservation.time}</span>
+          <span className="text-stone-500 shrink-0 text-xs sm:text-sm">{reservation.time}</span>
         </div>
-        <div className="flex items-center gap-2 mt-0.5 text-stone-500">
-          <span className="flex items-center gap-0.5">
-            <Users className="h-3 w-3" />
-            {reservation.guests_count}
+        <div className="flex items-center gap-2 mt-1 text-stone-500">
+          <span className="flex items-center gap-1">
+            <Users className="h-3 w-3 sm:h-4 sm:w-4" />
+            <span className="text-xs sm:text-sm">{reservation.guests_count}</span>
           </span>
-            <span className="truncate">{reservation.hall?.name}</span>
+            <span className="truncate text-xs sm:text-sm">{reservation.hall?.name}</span>
             {(reservation.table_ids?.length || reservation.table?.number) && (
-              <span className="truncate">
+              <span className="truncate text-xs sm:text-sm">
                 столы: {(reservation.table_ids?.length ? reservation.table_ids : (reservation.table ? [reservation.table.id] : []))
                   .map(id => reservation.tables?.find(t => t.id === id)?.number)
                   .filter(Boolean)

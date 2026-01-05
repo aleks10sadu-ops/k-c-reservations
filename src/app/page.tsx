@@ -193,39 +193,39 @@ export default function HomePage() {
         </div>
 
         {/* Stats Cards */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-8"
+          className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-8"
         >
-          <motion.div 
+          <motion.div
             whileHover={{ scale: 1.02 }}
-            className="rounded-2xl bg-white border border-stone-200 p-4 shadow-sm"
+            className="rounded-2xl bg-white border border-stone-200 p-3 sm:p-4 shadow-sm touch-manipulation"
           >
-            <p className="text-sm text-stone-500">Всего</p>
-            <p className="text-3xl font-bold text-stone-900">
-              {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : stats.total}
+            <p className="text-xs sm:text-sm text-stone-500">Всего</p>
+            <p className="text-2xl sm:text-3xl font-bold text-stone-900">
+              {loading ? <Loader2 className="h-5 w-5 sm:h-6 sm:w-6 animate-spin" /> : stats.total}
             </p>
           </motion.div>
           
           {(Object.entries(RESERVATION_STATUS_CONFIG) as [ReservationStatus, typeof RESERVATION_STATUS_CONFIG[ReservationStatus]][]).map(([status, config]) => (
-            <motion.div 
+            <motion.div
               key={status}
               whileHover={{ scale: 1.02 }}
               onClick={() => setStatusFilter(statusFilter === status ? 'all' : status)}
-              className={`rounded-2xl border-2 p-4 shadow-sm cursor-pointer transition-all ${
+              className={`rounded-2xl border-2 p-3 sm:p-4 shadow-sm cursor-pointer transition-all touch-manipulation ${
                 statusFilter === status ? 'ring-2 ring-offset-2 ring-amber-500' : ''
               }`}
-              style={{ 
+              style={{
                 backgroundColor: config.bgColor,
-                borderColor: config.borderColor 
+                borderColor: config.borderColor
               }}
             >
-              <p className="text-sm" style={{ color: config.color }}>{config.label}</p>
-              <p className="text-3xl font-bold" style={{ color: config.color }}>
+              <p className="text-xs sm:text-sm" style={{ color: config.color }}>{config.label}</p>
+              <p className="text-2xl sm:text-3xl font-bold" style={{ color: config.color }}>
                 {loading ? (
-                  <Loader2 className="h-6 w-6 animate-spin" />
+                  <Loader2 className="h-5 w-5 sm:h-6 sm:w-6 animate-spin" />
                 ) : (
                   status === 'new' ? stats.new :
                   status === 'in_progress' ? stats.inProgress :

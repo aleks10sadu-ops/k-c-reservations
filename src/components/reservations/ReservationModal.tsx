@@ -602,7 +602,7 @@ export function ReservationModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] p-0 overflow-hidden">
+      <DialogContent className="max-w-4xl max-h-[90vh] p-0 overflow-hidden w-[95vw] sm:w-full">
         <DialogHeader className="p-6 pb-0">
           <div className="flex items-start justify-between gap-4">
             <div>

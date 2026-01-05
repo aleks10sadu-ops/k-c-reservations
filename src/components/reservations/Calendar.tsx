@@ -137,12 +137,12 @@ export function Calendar({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant={viewMode === 'year' ? 'default' : 'ghost'}
               size="sm"
               onClick={() => onViewModeChange?.('year')}
-              className="text-lg font-semibold"
+              className="text-base sm:text-lg font-semibold"
             >
               {format(currentDate, 'yyyy', { locale: ru })}
             </Button>
@@ -150,7 +150,7 @@ export function Calendar({
               variant={viewMode === 'month' ? 'default' : 'ghost'}
               size="sm"
               onClick={() => onViewModeChange?.('month')}
-              className="text-lg font-semibold capitalize"
+              className="text-base sm:text-lg font-semibold capitalize"
             >
               {format(currentDate, 'LLLL', { locale: ru })}
             </Button>
@@ -237,10 +237,10 @@ export function Calendar({
           {/* Week days header */}
           <div className="grid grid-cols-7 bg-stone-50 border-b border-stone-200">
             {weekDays.map((day, index) => (
-              <div 
-                key={day} 
+              <div
+                key={day}
                 className={cn(
-                  "py-3 text-center text-sm font-medium text-stone-500",
+                  "py-2 sm:py-3 text-center text-xs sm:text-sm font-medium text-stone-500",
                   index >= 5 && "text-stone-400"
                 )}
               >

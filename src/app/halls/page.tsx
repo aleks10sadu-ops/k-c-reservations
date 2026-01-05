@@ -224,7 +224,7 @@ export default function HallsPage() {
             value={selectedHall?.id}
             onValueChange={(v) => setSelectedHallId(v)}
           >
-            <TabsList className="mb-6">
+            <TabsList className="mb-6 overflow-x-auto whitespace-nowrap scrollbar-hide">
               {halls.map((hall) => (
                 <TabsTrigger key={hall.id} value={hall.id} className="gap-2">
                   <MapPin className="h-4 w-4" />
@@ -849,7 +849,7 @@ export default function HallsPage() {
           }
         }}
       >
-        <DialogContent className="max-w-5xl">
+        <DialogContent className="max-w-5xl w-[95vw] sm:w-full">
           <DialogHeader>
             <DialogTitle>Редактор схемы зала</DialogTitle>
             <DialogDescription>
