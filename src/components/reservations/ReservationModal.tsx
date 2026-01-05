@@ -1327,7 +1327,7 @@ export function ReservationModal({
             )}
 
             {/* Comments */}
-            <div className="space-y-3">
+            <div className="space-y-3 pb-4 sm:pb-0">
               <h3 className="font-semibold text-stone-900 flex items-center gap-2">
                 <MessageSquare className="h-4 w-4" />
                 Комментарии к заказу
@@ -1337,7 +1337,7 @@ export function ReservationModal({
                   {currentReservation?.comments || 'Нет комментариев'}
                 </p>
               ) : (
-                <Textarea 
+                <Textarea
                   placeholder="Добавьте комментарии к заказу..."
                   value={formData.comments}
                   onChange={(e) => setFormData({ ...formData, comments: e.target.value })}
@@ -1350,7 +1350,7 @@ export function ReservationModal({
 
         {/* Footer Actions */}
         {mode !== 'view' && (
-          <div className="sm:relative sticky bottom-0 flex items-center justify-between gap-4 p-4 sm:p-6 pt-4 border-t border-stone-200 bg-white sm:bg-transparent shadow-lg sm:shadow-none">
+          <div className="sm:relative sticky bottom-0 flex items-center justify-between gap-4 p-4 sm:p-6 pt-4 border-t border-stone-200 bg-white shadow-lg">
             {mode === 'edit' && currentReservation && (
               <Button
                 variant="destructive"
