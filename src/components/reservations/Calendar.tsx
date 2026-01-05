@@ -37,8 +37,8 @@ interface CalendarProps {
   onAddReservation?: (date: Date) => void
   onMonthChange?: (date: Date) => void
   currentDate?: Date
-  viewMode: 'year' | 'month' | 'day'
-  onViewModeChange?: (mode: 'year' | 'month' | 'day') => void
+  viewMode: 'year' | 'month' | 'day' | 'list'
+  onViewModeChange?: (mode: 'year' | 'month' | 'day' | 'list') => void
 }
 
 const weekDays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
@@ -124,7 +124,10 @@ export function Calendar({
 
   const handleDateClick = (date: Date) => {
     setSelectedDate(date)
-    onViewModeChange?.('day')
+    // На мобильных в режиме списка не переходим в day view
+    if (!isMobile || viewMode !== 'list') {
+      onViewModeChange?.('day')
+    }
     setCurrentDate(date)
     onMonthChange?.(date)
     onDateSelect?.(date)
@@ -163,9 +166,20 @@ export function Calendar({
             >
               {format(currentDate, 'LLLL', { locale: ru })}
             </Button>
+            {/* Mobile List View Button */}
+            {isMobile && (
+              <Button
+                variant={viewMode === 'list' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => onViewModeChange?.('list')}
+                className="text-base font-semibold"
+              >
+                Список
+              </Button>
+            )}
           </div>
         </div>
-        
+
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
@@ -176,7 +190,7 @@ export function Calendar({
             <CalendarIcon className="h-4 w-4" />
             Сегодня
           </Button>
-          
+
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
@@ -310,7 +324,7 @@ export function Calendar({
                     )}
                   </div>
 
-                  <div className="space-y-2 overflow-hidden">
+                  <div className="space-y-2">
                     <AnimatePresence>
                       {dayReservations.slice(0, 3).map((reservation, rIndex) => (
                         <motion.div
@@ -341,6 +355,61 @@ export function Calendar({
             })}
           </div>
         </div>
+      )}
+
+      {viewMode === 'list' && isMobile && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 20 }}
+          className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm"
+        >
+          <div className="flex flex-col gap-4 mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-stone-900">
+                Бронирования за {format(currentDate, 'LLLL yyyy', { locale: ru })}
+              </h3>
+              <p className="text-sm text-stone-500">
+                Всего бронирований: {reservations.length}
+              </p>
+            </div>
+            <Button
+              onClick={() => onAddReservation?.(new Date())}
+              className="gap-2 w-full"
+              size="lg"
+            >
+              <Plus className="h-5 w-5" />
+              Новая бронь
+            </Button>
+          </div>
+
+          {reservations.length === 0 ? (
+            <div className="text-center py-12 text-stone-500">
+              <CalendarIcon className="h-12 w-12 mx-auto mb-3 text-stone-300" />
+              <p>Нет бронирований в этом месяце</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {reservations
+                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                .map((reservation) => (
+                  <motion.div
+                    key={reservation.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => onReservationClick?.(reservation)}
+                    className="cursor-pointer"
+                  >
+                    <ReservationCard
+                      reservation={reservation}
+                      onClick={() => onReservationClick?.(reservation)}
+                    />
+                  </motion.div>
+                ))}
+            </div>
+          )}
+        </motion.div>
       )}
 
       {viewMode === 'day' && selectedDate && (

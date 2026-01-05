@@ -3,37 +3,37 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { motion, AnimatePresence } from 'framer-motion'
-import { 
-  Calendar, 
-  Clock, 
-  Users, 
-  MapPin, 
+import {
+  Calendar,
+  Clock,
+  Users,
+  MapPin,
   Phone,
-  Pencil,
   Save,
   Trash2,
   Plus,
-  CreditCard,
-  MessageSquare,
-  ChefHat,
-  User,
   Baby,
-  Loader2
+  Loader2,
+  Settings,
+  User,
+  ChefHat,
+  CreditCard,
+  MessageSquare
 } from 'lucide-react'
 import { Reservation, ReservationStatus, RESERVATION_STATUS_CONFIG, getMenuItemTypeLabel, MenuItemType, Guest, ReservationMenuItem } from '@/types'
-import { cn, formatCurrency, formatDate, calculatePlates, calculateTotalWeight } from '@/lib/utils'
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle 
+import { cn, formatCurrency, formatDate, formatTime, calculatePlates, calculateTotalWeight } from '@/lib/utils'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Separator } from '@/components/ui/separator'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Badge } from '@/components/ui/badge'
 import {
   Select,
   SelectContent,
@@ -54,9 +54,9 @@ interface ReservationModalProps {
   initialDate?: Date | null
 }
 
-export function ReservationModal({ 
-  reservation, 
-  isOpen, 
+export function ReservationModal({
+  reservation,
+  isOpen,
   onClose,
   onSaveSuccess,
   mode: initialMode = 'view',
@@ -67,6 +67,18 @@ export function ReservationModal({
   const [selectedSalads, setSelectedSalads] = useState<string[]>([])
   // Внутреннее состояние для хранения обновленного бронирования
   const [localReservation, setLocalReservation] = useState<Reservation | null>(reservation)
+
+  // Status variant mapping
+  const getStatusVariant = (status: ReservationStatus) => {
+    const variants = {
+      new: 'new' as const,
+      in_progress: 'inProgress' as const,
+      prepaid: 'prepaid' as const,
+      paid: 'paid' as const,
+      canceled: 'canceled' as const,
+    }
+    return variants[status]
+  }
   
   // Используем локальное состояние, если оно есть, иначе проп
   const currentReservation = localReservation || reservation
@@ -397,26 +409,6 @@ export function ReservationModal({
     setFormData(prev => ({ ...prev, status }))
   }
 
-  // Handle status change in view mode (click to change status directly)
-  const handleStatusClickInView = async (newStatus: ReservationStatus) => {
-    if (!currentReservation || mode !== 'view') return
-    
-    // Update status immediately
-    const result = await updateReservation.mutate(currentReservation.id, {
-      status: newStatus
-    })
-    
-    if (result) {
-      // Update local reservation state
-      setLocalReservation({
-        ...currentReservation,
-        status: newStatus
-      })
-      // Also update formData for display
-      setFormData(prev => ({ ...prev, status: newStatus }))
-      onSaveSuccess?.({ ...currentReservation, status: newStatus })
-    }
-  }
 
   const handleSave = async () => {
     let guestId = formData.guest_id
@@ -461,7 +453,7 @@ export function ReservationModal({
 
     const dataToSave = {
       date: formData.date,
-      time: formData.time,
+      time: formatTime(formData.time),
       hall_id: formData.hall_id,
       table_id: (selectedTables[0] || formData.table_id) || undefined,
       guest_id: guestId,
@@ -611,26 +603,59 @@ export function ReservationModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[95vh] sm:max-h-[90vh] p-0 overflow-hidden w-[98vw] sm:w-full mx-2 sm:mx-0">
-        <DialogHeader className="p-4 sm:p-6 pb-0">
+      <DialogContent className={cn(
+        "max-w-4xl max-h-[95vh] p-0 overflow-hidden",
+        "w-[95vw] sm:w-[90vw] md:w-[85vw]", // Добавлен md breakpoint
+        "mx-auto", // Центрирование
+        mode !== 'view' && "pb-0"
+      )}>
+        <DialogHeader className="p-4 pb-2">
+          {/* Compact Header */}
           <div className="flex items-start justify-between gap-4">
-            <div>
-              <DialogTitle className="text-xl font-bold text-stone-900">
+            <div className="flex-1 min-w-0">
+              <DialogTitle className="text-lg font-bold text-stone-900">
                 {mode === 'create' ? 'Новое бронирование' : 'Бронирование'}
               </DialogTitle>
               {currentReservation && mode !== 'create' && (
-                <p className="text-sm text-stone-500 mt-1">
-                  {formatDate(currentReservation.date)} в {currentReservation.time}
-                </p>
+                <div className="mt-1 space-y-1">
+                  <p className="text-sm font-medium text-stone-700">
+                    {currentReservation.guest?.last_name} {currentReservation.guest?.first_name}
+                  </p>
+                  <p className="text-xs text-stone-500">
+                    {formatDate(currentReservation.date)} в {formatTime(currentReservation.time)}
+                  </p>
+                </div>
               )}
             </div>
-            
-            <div className="flex items-center gap-2">
-              {reservation && (
+
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {/* Status Badge */}
+              <div className="text-right">
+                <div className="text-lg font-bold text-stone-900">
+                  {formatCurrency(currentReservation?.total_amount || computedTotal)}
+                </div>
+                <Badge variant={getStatusVariant(currentReservation?.status || formData.status)} className="text-xs mt-1">
+                  {RESERVATION_STATUS_CONFIG[currentReservation?.status || formData.status].label}
+                </Badge>
+              </div>
+
+              {mode === 'view' && reservation && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setMode('edit')}
+                  className="gap-2"
+                >
+                  <Settings className="h-4 w-4" />
+                  <span className="hidden sm:inline">Изменить</span>
+                </Button>
+              )}
+
+              {reservation && mode === 'view' && (
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="text-stone-400 hover:text-rose-600"
+                  className="text-stone-400 hover:text-rose-600 hover:bg-rose-50"
                   onClick={handleDelete}
                   disabled={isLoading}
                   title="Удалить бронь"
@@ -642,96 +667,77 @@ export function ReservationModal({
                   )}
                 </Button>
               )}
-
-              {mode === 'view' && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setMode('edit')}
-                  className="gap-2"
-                >
-                  <Pencil className="h-4 w-4" />
-                  Редактировать
-                </Button>
-              )}
             </div>
           </div>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[calc(95vh-240px)] sm:max-h-[calc(90vh-120px)]">
-          <div className="p-4 sm:p-6 pt-4 space-y-4 sm:space-y-6 pb-4 sm:pb-0">
-            {/* Status Selection */}
-            <div className="space-y-3">
-              <Label>Статус бронирования</Label>
-              <div className="flex flex-wrap gap-2">
-                {statusOptions.map((status) => {
-                  const config = RESERVATION_STATUS_CONFIG[status]
-                  const isSelected = formData.status === status
-                  return (
-                    <motion.button
-                      key={status}
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => {
-                        if (mode === 'view') {
-                          // В режиме просмотра - сразу изменяем статус
-                          handleStatusClickInView(status)
-                        } else {
-                          // В режиме редактирования - просто меняем в форме
-                          handleStatusChange(status)
-                        }
-                      }}
-                      className={cn(
-                        "px-4 py-2 rounded-xl text-sm font-medium border-2 transition-all",
-                        isSelected 
-                          ? "shadow-md" 
-                          : "opacity-60 hover:opacity-100",
-                        mode === 'view' && "cursor-pointer"
-                      )}
-                      style={{
-                        backgroundColor: isSelected ? config.bgColor : 'transparent',
-                        borderColor: config.borderColor,
-                        color: config.color,
-                      }}
-                    >
-                      {config.label}
-                    </motion.button>
-                  )
-                })}
+        <ScrollArea className={cn(
+          mode === 'view' ? "max-h-[calc(80vh-140px)]" : "max-h-[calc(95vh-200px)]",
+          mode !== 'view' && "pb-20"
+        )}>
+          <div className="p-4 pr-10 space-y-4 break-anywhere">
+            {/* Status Selection - Only show when editing */}
+            {mode !== 'view' && (
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">Статус бронирования</Label>
+                <div className="flex flex-wrap gap-2">
+                  {statusOptions.map((status) => {
+                    const config = RESERVATION_STATUS_CONFIG[status]
+                    const isSelected = formData.status === status
+                    return (
+                      <motion.button
+                        key={status}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => handleStatusChange(status)}
+                        className={cn(
+                          "px-3 py-2 rounded-lg text-sm font-medium border-2 transition-all",
+                          isSelected ? "shadow-md" : "opacity-60 hover:opacity-100"
+                        )}
+                        style={{
+                          backgroundColor: isSelected ? config.bgColor : 'transparent',
+                          borderColor: config.borderColor,
+                          color: config.color,
+                        }}
+                      >
+                        {config.label}
+                      </motion.button>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
+            )}
 
-            <Separator />
-
-            {/* Guest Selection */}
+            {/* Guest Information */}
             <div className="space-y-4">
-              <h3 className="font-semibold text-stone-900 flex items-center gap-2">
-                <User className="h-4 w-4" />
+              <h3 className="font-semibold text-stone-900 flex items-center gap-2 border-b border-stone-200 pb-2">
+                <User className="h-4 w-4 flex-shrink-0" />
                 Информация о госте
               </h3>
-              
               {mode === 'view' ? (
                 <div className="space-y-3">
-                  <div>
-                    <Label>ФИО</Label>
-                    <p className="mt-1 font-medium">
-                      {currentReservation?.guest?.last_name} {currentReservation?.guest?.first_name} {currentReservation?.guest?.middle_name}
-                    </p>
-                  </div>
-                  <div>
-                    <Label className="flex items-center gap-2">
-                      <Phone className="h-3.5 w-3.5" />
-                      Телефон
-                    </Label>
-                    <p className="mt-1">{currentReservation?.guest?.phone}</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-xs text-stone-500">ФИО</Label>
+                      <p className="mt-1 font-medium text-stone-900 break-anywhere">
+                        {currentReservation?.guest?.last_name} {currentReservation?.guest?.first_name} {currentReservation?.guest?.middle_name}
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-stone-500 flex items-center gap-2">
+                        <Phone className="h-3.5 w-3.5 flex-shrink-0" />
+                        Телефон
+                      </Label>
+                      <p className="mt-1 text-stone-900 break-anywhere">{currentReservation?.guest?.phone}</p>
+                    </div>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-3">
                   {!showNewGuest ? (
                     <>
-                      <Select 
-                        value={formData.guest_id} 
+                      <Select
+                        value={formData.guest_id}
                         onValueChange={(v) => setFormData({ ...formData, guest_id: v })}
                       >
                         <SelectTrigger>
@@ -755,27 +761,24 @@ export function ReservationModal({
                       <div className="grid grid-cols-2 gap-3">
                         <div>
                           <Label>Фамилия *</Label>
-                          <Input 
+                          <Input
                             value={newGuestData.last_name}
                             onChange={(e) => setNewGuestData({ ...newGuestData, last_name: e.target.value })}
-                            className="mt-1"
                           />
                         </div>
                         <div>
                           <Label>Имя *</Label>
-                          <Input 
+                          <Input
                             value={newGuestData.first_name}
                             onChange={(e) => setNewGuestData({ ...newGuestData, first_name: e.target.value })}
-                            className="mt-1"
                           />
                         </div>
                       </div>
                       <div>
                         <Label>Телефон *</Label>
-                        <Input 
+                        <Input
                           value={newGuestData.phone}
                           onChange={(e) => setNewGuestData({ ...newGuestData, phone: e.target.value })}
-                          className="mt-1"
                         />
                       </div>
                       <Button variant="outline" size="sm" onClick={() => setShowNewGuest(false)}>
@@ -787,530 +790,502 @@ export function ReservationModal({
               )}
             </div>
 
-            <Separator />
-
-            {/* Date, Time, Hall */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <Label className="flex items-center gap-2">
-                  <Calendar className="h-3.5 w-3.5" />
-                  Дата
-                </Label>
-                {mode === 'view' ? (
-                  <p className="mt-1 font-medium">{formatDate(currentReservation?.date || '')}</p>
-                ) : (
-                  <Input 
-                    type="date"
-                    value={formData.date}
-                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                    className="mt-1"
-                  />
-                )}
-              </div>
-              
-              <div>
-                <Label className="flex items-center gap-2">
-                  <Clock className="h-3.5 w-3.5" />
-                  Время
-                </Label>
-                {mode === 'view' ? (
-                  <p className="mt-1 font-medium">{currentReservation?.time}</p>
-                ) : (
-                  <Input 
-                    type="time"
-                    value={formData.time}
-                    onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                    className="mt-1"
-                  />
-                )}
-              </div>
-
-              <div>
-                <Label className="flex items-center gap-2">
-                  <MapPin className="h-3.5 w-3.5" />
-                  Зал
-                </Label>
-                {mode === 'view' ? (
-                  <p className="mt-1">{currentReservation?.hall?.name}</p>
-                ) : (
-                  <Select 
-                    value={formData.hall_id}
-                    onValueChange={(v) => {
-                      setFormData({ ...formData, hall_id: v, table_id: '' })
-                      setSelectedTables([])
-                      setDraftTables([])
-                      setShowSchemePicker(false)
-                      setSelectionBox(null)
-                    }}
-                  >
-                    <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Выберите зал" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {halls.map(hall => (
-                        <SelectItem key={hall.id} value={hall.id}>
-                          {hall.name} (до {hall.capacity} чел.)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
+            {/* Reservation Details */}
+            <div className="space-y-4">
+              <h3 className="font-semibold text-stone-900 flex items-center gap-2 border-b border-stone-200 pb-2">
+                <Calendar className="h-4 w-4 flex-shrink-0" />
+                Детали бронирования
+              </h3>
+              <div className="space-y-4">
+                {/* Date, Time, Hall */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
-                    <Label className="flex items-center gap-2">
-                      <MapPin className="h-3.5 w-3.5" />
-                      Стол
+                    <Label className="flex items-center gap-2 text-sm">
+                      <Calendar className="h-4 w-4 flex-shrink-0" />
+                      Дата
                     </Label>
                     {mode === 'view' ? (
-                      <p className="mt-1">
-                        {currentReservation?.tables?.length
-                          ? currentReservation.tables.map((t) => t.number).join(', ')
-                          : currentReservation?.table?.number
-                            ? `${currentReservation.table.number}`
-                            : 'Не выбраны'}
-                      </p>
+                      <p className="mt-2 font-medium break-anywhere">{formatDate(currentReservation?.date || '')}</p>
                     ) : (
-                      <p className="text-sm text-stone-500 mt-1">
-                        Выберите столы в списке или на схеме зала
-                      </p>
+                      <Input
+                        type="date"
+                        value={formData.date}
+                        onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                        className="mt-2"
+                      />
                     )}
                   </div>
-                  {mode !== 'view' && (
-                    <Button
-                      type="button"
-                      variant={showSchemePicker ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setShowSchemePicker((v) => !v)}
-                      className="gap-2"
-                    >
-                      {showSchemePicker ? 'Скрыть схему' : 'Выбрать на схеме'}
-                    </Button>
-                  )}
+
+                  <div>
+                    <Label className="flex items-center gap-2 text-sm">
+                      <Clock className="h-4 w-4 flex-shrink-0" />
+                      Время
+                    </Label>
+                    {mode === 'view' ? (
+                      <p className="mt-2 font-medium break-anywhere">{formatTime(currentReservation?.time)}</p>
+                    ) : (
+                      <Input
+                        type="time"
+                        value={formData.time}
+                        onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                        className="mt-2"
+                        step="60"
+                      />
+                    )}
+                  </div>
+
+                  <div>
+                    <Label className="flex items-center gap-2 text-sm">
+                      <MapPin className="h-4 w-4 flex-shrink-0" />
+                      Зал
+                    </Label>
+                    {mode === 'view' ? (
+                      <p className="mt-2 break-anywhere">{currentReservation?.hall?.name}</p>
+                    ) : (
+                      <Select
+                        value={formData.hall_id}
+                        onValueChange={(v) => {
+                          setFormData({ ...formData, hall_id: v, table_id: '' })
+                          setSelectedTables([])
+                          setDraftTables([])
+                          setShowSchemePicker(false)
+                          setSelectionBox(null)
+                        }}
+                      >
+                        <SelectTrigger className="mt-2">
+                          <SelectValue placeholder="Выберите зал" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {halls.map(hall => (
+                            <SelectItem key={hall.id} value={hall.id}>
+                              {hall.name} (до {hall.capacity} чел.)
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
                 </div>
 
-                {mode === 'view' ? null : (
-                  <div className="grid gap-2">
-                    <Select 
-                      value={formData.table_id || 'none'}
-                      onValueChange={(v) => {
-                        const id = v === 'none' ? '' : v
-                        setFormData({ ...formData, table_id: id })
-                        const next = id ? [id] : []
-                        setSelectedTables(next)
-                        if (showSchemePicker) setDraftTables(next)
-                      }}
-                    >
-                      <SelectTrigger className="mt-1">
-                        <SelectValue placeholder="Выберите стол" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Без стола</SelectItem>
-                        {tables.map(table => {
-                          const occupiedColor = occupiedTableMap.get(table.id)
-                          return (
-                            <SelectItem key={table.id} value={table.id}>
-                              <span className="inline-flex items-center gap-2">
-                                {occupiedColor && (
-                                  <span
-                                    className="inline-block h-3 w-3 rounded-full border border-stone-300"
-                                    style={{ backgroundColor: occupiedColor }}
-                                  />
-                                )}
-                                {table.number} • {table.capacity} чел.{occupiedColor ? ' (занят)' : ''}
-                              </span>
-                            </SelectItem>
-                          )
-                        })}
-                      </SelectContent>
-                    </Select>
+                {/* Guests Count */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="flex items-center gap-2 text-sm">
+                      <Users className="h-4 w-4 flex-shrink-0" />
+                      Гостей
+                    </Label>
+                    {mode === 'view' ? (
+                      <p className="mt-2 text-xl font-bold text-stone-900 break-anywhere">{currentReservation?.guests_count}</p>
+                    ) : (
+                      <Input
+                        type="number"
+                        min={1}
+                        value={formData.guests_count}
+                        onChange={(e) => setFormData({ ...formData, guests_count: parseInt(e.target.value) || 1 })}
+                        className="mt-2"
+                      />
+                    )}
+                  </div>
 
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <Label className="text-sm text-stone-600">Цвет бронирования</Label>
-                      <div className="flex items-center gap-2">
-                        {COLOR_PRESETS.map((c) => (
-                          <button
-                            key={c}
-                            type="button"
-                            className={cn(
-                              "h-7 w-7 rounded-full border-2",
-                              formData.color === c ? "ring-2 ring-offset-2 ring-amber-500 border-stone-300" : "border-stone-200"
-                            )}
-                            style={{ backgroundColor: c }}
-                            onClick={() => setFormData({ ...formData, color: c })}
-                          />
-                        ))}
-                        <Input
-                          type="color"
-                          value={formData.color}
-                          onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                          className="h-8 w-16 p-1"
-                        />
-                      </div>
-                    </div>
+                  <div>
+                    <Label className="flex items-center gap-2 text-sm">
+                      <Baby className="h-4 w-4 flex-shrink-0" />
+                      Детей
+                    </Label>
+                    {mode === 'view' ? (
+                      <p className="mt-2 text-xl font-bold text-stone-900 break-anywhere">{currentReservation?.children_count || 0}</p>
+                    ) : (
+                      <Input
+                        type="number"
+                        min={0}
+                        value={formData.children_count}
+                        onChange={(e) => setFormData({ ...formData, children_count: parseInt(e.target.value) || 0 })}
+                        className="mt-2"
+                      />
+                    )}
+                  </div>
+                </div>
 
-                    {showSchemePicker && (
-                      <div className="rounded-xl border border-stone-200 bg-stone-50 p-3 space-y-3">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          <div className="text-sm text-stone-600">
-                            Кликните по столу или выделите рамкой несколько. Можно выбрать несколько — бронь закрепится за всеми выбранными.
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setDraftTables([])
-                                setSelectedTables([])
-                                setFormData((prev) => ({ ...prev, table_id: '' }))
-                              }}
-                            >
-                              Сбросить
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedTables(draftTables)
-                                setFormData((prev) => ({ ...prev, table_id: draftTables[0] ?? '' }))
-                                setShowSchemePicker(false)
-                              }}
-                            >
-                              Подтвердить
-                            </Button>
-                          </div>
-                        </div>
+                {/* Table Selection */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="flex items-center gap-2 text-sm">
+                      <MapPin className="h-4 w-4" />
+                      Столы
+                    </Label>
+                    {mode !== 'view' && (
+                      <Button
+                        type="button"
+                        variant={showSchemePicker ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setShowSchemePicker((v) => !v)}
+                      >
+                        {showSchemePicker ? 'Скрыть схему' : 'Выбрать на схеме'}
+                      </Button>
+                    )}
+                  </div>
 
-                        <div className="overflow-auto">
-                          <div
-                            ref={schemeRef}
-                            className="relative bg-white border border-dashed border-stone-200 overflow-hidden rounded-lg mx-auto"
-                            style={{
-                              width: CANVAS_WIDTH,
-                              height: CANVAS_HEIGHT,
-                              backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)',
-                              backgroundSize: '16px 16px',
-                              maxWidth: '100%',
-                              aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`
-                            }}
-                          onMouseDown={handleSchemeMouseDown}
-                          onMouseMove={handleSchemeMouseMove}
-                          onMouseUp={handleSchemeMouseUp}
-                          onMouseLeave={handleSchemeMouseUp}
-                        >
-                          {tables.map((table) => {
-                            const isSelected = draftTables.includes(table.id)
+                  {mode === 'view' ? (
+                    <p className="text-stone-900 break-anywhere">
+                      {currentReservation?.tables?.length
+                        ? currentReservation.tables.map((t) => t.number).join(', ')
+                        : currentReservation?.table?.number
+                          ? `${currentReservation.table.number}`
+                          : 'Не выбраны'}
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      <Select
+                        value={formData.table_id || 'none'}
+                        onValueChange={(v) => {
+                          const id = v === 'none' ? '' : v
+                          setFormData({ ...formData, table_id: id })
+                          const next = id ? [id] : []
+                          setSelectedTables(next)
+                          if (showSchemePicker) setDraftTables(next)
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Выберите стол" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Без стола</SelectItem>
+                          {tables.map(table => {
                             const occupiedColor = occupiedTableMap.get(table.id)
                             return (
+                              <SelectItem key={table.id} value={table.id}>
+                                <span className="inline-flex items-center gap-2">
+                                  {occupiedColor && (
+                                    <span
+                                      className="inline-block h-3 w-3 rounded-full border border-stone-300"
+                                      style={{ backgroundColor: occupiedColor }}
+                                    />
+                                  )}
+                                  {table.number} • {table.capacity} чел.{occupiedColor ? ' (занят)' : ''}
+                                </span>
+                              </SelectItem>
+                            )
+                          })}
+                        </SelectContent>
+                      </Select>
+
+                      {/* Table Scheme Picker */}
+                      <AnimatePresence>
+                        {showSchemePicker && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="space-y-3"
+                          >
+                            <div className="flex items-center justify-between">
+                              <p className="text-sm text-stone-600 break-anywhere">
+                                Кликните по столу или выделите рамкой
+                              </p>
+                              <div className="flex gap-2">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setDraftTables([])
+                                    setSelectedTables([])
+                                    setFormData((prev) => ({ ...prev, table_id: '' }))
+                                  }}
+                                >
+                                  Сбросить
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedTables(draftTables)
+                                    setFormData((prev) => ({ ...prev, table_id: draftTables[0] ?? '' }))
+                                    setShowSchemePicker(false)
+                                  }}
+                                >
+                                  Готово
+                                </Button>
+                              </div>
+                            </div>
+
+                            <div className="overflow-auto max-h-96">
                               <div
-                                key={table.id}
-                                className={cn(
-                                  "absolute border-2 flex items-center justify-center text-sm font-semibold transition shadow-sm select-none",
-                                  table.shape === 'round' && "rounded-full",
-                                  table.shape === 'rectangle' && "rounded-xl",
-                                  table.shape === 'square' && "rounded-lg",
-                                  isSelected
-                                    ? "border-amber-500 bg-amber-50"
-                                    : occupiedColor
-                                      ? "border-stone-300 bg-white"
-                                      : "border-stone-300 bg-white hover:border-amber-400"
-                                )}
+                                ref={schemeRef}
+                                className="relative bg-white border border-stone-200 overflow-hidden rounded-lg mx-auto"
                                 style={{
-                                  left: table.position_x,
-                                  top: table.position_y,
-                                  width: table.width,
-                                  height: table.height,
-                                  transform: `rotate(${table.rotation ?? 0}deg)`,
-                                  transformOrigin: 'top left',
+                                  width: CANVAS_WIDTH,
+                                  height: CANVAS_HEIGHT,
+                                  backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)',
+                                  backgroundSize: '16px 16px',
+                                  maxWidth: '100%',
+                                  aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`
                                 }}
-                                onMouseDown={(e) => e.stopPropagation()}
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleSchemeClick(table.id)
-                                }}
-                                title={occupiedColor ? 'Занято другим бронированием' : undefined}
+                                onMouseDown={handleSchemeMouseDown}
+                                onMouseMove={handleSchemeMouseMove}
+                                onMouseUp={handleSchemeMouseUp}
+                                onMouseLeave={handleSchemeMouseUp}
                               >
-                                {table.number}
-                                {occupiedColor && (
-                                  <span
-                                    className="absolute -top-2 -right-2 h-3.5 w-3.5 rounded-full border border-white shadow"
-                                    style={{ backgroundColor: occupiedColor }}
+                                {tables.map((table) => {
+                                  const isSelected = draftTables.includes(table.id)
+                                  const occupiedColor = occupiedTableMap.get(table.id)
+                                  return (
+                                    <div
+                                      key={table.id}
+                                      className={cn(
+                                        "absolute border-2 flex items-center justify-center text-sm font-semibold transition select-none",
+                                        table.shape === 'round' && "rounded-full",
+                                        table.shape === 'rectangle' && "rounded-xl",
+                                        table.shape === 'square' && "rounded-lg",
+                                        isSelected
+                                          ? "border-amber-500 bg-amber-50"
+                                          : occupiedColor
+                                            ? "border-stone-300 bg-white"
+                                            : "border-stone-300 bg-white hover:border-amber-400"
+                                      )}
+                                      style={{
+                                        left: table.position_x,
+                                        top: table.position_y,
+                                        width: table.width,
+                                        height: table.height,
+                                        transform: `rotate(${table.rotation ?? 0}deg)`,
+                                        transformOrigin: 'top left',
+                                      }}
+                                      onMouseDown={(e) => e.stopPropagation()}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleSchemeClick(table.id)
+                                      }}
+                                      title={occupiedColor ? 'Занято другим бронированием' : undefined}
+                                    >
+                                      {table.number}
+                                      {occupiedColor && (
+                                        <span
+                                          className="absolute -top-2 -right-2 h-3.5 w-3.5 rounded-full border border-white shadow"
+                                          style={{ backgroundColor: occupiedColor }}
+                                        />
+                                      )}
+                                    </div>
+                                  )
+                                })}
+
+                                {selectionBox && (
+                                  <div
+                                    className="absolute border-2 border-amber-400 bg-amber-200/20 pointer-events-none"
+                                    style={{
+                                      left: Math.min(selectionBox.x1, selectionBox.x2),
+                                      top: Math.min(selectionBox.y1, selectionBox.y2),
+                                      width: Math.abs(selectionBox.x2 - selectionBox.x1),
+                                      height: Math.abs(selectionBox.y2 - selectionBox.y1),
+                                    }}
                                   />
                                 )}
                               </div>
-                            )
-                          })}
+                            </div>
 
-                          {selectionBox && (
-                            <div
-                              className="absolute border-2 border-amber-400 bg-amber-200/20 pointer-events-none"
-                              style={{
-                                left: Math.min(selectionBox.x1, selectionBox.x2),
-                                top: Math.min(selectionBox.y1, selectionBox.y2),
-                                width: Math.abs(selectionBox.x2 - selectionBox.x1),
-                                height: Math.abs(selectionBox.y2 - selectionBox.y1),
-                              }}
+                            <div className="flex flex-wrap gap-3 text-sm">
+                              {draftTables.length > 0 && (
+                                <span className="text-stone-700 break-anywhere">Выбрано: {draftTables.length}</span>
+                              )}
+                              {occupiedTableMap.size > 0 && (
+                                <span className="text-rose-600 break-anywhere">
+                                  Заняты: {tables.filter(t => occupiedTableMap.has(t.id)).map(t => t.number).join(', ')}
+                                </span>
+                              )}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {/* Color Picker */}
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <Label className="text-sm">Цвет бронирования</Label>
+                        <div className="flex items-center gap-2">
+                          {COLOR_PRESETS.map((c) => (
+                            <button
+                              key={c}
+                              type="button"
+                              className={cn(
+                                "h-6 w-6 rounded-full border-2",
+                                formData.color === c ? "ring-2 ring-offset-1 ring-amber-500 border-stone-300" : "border-stone-200"
+                              )}
+                              style={{ backgroundColor: c }}
+                              onClick={() => setFormData({ ...formData, color: c })}
                             />
-                          )}
-                        </div>
-                        </div>
-
-                        <div className="flex flex-wrap gap-3 text-sm text-stone-700">
-                          {draftTables.length > 0 && (
-                            <span>Выбрано: {draftTables.length}</span>
-                          )}
-                          {occupiedTableMap.size > 0 && (
-                            <span className="text-rose-600">
-                              Заняты: {tables.filter(t => occupiedTableMap.has(t.id)).map(t => t.number).join(', ')}
-                            </span>
-                          )}
+                          ))}
+                          <Input
+                            type="color"
+                            value={formData.color}
+                            onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                            className="h-8 w-14 p-1"
+                          />
                         </div>
                       </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* Guests Count */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label className="flex items-center gap-2">
-                  <Users className="h-3.5 w-3.5" />
-                  Гостей
-                </Label>
-                {mode === 'view' ? (
-                  <p className="mt-1 text-2xl font-bold text-stone-900">{currentReservation?.guests_count}</p>
-                ) : (
-                  <Input
-                    type="number"
-                    min={1}
-                    value={formData.guests_count}
-                    onChange={(e) => setFormData({ ...formData, guests_count: parseInt(e.target.value) || 1 })}
-                    className="mt-1"
-                  />
-                )}
-              </div>
-
-              <div>
-                <Label className="flex items-center gap-2">
-                  <Baby className="h-3.5 w-3.5" />
-                  Детей
-                </Label>
-                {mode === 'view' ? (
-                  <p className="mt-1 text-2xl font-bold text-stone-900">{currentReservation?.children_count || 0}</p>
-                ) : (
-                  <Input
-                    type="number"
-                    min={0}
-                    value={formData.children_count}
-                    onChange={(e) => setFormData({ ...formData, children_count: parseInt(e.target.value) || 0 })}
-                    className="mt-1"
-                  />
-                )}
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* Menu Section */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-stone-900 flex items-center gap-2">
-                  <ChefHat className="h-4 w-4" />
-                  Меню
-                </h3>
-                {mode !== 'view' && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleToggleMenuEdit}
-                    className="gap-2"
-                  >
-                    <Pencil className="h-4 w-4" />
-                    {showMenuEdit ? 'Скрыть' : 'Изменить позиции'}
-                  </Button>
-                )}
-              </div>
-
-              {/* Menu Selection */}
-              <div className="p-4 rounded-xl bg-amber-50 border border-amber-200">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-semibold text-amber-900">
-                      {currentMenu?.name || 'Меню не выбрано'}
-                    </p>
-                    <p className="text-sm text-amber-700">
-                      {formatCurrency(currentMenu?.price_per_person || 0)}/чел. 
-                      ({currentMenu?.total_weight_per_person || 0} гр./чел.)
-                    </p>
-                  </div>
-                  {mode !== 'view' && (
-                    <Select 
-                      value={formData.menu_id}
-                      onValueChange={(v) => setFormData({ ...formData, menu_id: v })}
-                    >
-                      <SelectTrigger className="w-[200px]">
-                        <SelectValue placeholder="Выберите меню" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {menus.map(menu => (
-                          <SelectItem key={menu.id} value={menu.id}>
-                            {menu.name} - {formatCurrency(menu.price_per_person)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    </div>
                   )}
                 </div>
               </div>
-
-              {/* Menu Items by Type */}
-              <AnimatePresence>
-                {(mode === 'view' || showMenuEdit) && currentMenu && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="space-y-4"
-                  >
-                    {(Object.keys(menuItemsByType) as MenuItemType[]).map((type) => {
-                      const items = menuItemsByType[type]
-                      if (!items?.length) return null
-                      
-                      const typeLabelPlural = getMenuItemTypeLabel(type, customTypes, true)
-                      const isSelectable = items[0]?.is_selectable
-                      const maxSelections = items[0]?.max_selections || items.length
-                      const platesCount = calculatePlates(formData.guests_count)
-
-                      return (
-                        <div key={type} className="rounded-xl border border-stone-200 overflow-hidden">
-                          <div className="bg-stone-50 px-4 py-2 flex items-center justify-between">
-                            <span className="font-medium text-stone-900">
-                              {typeLabelPlural}
-                            </span>
-                            <span className="text-sm text-stone-500">
-                              {platesCount} тарелок
-                            </span>
-                          </div>
-                          <div className="divide-y divide-stone-100">
-                            {items.map((item, idx) => {
-                              // Для селективных позиций используем selectedSalads, для неселективных - всегда выбраны
-                              // В режиме просмотра используем данные из reservation.selected_menu_items
-                              let isSelected: boolean
-                              if (!isSelectable) {
-                                isSelected = true
-                              } else if (showMenuEdit) {
-                                // В режиме редактирования используем selectedSalads
-                                isSelected = selectedSalads.includes(item.id)
-                              } else if (mode === 'view' && currentReservation?.selected_menu_items?.length) {
-                                // В режиме просмотра используем сохраненные данные
-                                isSelected = currentReservation.selected_menu_items.some(
-                                  rmi => rmi.menu_item_id === item.id && rmi.is_selected
-                                )
-                              } else {
-                                // Fallback: используем selectedSalads или первые по умолчанию
-                                isSelected = selectedSalads.includes(item.id) || (selectedSalads.length === 0 && idx < maxSelections)
-                              }
-                              const totalWeight = calculateTotalWeight(item.weight_per_person, formData.guests_count)
-                              
-                              return (
-                                <div 
-                                  key={item.id}
-                                  className={cn(
-                                    "px-4 py-3 flex items-center justify-between gap-4",
-                                    !isSelected && "opacity-50"
-                                  )}
-                                >
-                                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                                    {isSelectable && showMenuEdit && (
-                                      <Checkbox 
-                                        checked={isSelected}
-                                        onCheckedChange={(checked) => {
-                                          if (checked) {
-                                            // Если элемент уже выбран, ничего не делаем
-                                            if (selectedSalads.includes(item.id)) {
-                                              return
-                                            }
-                                            // Просто добавляем новый элемент
-                                            setSelectedSalads([...selectedSalads, item.id])
-                                          } else {
-                                            // Убираем элемент из выбранных
-                                            setSelectedSalads(selectedSalads.filter(id => id !== item.id))
-                                          }
-                                        }}
-                                      />
-                                    )}
-                                    <span className={cn(
-                                      "break-words overflow-wrap-anywhere",
-                                      isSelected ? "text-stone-900" : "text-stone-400"
-                                    )}>
-                                      {item.name}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-4 text-sm text-stone-500 shrink-0 whitespace-nowrap">
-                                    <span>{item.weight_per_person} гр./чел.</span>
-                                    <span className="font-medium text-stone-700">
-                                      {totalWeight} гр.
-                                    </span>
-                                  </div>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </motion.div>
-                )}
-              </AnimatePresence>
             </div>
 
-            <Separator />
+            {/* Menu Section */}
+            {currentMenu && (
+              <div className="space-y-4">
+                <h3 className="font-semibold text-stone-900 flex items-center gap-2 border-b border-stone-200 pb-2">
+                  <ChefHat className="h-4 w-4 flex-shrink-0" />
+                  Меню: {currentMenu.name}
+                </h3>
+                <div className="space-y-4">
+                  {/* Menu Header */}
+                  <div className="p-4 rounded-xl bg-amber-50 border border-amber-200">
+                    <div className="flex items-center justify-between flex-wrap gap-4">
+                      <div className="flex-1">
+                        <p className="font-semibold text-amber-900 break-anywhere">{currentMenu.name}</p>
+                        <p className="text-sm text-amber-700 break-anywhere">
+                          {formatCurrency(currentMenu.price_per_person)}/чел.
+                        </p>
+                      </div>
+                      {mode !== 'view' && (
+                        <Select
+                          value={formData.menu_id}
+                          onValueChange={(v) => setFormData({ ...formData, menu_id: v })}
+                        >
+                          <SelectTrigger className="w-[180px]">
+                            <SelectValue placeholder="Выберите меню" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {menus.map(menu => (
+                              <SelectItem key={menu.id} value={menu.id}>
+                                {menu.name} - {formatCurrency(menu.price_per_person)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                  </div>
 
-            {/* Total Amount */}
-            <div className="rounded-xl bg-linear-to-r from-amber-50 to-orange-50 border border-amber-200 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-amber-700">Итоговая стоимость банкета</p>
-                  <p className="text-3xl font-bold text-amber-900">
-                    {formatCurrency(computedTotal)}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm text-amber-700">
-                    {currentMenu?.name} ({formatCurrency(currentMenu?.price_per_person || 0)}/чел.)
-                  </p>
-                  <p className="text-sm text-amber-600">
-                    {formData.guests_count} × {formatCurrency(currentMenu?.price_per_person || 0)}
-                  </p>
+                  {/* Menu Items */}
+                  <AnimatePresence>
+                    {(mode === 'view' || showMenuEdit) && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="space-y-3"
+                      >
+                        {(Object.keys(menuItemsByType) as MenuItemType[]).map((type) => {
+                          const items = menuItemsByType[type]
+                          if (!items?.length) return null
+
+                          const typeLabelPlural = getMenuItemTypeLabel(type, customTypes, true)
+                          const isSelectable = items[0]?.is_selectable
+                          const platesCount = calculatePlates(formData.guests_count)
+
+                          return (
+                            <div key={type} className="rounded-lg border border-stone-200 overflow-hidden">
+                              <div className="bg-stone-50 px-4 py-2 flex items-center justify-between">
+                                <span className="font-medium text-stone-900 break-anywhere flex-1">
+                                  {typeLabelPlural}
+                                </span>
+                                <span className="text-sm text-stone-500 flex-shrink-0">
+                                  {platesCount} тарелок
+                                </span>
+                              </div>
+                              <div className="divide-y divide-stone-100">
+                                {items.map((item, idx) => {
+                                  let isSelected: boolean
+                                  if (!isSelectable) {
+                                    isSelected = true
+                                  } else if (showMenuEdit) {
+                                    isSelected = selectedSalads.includes(item.id)
+                                  } else if (mode === 'view' && currentReservation?.selected_menu_items?.length) {
+                                    isSelected = currentReservation.selected_menu_items.some(
+                                      rmi => rmi.menu_item_id === item.id && rmi.is_selected
+                                    )
+                                  } else {
+                                    isSelected = selectedSalads.includes(item.id) || (selectedSalads.length === 0 && idx < (items[0]?.max_selections || items.length))
+                                  }
+
+                                  const totalWeight = calculateTotalWeight(item.weight_per_person, formData.guests_count)
+
+                                  return (
+                                    <div
+                                      key={item.id}
+                                      className={cn(
+                                        "px-4 py-3 flex items-center justify-between gap-4",
+                                        !isSelected && "opacity-50"
+                                      )}
+                                    >
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      {isSelectable && showMenuEdit && (
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              if (!selectedSalads.includes(item.id)) {
+                                setSelectedSalads([...selectedSalads, item.id])
+                              }
+                            } else {
+                              setSelectedSalads(selectedSalads.filter(id => id !== item.id))
+                            }
+                          }}
+                        />
+                      )}
+                      <span className={cn(
+                        "text-sm break-anywhere flex-1",
+                        isSelected ? "text-stone-900" : "text-stone-400"
+                      )}>
+                        {item.name}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm text-stone-500 flex-shrink-0">
+                      <span className="whitespace-nowrap">{item.weight_per_person}г/чел</span>
+                      <span className="font-medium whitespace-nowrap">{totalWeight}г</span>
+                    </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {mode !== 'view' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleToggleMenuEdit}
+                      className="w-full"
+                    >
+                      <Settings className="h-4 w-4 mr-2" />
+                      {showMenuEdit ? 'Скрыть позиции' : 'Изменить позиции'}
+                    </Button>
+                  )}
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Payments */}
             {currentReservation?.payments && currentReservation.payments.length > 0 && (
-              <div className="space-y-3">
-                <h3 className="font-semibold text-stone-900 flex items-center gap-2">
-                  <CreditCard className="h-4 w-4" />
-                  Внесённые предоплаты
+              <div className="space-y-4">
+                <h3 className="font-semibold text-stone-900 flex items-center gap-2 border-b border-stone-200 pb-2">
+                  <CreditCard className="h-4 w-4 flex-shrink-0" />
+                  Предоплаты
                 </h3>
-                <div className="space-y-2">
+                <div className="space-y-3 pr-4">
                   {currentReservation.payments.map((payment) => (
-                    <div 
+                    <div
                       key={payment.id}
                       className="flex items-center justify-between p-3 rounded-lg bg-green-50 border border-green-200"
                     >
-                      <div>
-                        <p className="font-medium text-green-900">
+                      <div className="flex-1">
+                        <p className="font-semibold text-green-900 break-anywhere">
                           {formatCurrency(payment.amount)}
                         </p>
-                        <p className="text-sm text-green-700">
+                        <p className="text-sm text-green-700 break-anywhere">
                           {formatDate(payment.payment_date)} • {
                             payment.payment_method === 'cash' ? 'Наличные' :
                             payment.payment_method === 'card' ? 'Картой' : 'Перевод'
@@ -1318,7 +1293,7 @@ export function ReservationModal({
                         </p>
                       </div>
                       {payment.notes && (
-                        <p className="text-sm text-green-600">{payment.notes}</p>
+                        <p className="text-sm text-green-600 break-anywhere flex-shrink-0">{payment.notes}</p>
                       )}
                     </div>
                   ))}
@@ -1327,86 +1302,82 @@ export function ReservationModal({
             )}
 
             {/* Comments */}
-            <div className="space-y-3 pb-4 sm:pb-6">
-              <h3 className="font-semibold text-stone-900 flex items-center gap-2">
-                <MessageSquare className="h-4 w-4" />
-                Комментарии к заказу
-              </h3>
-              {mode === 'view' ? (
-                <p className="text-stone-600 p-3 rounded-lg bg-stone-50">
-                  {currentReservation?.comments || 'Нет комментариев'}
-                </p>
-              ) : (
-                <Textarea
-                  placeholder="Добавьте комментарии к заказу..."
-                  value={formData.comments}
-                  onChange={(e) => setFormData({ ...formData, comments: e.target.value })}
-                  className="min-h-[100px]"
-                />
-              )}
-            </div>
-
-            {/* Desktop Footer Actions */}
-            {mode !== 'view' && (
-              <div className="hidden sm:flex items-center justify-between gap-4 pt-6 border-t border-stone-200">
-                {mode === 'edit' && currentReservation && (
-                  <Button
-                    variant="destructive"
-                    onClick={handleDelete}
-                    disabled={isLoading}
-                    className="gap-2"
-                  >
-                    {deleteReservation.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                    Удалить
-                  </Button>
-                )}
-                {mode === 'create' && <div />}
-
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" onClick={onClose}>
-                    Отмена
-                  </Button>
-                  <Button
-                    onClick={handleSave}
-                    disabled={isLoading}
-                    className="gap-2"
-                  >
-                    {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    {mode === 'create' ? 'Создать' : 'Сохранить'}
-                  </Button>
+            {(currentReservation?.comments || mode !== 'view') && (
+              <div className="space-y-4">
+                <h3 className="font-semibold text-stone-900 flex items-center gap-2 border-b border-stone-200 pb-2">
+                  <MessageSquare className="h-4 w-4 flex-shrink-0" />
+                  Комментарии
+                </h3>
+                <div>
+                  {mode === 'view' ? (
+                    <div className="p-3 rounded-lg bg-stone-50 text-sm text-stone-600 leading-relaxed break-anywhere">
+                      {currentReservation?.comments || 'Нет комментариев'}
+                    </div>
+                  ) : (
+                    <Textarea
+                      placeholder="Добавьте комментарии к заказу..."
+                      value={formData.comments}
+                      onChange={(e) => setFormData({ ...formData, comments: e.target.value })}
+                      className="min-h-[80px]"
+                    />
+                  )}
                 </div>
               </div>
             )}
+
+            {/* Total Amount - Always visible */}
+            <div className="rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <p className="text-sm text-amber-700">Итоговая стоимость</p>
+                  <p className="text-2xl font-bold text-amber-900 break-anywhere">
+                    {formatCurrency(computedTotal)}
+                  </p>
+                </div>
+                <div className="text-right text-sm flex-shrink-0">
+                  <p className="text-amber-700 break-anywhere">
+                    {currentMenu?.name}
+                  </p>
+                  <p className="text-amber-600 break-anywhere">
+                    {formData.guests_count} × {formatCurrency(currentMenu?.price_per_person || 0)}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </ScrollArea>
 
-        {/* Mobile Footer Actions */}
+        {/* Footer Actions */}
         {mode !== 'view' && (
-          <div className="sm:hidden sticky bottom-0 flex items-center justify-between gap-4 p-4 pt-4 border-t border-stone-200 bg-white shadow-lg">
-            {mode === 'edit' && currentReservation && (
+          <div className="sticky bottom-0 flex items-center justify-between gap-3 p-4 border-t border-stone-200 bg-white/95 backdrop-blur-sm">
+            {mode === 'edit' && currentReservation ? (
               <Button
                 variant="destructive"
                 onClick={handleDelete}
                 disabled={isLoading}
-                className="gap-2"
+                size={isMobile ? "sm" : "default"}
               >
                 {deleteReservation.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                Удалить
+                <span className={isMobile ? "hidden" : "inline"}>Удалить</span>
               </Button>
-            )}
-            {mode === 'create' && <div />}
-            
-            <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={onClose}>
+            ) : <div />}
+
+            <div className="flex items-center gap-2 ml-auto">
+              <Button
+                variant="outline"
+                onClick={onClose}
+                size={isMobile ? "sm" : "default"}
+              >
                 Отмена
               </Button>
-              <Button 
-                onClick={handleSave} 
+              <Button
+                onClick={handleSave}
                 disabled={isLoading}
                 className="gap-2"
+                size={isMobile ? "sm" : "default"}
               >
                 {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                {mode === 'create' ? 'Создать' : 'Сохранить'}
+                Сохранить
               </Button>
             </div>
           </div>

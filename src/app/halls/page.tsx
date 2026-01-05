@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useHalls, useReservations, useTables, useLayoutItems, useCreateMutation, useUpdateMutation, useDeleteMutation } from '@/hooks/useSupabase'
-import { cn } from '@/lib/utils'
+import { cn, formatTime } from '@/lib/utils'
 import { RESERVATION_STATUS_CONFIG, Table, Hall, LayoutItem } from '@/types'
 import { format } from 'date-fns'
 import { ru } from 'date-fns/locale'
@@ -512,7 +512,7 @@ export default function HallsPage() {
                                           {reservation.guest?.last_name} {reservation.guest?.first_name}
                                         </p>
                                         <p className="text-sm text-stone-500">
-                                          {reservation.time} • {reservation.guests_count} гостей
+                                          {formatTime(reservation.time)} • {reservation.guests_count} гостей
                                         </p>
                                       </div>
                                     </div>

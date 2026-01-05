@@ -38,7 +38,7 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useReservations, useCreateMutation, useDeleteMutation, useUpdateMutation } from '@/hooks/useSupabase'
-import { formatCurrency, formatDate, cn } from '@/lib/utils'
+import { formatCurrency, formatDate, formatTime, cn } from '@/lib/utils'
 import { RESERVATION_STATUS_CONFIG, Payment, Reservation } from '@/types'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { createClient } from '@/lib/supabase/client'
@@ -349,7 +349,7 @@ export default function PaymentsPage() {
                                     {reservation.guest?.last_name} {reservation.guest?.first_name}
                                   </h3>
                                   <p className="text-sm text-stone-500">
-                                    {formatDate(reservation.date)} в {reservation.time} • {reservation.hall?.name}
+                                    {formatDate(reservation.date)} в {formatTime(reservation.time)} • {reservation.hall?.name}
                                   </p>
                                 </div>
                               </div>

@@ -24,13 +24,42 @@ export function formatDate(date: Date | string): string {
   }).format(d)
 }
 
-export function formatTime(date: Date | string): string {
-  const d = typeof date === 'string' ? new Date(date) : date
-  if (Number.isNaN(d.getTime())) return ''
-  return new Intl.DateTimeFormat('ru-RU', {
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(d)
+export function formatTime(time: string | Date | undefined): string {
+  if (!time) return ''
+
+  // Если время уже в формате HH:mm, возвращаем как есть
+  if (typeof time === 'string' && time.match(/^\d{2}:\d{2}$/)) {
+    return time
+  }
+
+  // Если время в формате HH:mm:ss, обрезаем секунды
+  if (typeof time === 'string' && time.match(/^\d{2}:\d{2}:\d{2}$/)) {
+    return time.substring(0, 5)
+  }
+
+  // Если время в формате с датой или timestamp, извлекаем время
+  if (typeof time === 'string' && time.includes('T')) {
+    try {
+      const date = new Date(time)
+      if (!Number.isNaN(date.getTime())) {
+        const hours = String(date.getHours()).padStart(2, '0')
+        const minutes = String(date.getMinutes()).padStart(2, '0')
+        return `${hours}:${minutes}`
+      }
+    } catch {
+      // Игнорируем ошибку и продолжаем
+    }
+  }
+
+  // Если это Date объект
+  if (time instanceof Date && !Number.isNaN(time.getTime())) {
+    const hours = String(time.getHours()).padStart(2, '0')
+    const minutes = String(time.getMinutes()).padStart(2, '0')
+    return `${hours}:${minutes}`
+  }
+
+  // Если ничего не подошло, возвращаем как есть
+  return String(time)
 }
 
 export function formatPhone(phone: string): string {

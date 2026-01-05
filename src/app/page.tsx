@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Plus, Filter, Search, Loader2 } from 'lucide-react'
 import { PageTransition } from '@/components/layout/PageTransition'
@@ -22,7 +22,7 @@ export default function HomePage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<ReservationStatus | 'all'>('all')
   const [currentDate, setCurrentDate] = useState(new Date())
-  const [viewMode, setViewMode] = useState<'year' | 'month' | 'day'>('month')
+  const [viewMode, setViewMode] = useState<'year' | 'month' | 'day' | 'list'>('month')
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [isFiltersOpen, setIsFiltersOpen] = useState(false)
   const [filters, setFilters] = useState({
@@ -34,6 +34,18 @@ export default function HomePage() {
     minChildren: '',
     maxChildren: ''
   })
+
+  // Set default view mode based on screen size
+  useEffect(() => {
+    const checkMobile = () => {
+      if (window.innerWidth < 768 && viewMode === 'month') {
+        setViewMode('list')
+      }
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   const { data: halls } = useHalls()
   const { data: menus } = useMenus()

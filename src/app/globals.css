@@ -322,3 +322,17 @@ input[type="number"] {
     outline-offset: 2px;
   }
 }
+
+/* Обеспечиваем перенос длинных слов везде */
+.break-anywhere {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+/* Для элементов с текстом */
+.text-wrap {
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}

@@ -41,7 +41,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useGuests, useReservations, useCreateMutation, useUpdateMutation, useDeleteMutation } from '@/hooks/useSupabase'
-import { formatCurrency, formatPhone, formatDate, cn } from '@/lib/utils'
+import { formatCurrency, formatPhone, formatDate, formatTime, cn } from '@/lib/utils'
 import { Guest, GUEST_STATUS_CONFIG, GuestStatus, RESERVATION_STATUS_CONFIG } from '@/types'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
@@ -481,7 +481,7 @@ export default function GuestsPage() {
                                   />
                                   <div>
                                     <p className="font-medium text-stone-900">
-                                      {formatDate(reservation.date)} в {reservation.time}
+                                      {formatDate(reservation.date)} в {formatTime(reservation.time)}
                                     </p>
                                     <p className="text-sm text-stone-500">
                                       {reservation.hall?.name} • {reservation.guests_count} гостей
