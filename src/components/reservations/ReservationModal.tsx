@@ -159,6 +159,13 @@ export function ReservationModal({
     setLocalReservation(reservation)
   }, [reservation])
 
+  // Автоматически выбираем первое меню, если menu_id пустой и есть доступные меню
+  useEffect(() => {
+    if (mode !== 'view' && !formData.menu_id && menus.length > 0) {
+      setFormData(prev => ({ ...prev, menu_id: menus[0].id }))
+    }
+  }, [mode, formData.menu_id, menus])
+
   // Reset form when modal opens or reservation changes
   useEffect(() => {
     if (!isOpen) return
@@ -174,7 +181,7 @@ export function ReservationModal({
           guest_id: currentReservation.guest_id,
           guests_count: currentReservation.guests_count,
           children_count: currentReservation.children_count,
-          menu_id: currentReservation.menu_id || '',
+          menu_id: currentReservation.menu_id || menus[0]?.id || '',
           color: currentReservation.color || '#f59e0b',
           status: currentReservation.status,
           total_amount: currentReservation.total_amount,
@@ -227,12 +234,12 @@ export function ReservationModal({
 
   const statusOptions: ReservationStatus[] = ['new', 'in_progress', 'prepaid', 'paid', 'canceled']
   
-  // Инициализируем selectedSalads при переходе в режим редактирования
+  // Инициализируем selectedSalads при переходе в режим редактирования или при выборе меню
   useEffect(() => {
-    if (mode === 'edit' && currentMenu && selectedSalads.length === 0) {
+    if (currentMenu && selectedSalads.length === 0) {
       const items = menuItems.filter(i => i.menu_id === currentMenu.id)
       const selectableItems = items.filter(item => item.is_selectable)
-      
+
       // Если есть сохраненные данные, используем их
       if (currentReservation?.selected_menu_items?.length) {
         const savedSelectableIds = currentReservation.selected_menu_items
@@ -243,7 +250,7 @@ export function ReservationModal({
           return
         }
       }
-      
+
       // Если нет сохраненных данных, инициализируем первые по умолчанию
       if (selectableItems.length > 0) {
         const maxSelections = selectableItems[0]?.max_selections || selectableItems.length
@@ -253,16 +260,16 @@ export function ReservationModal({
         setSelectedSalads(defaultSelected)
       }
     }
-  }, [mode, currentMenu, menuItems, currentReservation?.selected_menu_items, selectedSalads.length])
+  }, [currentMenu, menuItems, currentReservation?.selected_menu_items, selectedSalads.length])
   
   const handleToggleMenuEdit = () => {
     const newShowMenuEdit = !showMenuEdit
-    
+
     // При открытии редактирования инициализируем выбранные салаты, если они еще не инициализированы
     if (newShowMenuEdit && currentMenu && selectedSalads.length === 0) {
       const items = menuItems.filter(i => i.menu_id === currentMenu.id)
       const selectableItems = items.filter(item => item.is_selectable)
-      
+
       // Если есть сохраненные данные, используем их
       if (currentReservation?.selected_menu_items?.length) {
         const savedSelectableIds = currentReservation.selected_menu_items
@@ -270,16 +277,13 @@ export function ReservationModal({
           .map(rmi => rmi.menu_item_id)
         if (savedSelectableIds.length > 0) {
           setSelectedSalads(savedSelectableIds)
-        } else if (selectableItems.length > 0) {
-          // Если нет сохраненных, инициализируем первые по умолчанию
-          const maxSelections = selectableItems[0]?.max_selections || selectableItems.length
-          const defaultSelected = selectableItems
-            .slice(0, maxSelections)
-            .map(item => item.id)
-          setSelectedSalads(defaultSelected)
+          setShowMenuEdit(newShowMenuEdit)
+          return
         }
-      } else if (selectableItems.length > 0) {
-        // Если нет сохраненных данных, инициализируем первые по умолчанию
+      }
+
+      // Если нет сохраненных данных, инициализируем первые по умолчанию
+      if (selectableItems.length > 0) {
         const maxSelections = selectableItems[0]?.max_selections || selectableItems.length
         const defaultSelected = selectableItems
           .slice(0, maxSelections)
@@ -287,7 +291,7 @@ export function ReservationModal({
         setSelectedSalads(defaultSelected)
       }
     }
-    
+
     setShowMenuEdit(newShowMenuEdit)
   }
 
@@ -628,7 +632,7 @@ export function ReservationModal({
               )}
             </div>
 
-            <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-2 shrink-0">
               {/* Status Badge */}
               <div className="text-right">
                 <div className="text-lg font-bold text-stone-900">
@@ -711,7 +715,7 @@ export function ReservationModal({
             {/* Guest Information */}
             <div className="space-y-4">
               <h3 className="font-semibold text-stone-900 flex items-center gap-2 border-b border-stone-200 pb-2">
-                <User className="h-4 w-4 flex-shrink-0" />
+                <User className="h-4 w-4 shrink-0" />
                 Информация о госте
               </h3>
               {mode === 'view' ? (
@@ -725,7 +729,7 @@ export function ReservationModal({
                     </div>
                     <div>
                       <Label className="text-xs text-stone-500 flex items-center gap-2">
-                        <Phone className="h-3.5 w-3.5 flex-shrink-0" />
+                        <Phone className="h-3.5 w-3.5 shrink-0" />
                         Телефон
                       </Label>
                       <p className="mt-1 text-stone-900 break-anywhere">{currentReservation?.guest?.phone}</p>
@@ -793,7 +797,7 @@ export function ReservationModal({
             {/* Reservation Details */}
             <div className="space-y-4">
               <h3 className="font-semibold text-stone-900 flex items-center gap-2 border-b border-stone-200 pb-2">
-                <Calendar className="h-4 w-4 flex-shrink-0" />
+                <Calendar className="h-4 w-4 shrink-0" />
                 Детали бронирования
               </h3>
               <div className="space-y-4">
@@ -801,7 +805,7 @@ export function ReservationModal({
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <Label className="flex items-center gap-2 text-sm">
-                      <Calendar className="h-4 w-4 flex-shrink-0" />
+                      <Calendar className="h-4 w-4 shrink-0" />
                       Дата
                     </Label>
                     {mode === 'view' ? (
@@ -818,7 +822,7 @@ export function ReservationModal({
 
                   <div>
                     <Label className="flex items-center gap-2 text-sm">
-                      <Clock className="h-4 w-4 flex-shrink-0" />
+                      <Clock className="h-4 w-4 shrink-0" />
                       Время
                     </Label>
                     {mode === 'view' ? (
@@ -836,7 +840,7 @@ export function ReservationModal({
 
                   <div>
                     <Label className="flex items-center gap-2 text-sm">
-                      <MapPin className="h-4 w-4 flex-shrink-0" />
+                      <MapPin className="h-4 w-4 shrink-0" />
                       Зал
                     </Label>
                     {mode === 'view' ? (
@@ -871,7 +875,7 @@ export function ReservationModal({
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label className="flex items-center gap-2 text-sm">
-                      <Users className="h-4 w-4 flex-shrink-0" />
+                      <Users className="h-4 w-4 shrink-0" />
                       Гостей
                     </Label>
                     {mode === 'view' ? (
@@ -889,7 +893,7 @@ export function ReservationModal({
 
                   <div>
                     <Label className="flex items-center gap-2 text-sm">
-                      <Baby className="h-4 w-4 flex-shrink-0" />
+                      <Baby className="h-4 w-4 shrink-0" />
                       Детей
                     </Label>
                     {mode === 'view' ? (
@@ -1128,21 +1132,27 @@ export function ReservationModal({
             </div>
 
             {/* Menu Section */}
-            {currentMenu && (
+            {(mode === 'edit' || currentMenu) && (
               <div className="space-y-4">
                 <h3 className="font-semibold text-stone-900 flex items-center gap-2 border-b border-stone-200 pb-2">
-                  <ChefHat className="h-4 w-4 flex-shrink-0" />
-                  Меню: {currentMenu.name}
+                  <ChefHat className="h-4 w-4 shrink-0" />
+                  Меню: {currentMenu?.name || 'Не выбрано'}
                 </h3>
                 <div className="space-y-4">
                   {/* Menu Header */}
                   <div className="p-4 rounded-xl bg-amber-50 border border-amber-200">
                     <div className="flex items-center justify-between flex-wrap gap-4">
                       <div className="flex-1">
-                        <p className="font-semibold text-amber-900 break-anywhere">{currentMenu.name}</p>
-                        <p className="text-sm text-amber-700 break-anywhere">
-                          {formatCurrency(currentMenu.price_per_person)}/чел.
-                        </p>
+                        {currentMenu ? (
+                          <>
+                            <p className="font-semibold text-amber-900 break-anywhere">{currentMenu.name}</p>
+                            <p className="text-sm text-amber-700 break-anywhere">
+                              {formatCurrency(currentMenu.price_per_person)}/чел.
+                            </p>
+                          </>
+                        ) : (
+                          <p className="font-semibold text-amber-900">Меню не выбрано</p>
+                        )}
                       </div>
                       {mode !== 'view' && (
                         <Select
@@ -1165,7 +1175,8 @@ export function ReservationModal({
                   </div>
 
                   {/* Menu Items */}
-                  <AnimatePresence>
+                  {currentMenu && (
+                    <AnimatePresence>
                     {(mode === 'view' || showMenuEdit) && (
                       <motion.div
                         initial={{ opacity: 0, height: 0 }}
@@ -1187,7 +1198,7 @@ export function ReservationModal({
                                 <span className="font-medium text-stone-900 break-anywhere flex-1">
                                   {typeLabelPlural}
                                 </span>
-                                <span className="text-sm text-stone-500 flex-shrink-0">
+                                <span className="text-sm text-stone-500 shrink-0">
                                   {platesCount} тарелок
                                 </span>
                               </div>
@@ -1238,7 +1249,7 @@ export function ReservationModal({
                         {item.name}
                       </span>
                     </div>
-                    <div className="flex items-center gap-4 text-sm text-stone-500 flex-shrink-0">
+                    <div className="flex items-center gap-4 text-sm text-stone-500 shrink-0">
                       <span className="whitespace-nowrap">{item.weight_per_person}г/чел</span>
                       <span className="font-medium whitespace-nowrap">{totalWeight}г</span>
                     </div>
@@ -1251,9 +1262,10 @@ export function ReservationModal({
                         })}
                       </motion.div>
                     )}
-                  </AnimatePresence>
+                    </AnimatePresence>
+                  )}
 
-                  {mode !== 'view' && (
+                  {mode !== 'view' && currentMenu && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -1272,7 +1284,7 @@ export function ReservationModal({
             {currentReservation?.payments && currentReservation.payments.length > 0 && (
               <div className="space-y-4">
                 <h3 className="font-semibold text-stone-900 flex items-center gap-2 border-b border-stone-200 pb-2">
-                  <CreditCard className="h-4 w-4 flex-shrink-0" />
+                  <CreditCard className="h-4 w-4 shrink-0" />
                   Предоплаты
                 </h3>
                 <div className="space-y-3 pr-4">
@@ -1293,7 +1305,7 @@ export function ReservationModal({
                         </p>
                       </div>
                       {payment.notes && (
-                        <p className="text-sm text-green-600 break-anywhere flex-shrink-0">{payment.notes}</p>
+                        <p className="text-sm text-green-600 break-anywhere shrink-0">{payment.notes}</p>
                       )}
                     </div>
                   ))}
@@ -1305,7 +1317,7 @@ export function ReservationModal({
             {(currentReservation?.comments || mode !== 'view') && (
               <div className="space-y-4">
                 <h3 className="font-semibold text-stone-900 flex items-center gap-2 border-b border-stone-200 pb-2">
-                  <MessageSquare className="h-4 w-4 flex-shrink-0" />
+                  <MessageSquare className="h-4 w-4 shrink-0" />
                   Комментарии
                 </h3>
                 <div>
@@ -1326,7 +1338,7 @@ export function ReservationModal({
             )}
 
             {/* Total Amount - Always visible */}
-            <div className="rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 p-4">
+            <div className="rounded-xl bg-linear-to-r from-amber-50 to-orange-50 border border-amber-200 p-4">
               <div className="flex items-center justify-between">
                 <div className="flex-1">
                   <p className="text-sm text-amber-700">Итоговая стоимость</p>
@@ -1334,7 +1346,7 @@ export function ReservationModal({
                     {formatCurrency(computedTotal)}
                   </p>
                 </div>
-                <div className="text-right text-sm flex-shrink-0">
+                <div className="text-right text-sm shrink-0">
                   <p className="text-amber-700 break-anywhere">
                     {currentMenu?.name}
                   </p>

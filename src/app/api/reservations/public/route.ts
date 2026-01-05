@@ -27,6 +27,29 @@ export async function POST(request: NextRequest) {
 
     const defaultHallId = halls[0].id
 
+    // Получаем первое доступное активное меню
+    const supabase = await createClient()
+    const { data: activeMenus, error: menusError } = await supabase
+      .from('menus')
+      .select('id, name, price_per_person')
+      .eq('is_active', true)
+      .order('name')
+      .limit(1)
+
+    if (menusError) {
+      console.error('Error fetching active menus:', menusError)
+      return NextResponse.json(
+        { error: 'Ошибка при получении меню' },
+        { status: 500 }
+      )
+    }
+
+    const defaultMenu = activeMenus?.[0]
+    const defaultMenuId = defaultMenu?.id
+    const totalAmount = defaultMenu ? defaultMenu.price_per_person * parseInt(guests_count) : 0
+
+    console.log('API: Active menus found:', activeMenus?.length || 0, 'Default menu:', defaultMenu?.name, 'ID:', defaultMenuId)
+
     // Находим или создаем гостя
     const nameParts = name.trim().split(' ').filter((part: string) => part.length > 0)
     const firstName = nameParts[0] || name
@@ -42,7 +65,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Создаем бронирование
-    const supabase = await createClient()
     const { data: reservation, error: reservationError } = await supabase
       .from('reservations')
       .insert({
@@ -52,8 +74,9 @@ export async function POST(request: NextRequest) {
         guest_id: guest.id,
         guests_count: parseInt(guests_count),
         children_count: 0,
+        menu_id: defaultMenuId,
         status: 'new',
-        total_amount: 0,
+        total_amount: totalAmount,
         comments: comments || null
       })
       .select(`
@@ -71,8 +94,40 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    console.log('API: Reservation created with menu_id:', reservation.menu_id, 'total_amount:', reservation.total_amount)
+
+    // Создаем записи о выбранных позициях меню
+    if (defaultMenuId) {
+      // Получаем все позиции меню
+      const { data: menuItems, error: menuItemsError } = await supabase
+        .from('menu_items')
+        .select('id, is_selectable')
+        .eq('menu_id', defaultMenuId)
+
+      if (!menuItemsError && menuItems) {
+        // Создаем записи для неселективных позиций (они всегда включены)
+        const nonSelectableItems = menuItems.filter(item => !item.is_selectable)
+        if (nonSelectableItems.length > 0) {
+          const reservationMenuItems = nonSelectableItems.map(item => ({
+            reservation_id: reservation.id,
+            menu_item_id: item.id,
+            is_selected: true
+          }))
+
+          const { error: rmiError } = await supabase
+            .from('reservation_menu_items')
+            .insert(reservationMenuItems)
+
+          if (rmiError) {
+            console.error('Error creating reservation menu items:', rmiError)
+            // Не прерываем процесс, просто логируем ошибку
+          }
+        }
+      }
+    }
+
     return NextResponse.json(
-      { 
+      {
         success: true,
         reservation: reservation,
         message: 'Бронирование успешно создано'
