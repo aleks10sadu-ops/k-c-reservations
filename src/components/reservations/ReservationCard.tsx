@@ -81,7 +81,7 @@ export function ReservationCard({ reservation, onClick, compact = false }: Reser
       whileTap={{ scale: 0.99 }}
       onClick={onClick}
       className={cn(
-        "cursor-pointer rounded-xl border-l-4 p-4 shadow-sm transition-all hover:shadow-lg",
+        "cursor-pointer rounded-xl border-l-4 p-3 sm:p-4 shadow-sm transition-all hover:shadow-lg w-full max-w-none",
         `status-${reservation.status}`,
         statusConfig.bgColor && "shadow-sm"
       )}
@@ -93,7 +93,7 @@ export function ReservationCard({ reservation, onClick, compact = false }: Reser
       {/* Header: статус, сумма, дата */}
       <div className="flex items-start justify-between gap-4 mb-4">
         <div className="flex items-center gap-3">
-          <Badge variant={statusVariant} className="text-sm px-3 py-1">
+          <Badge variant={statusVariant} className="text-xs sm:text-sm px-2 py-1 sm:px-3 sm:py-1">
             {statusConfig.label}
           </Badge>
           <div className="text-sm text-stone-500">
@@ -101,7 +101,7 @@ export function ReservationCard({ reservation, onClick, compact = false }: Reser
           </div>
         </div>
         <div className="text-right">
-          <div className="text-2xl font-bold text-stone-900 mb-1">
+          <div className="text-lg sm:text-xl md:text-2xl font-bold text-stone-900 mb-1">
             {formatCurrency(reservation.total_amount)}
           </div>
           {hasPayments && (
@@ -128,8 +128,8 @@ export function ReservationCard({ reservation, onClick, compact = false }: Reser
           )}
         </div>
 
-        {/* Ключевые детали в две колонки */}
-        <div className="grid grid-cols-2 gap-4">
+        {/* Ключевые детали в адаптивные колонки */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <Clock className="h-4 w-4 text-stone-400" />

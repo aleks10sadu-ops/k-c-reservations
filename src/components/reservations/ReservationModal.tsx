@@ -18,7 +18,9 @@ import {
   User,
   ChefHat,
   CreditCard,
-  MessageSquare
+  MessageSquare,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react'
 import { Reservation, ReservationStatus, RESERVATION_STATUS_CONFIG, getMenuItemTypeLabel, MenuItemType, Guest, ReservationMenuItem } from '@/types'
 import { cn, formatCurrency, formatDate, formatTime, calculatePlates, calculateTotalWeight } from '@/lib/utils'
@@ -26,7 +28,9 @@ import {
   Dialog,
   DialogContent,
   DialogHeader,
-  DialogTitle
+  DialogTitle,
+  DialogPortal,
+  DialogOverlay
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -43,6 +47,7 @@ import {
 } from '@/components/ui/select'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useHalls, useMenus, useMenuItems, useMenuItemTypes, useGuests, useTables, useCreateMutation, useUpdateMutation, useDeleteMutation, useReservations } from '@/hooks/useSupabase'
+import { X, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react'
 import { format } from 'date-fns'
 
 interface ReservationModalProps {
@@ -107,6 +112,7 @@ export function ReservationModal({
     phone: ''
   })
   const [showSchemePicker, setShowSchemePicker] = useState(false)
+  const [showMobileTablePicker, setShowMobileTablePicker] = useState(false)
   const [selectedTables, setSelectedTables] = useState<string[]>([])
   const [draftTables, setDraftTables] = useState<string[]>([])
   const [selectionBox, setSelectionBox] = useState<{
@@ -117,11 +123,38 @@ export function ReservationModal({
     active: boolean
     moved: boolean
   } | null>(null)
+
+  // Состояние для мобильного выбора столов
+  const [mobilePanOffset, setMobilePanOffset] = useState({ x: 0, y: 0 })
+  const [mobileZoom, setMobileZoom] = useState(1)
+  const [mobileZoomCenter, setMobileZoomCenter] = useState({ x: 0, y: 0 })
+  const [isPanning, setIsPanning] = useState(false)
+  const [lastPanPoint, setLastPanPoint] = useState({ x: 0, y: 0 })
   const schemeRef = useRef<HTMLDivElement | null>(null)
 
+  // Состояние для зума карты
+  const [zoom, setZoom] = useState(1)
+  const [zoomCenter, setZoomCenter] = useState({ x: 0, y: 0 })
+
   const [isMobile, setIsMobile] = useState(false)
-  const CANVAS_WIDTH = isMobile ? 600 : 800
-  const CANVAS_HEIGHT = isMobile ? 450 : 600
+  const [menuCollapsed, setMenuCollapsed] = useState(true) // Свернуто по умолчанию на мобильных
+  const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 })
+
+  // Адаптивные размеры карты зала - вычисляем в эффекте
+  useEffect(() => {
+    const updateCanvasSize = () => {
+      const width = Math.max(600, window.innerWidth - 64)
+      const height = Math.max(450, window.innerHeight * 0.6)
+      setCanvasSize({ width, height })
+    }
+
+    updateCanvasSize()
+    window.addEventListener('resize', updateCanvasSize)
+    return () => window.removeEventListener('resize', updateCanvasSize)
+  }, [])
+
+  const CANVAS_WIDTH = canvasSize.width
+  const CANVAS_HEIGHT = canvasSize.height
   const COLOR_PRESETS = ['#f97316', '#f59e0b', '#10b981', '#3b82f6', '#6366f1', '#ec4899', '#ef4444', '#6b7280']
 
   // Fetch data
@@ -153,6 +186,71 @@ export function ReservationModal({
     window.addEventListener('resize', checkMobile)
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
+
+  // Обновляем isMobile вместе с canvas size
+  useEffect(() => {
+    setIsMobile(window.innerWidth < 768)
+  }, [canvasSize])
+
+  // Предотвращаем прокрутку body при открытии модального окна
+  useEffect(() => {
+    if (isOpen || showMobileTablePicker) {
+      // Сохраняем текущую позицию прокрутки
+      const scrollY = window.scrollY
+
+      // Блокируем прокрутку
+      document.body.style.position = 'fixed'
+      document.body.style.top = `-${scrollY}px`
+      document.body.style.width = '100%'
+      document.body.style.overflow = 'hidden'
+
+      // Восстанавливаем позицию при закрытии
+      return () => {
+        document.body.style.position = ''
+        document.body.style.top = ''
+        document.body.style.width = ''
+        document.body.style.overflow = ''
+        window.scrollTo(0, scrollY)
+      }
+    }
+  }, [isOpen, showMobileTablePicker])
+
+  // Авто-центрирование карты при открытии мобильного окна
+  useEffect(() => {
+    if (showMobileTablePicker && isMobile && tables.length > 0) {
+      // Вычисляем bounding box всех столов
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+
+      tables.forEach(table => {
+        minX = Math.min(minX, table.position_x)
+        maxX = Math.max(maxX, table.position_x + table.width)
+        minY = Math.min(minY, table.position_y)
+        maxY = Math.max(maxY, table.position_y + table.height)
+      })
+
+      const tablesWidth = maxX - minX
+      const tablesHeight = maxY - minY
+      const tablesCenterX = (minX + maxX) / 2
+      const tablesCenterY = (minY + maxY) / 2
+
+      // Вычисляем оптимальный зум
+      const containerWidth = window.innerWidth * 0.9 // 90% от ширины экрана
+      const containerHeight = window.innerHeight * 0.7 // 70% от высоты экрана (учитывая header и footer)
+
+      const scaleX = containerWidth / tablesWidth
+      const scaleY = containerHeight / tablesHeight
+      const optimalZoom = Math.min(scaleX, scaleY, 1) * 0.8 // Добавляем небольшой отступ
+
+      // Вычисляем смещение для центрирования
+      const canvasCenterX = CANVAS_WIDTH / 2
+      const canvasCenterY = CANVAS_HEIGHT / 2
+      const targetCenterX = canvasCenterX - tablesCenterX * optimalZoom
+      const targetCenterY = canvasCenterY - tablesCenterY * optimalZoom
+
+      setMobileZoom(optimalZoom)
+      setMobilePanOffset({ x: targetCenterX, y: targetCenterY })
+    }
+  }, [showMobileTablePicker, isMobile, tables, CANVAS_WIDTH, CANVAS_HEIGHT])
 
   // Обновляем локальное состояние при изменении пропа reservation
   useEffect(() => {
@@ -225,10 +323,15 @@ export function ReservationModal({
         setSelectedSalads([])
       }
       setShowSchemePicker(false)
+      setShowMobileTablePicker(false)
       setSelectionBox(null)
       // Reset new guest form when modal opens/closes
       setShowNewGuest(false)
       setNewGuestData({ first_name: '', last_name: '', phone: '' })
+      // Reset mobile table picker state
+      setMobilePanOffset({ x: 0, y: 0 })
+      setMobileZoom(1)
+      setMobileZoomCenter({ x: 0, y: 0 })
     })
   }, [currentReservation, initialMode, isOpen, initialDate, halls, menus])
 
@@ -325,6 +428,85 @@ export function ReservationModal({
   }, [currentMenu, menuItems])
 
   const clamp = (val: number, min: number, max: number) => Math.min(Math.max(val, min), max)
+
+  // Функции для мобильного выбора столов
+  const handleMobileZoomIn = () => setMobileZoom(prev => Math.min(prev * 1.2, 3))
+  const handleMobileZoomOut = () => setMobileZoom(prev => Math.max(prev / 1.2, 0.5))
+  const handleMobileResetZoom = () => {
+    setMobileZoom(1)
+    setMobilePanOffset({ x: 0, y: 0 })
+    setMobileZoomCenter({ x: 0, y: 0 })
+  }
+
+  const handleMobilePanStart = (event: React.TouchEvent) => {
+    if (event.touches.length === 1) {
+      // Начинаем pan
+      const touch = event.touches[0]
+      setIsPanning(true)
+      setLastPanPoint({ x: touch.clientX, y: touch.clientY })
+    }
+  }
+
+  const handleMobilePanMove = (event: React.TouchEvent) => {
+    if (event.touches.length === 1 && isPanning) {
+      // Pan gesture - preventDefault не нужен благодаря touch-action: none
+      const touch = event.touches[0]
+      const deltaX = touch.clientX - lastPanPoint.x
+      const deltaY = touch.clientY - lastPanPoint.y
+
+      setMobilePanOffset(prev => ({
+        x: prev.x + deltaX,
+        y: prev.y + deltaY
+      }))
+
+      setLastPanPoint({ x: touch.clientX, y: touch.clientY })
+    } else if (event.touches.length === 2) {
+      // Pinch gesture - preventDefault не нужен благодаря touch-action: none
+      const touch1 = event.touches[0]
+      const touch2 = event.touches[1]
+
+      const currentDistance = Math.sqrt(
+        Math.pow(touch2.clientX - touch1.clientX, 2) +
+        Math.pow(touch2.clientY - touch1.clientY, 2)
+      )
+
+      // Более точная логика pinch
+      const centerX = (touch1.clientX + touch2.clientX) / 2
+      const centerY = (touch1.clientY + touch2.clientY) / 2
+
+      setMobileZoomCenter({ x: centerX, y: centerY })
+
+      // Определяем направление зума по сравнению с предыдущим расстоянием
+      // Для простоты используем фиксированный порог
+      if (currentDistance > 150) {
+        setMobileZoom(prev => Math.min(prev * 1.02, 3))
+      } else if (currentDistance < 100) {
+        setMobileZoom(prev => Math.max(prev / 1.02, 0.5))
+      }
+    }
+  }
+
+  const handleMobilePanEnd = () => {
+    setIsPanning(false)
+  }
+
+  const handleMobileTableClick = (tableId: string) => {
+    setDraftTables((prev) => {
+      const exists = prev.includes(tableId)
+      if (exists) {
+        return prev.filter((id) => id !== tableId)
+      }
+      return [...prev, tableId]
+    })
+  }
+
+  // Функции управления зумом
+  const handleZoomIn = () => setZoom(prev => Math.min(prev * 1.2, 3))
+  const handleZoomOut = () => setZoom(prev => Math.max(prev / 1.2, 0.5))
+  const handleResetZoom = () => {
+    setZoom(1)
+    setZoomCenter({ x: 0, y: 0 })
+  }
 
   const getTableAABB = (table: typeof tables[number]) => {
     const rot = (table.rotation ?? 0) * (Math.PI / 180)
@@ -605,6 +787,151 @@ export function ReservationModal({
 
   const isLoading = createReservation.loading || updateReservation.loading || deleteReservation.loading || createGuest.loading
 
+  // Мобильное модальное окно для выбора столов
+  if (showMobileTablePicker && isMobile) {
+    return (
+      <Dialog open={showMobileTablePicker} onOpenChange={() => setShowMobileTablePicker(false)}>
+        <DialogContent className="max-w-[95vw] max-h-[95vh] w-[95vw] h-[95vh] p-0 [&>button]:hidden">
+          <div className="flex flex-col h-full">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-stone-200">
+              <h3 className="text-lg font-semibold">Выбор столов</h3>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowMobileTablePicker(false)}
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+
+            {/* Controls */}
+            <div className="flex items-center justify-center gap-2 p-3 bg-stone-50 border-b border-stone-200">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleMobileZoomOut}
+                disabled={mobileZoom <= 0.5}
+              >
+                <ZoomOut className="h-4 w-4" />
+              </Button>
+              <span className="text-sm text-stone-600 min-w-[3rem] text-center">
+                {Math.round(mobileZoom * 100)}%
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleMobileZoomIn}
+                disabled={mobileZoom >= 3}
+              >
+                <ZoomIn className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleMobileResetZoom}
+              >
+                <RotateCcw className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {/* Map Container */}
+            <div className="flex-1 overflow-hidden relative">
+              <div
+                className="absolute inset-0 cursor-grab active:cursor-grabbing touch-none"
+                style={{
+                  backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)',
+                  backgroundSize: '16px 16px',
+                  touchAction: 'none' // Предотвращает прокрутку страницы
+                }}
+                onTouchStart={handleMobilePanStart}
+                onTouchMove={handleMobilePanMove}
+                onTouchEnd={handleMobilePanEnd}
+              >
+                <div
+                  className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2"
+                  style={{
+                    width: CANVAS_WIDTH,
+                    height: CANVAS_HEIGHT,
+                    transform: `translate(-50%, -50%) translate(${mobilePanOffset.x}px, ${mobilePanOffset.y}px) scale(${mobileZoom})`,
+                    transformOrigin: 'center center'
+                  }}
+                >
+                  {tables.map((table) => {
+                    const isSelected = draftTables.includes(table.id)
+                    const occupiedColor = occupiedTableMap.get(table.id)
+                    return (
+                      <div
+                        key={table.id}
+                        className={cn(
+                          "absolute border-2 flex items-center justify-center text-sm font-semibold transition-all select-none cursor-pointer",
+                          table.shape === 'round' && "rounded-full",
+                          table.shape === 'rectangle' && "rounded-xl",
+                          table.shape === 'square' && "rounded-lg",
+                          isSelected
+                            ? "border-amber-500 bg-amber-50"
+                            : occupiedColor
+                              ? "border-stone-300 bg-white"
+                              : "border-stone-300 bg-white hover:border-amber-400"
+                        )}
+                        style={{
+                          left: table.position_x,
+                          top: table.position_y,
+                          width: table.width,
+                          height: table.height,
+                          transform: `rotate(${table.rotation ?? 0}deg)`,
+                          transformOrigin: 'top left',
+                        }}
+                        onClick={() => handleMobileTableClick(table.id)}
+                        title={occupiedColor ? 'Занято другим бронированием' : undefined}
+                      >
+                        {table.number}
+                        {occupiedColor && (
+                          <span
+                            className="absolute -top-2 -right-2 h-3.5 w-3.5 rounded-full border border-white shadow"
+                            style={{ backgroundColor: occupiedColor }}
+                          />
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between p-4 border-t border-stone-200">
+              <div className="text-sm text-stone-600">
+                Выбрано: {draftTables.length}
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setDraftTables([])
+                    setSelectedTables([])
+                    setFormData((prev) => ({ ...prev, table_id: '' }))
+                  }}
+                >
+                  Сбросить
+                </Button>
+                <Button
+                  onClick={() => {
+                    setSelectedTables(draftTables)
+                    setFormData((prev) => ({ ...prev, table_id: draftTables[0] ?? '' }))
+                    setShowMobileTablePicker(false)
+                  }}
+                >
+                  Готово
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    )
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className={cn(
@@ -613,10 +940,21 @@ export function ReservationModal({
         "mx-auto", // Центрирование
         mode !== 'view' && "pb-0"
       )}>
-        <DialogHeader className="p-4 pb-2">
+        <DialogHeader className="p-4 pb-2 pr-12 sm:pr-4">
           {/* Compact Header */}
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
+              {/* Кнопка "Назад" для мобильных */}
+              <div className="flex items-center gap-2 mb-2 md:hidden">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onClose}
+                  className="p-1 h-8 w-8"
+                >
+                  ← Назад
+                </Button>
+              </div>
               <DialogTitle className="text-lg font-bold text-stone-900">
                 {mode === 'create' ? 'Новое бронирование' : 'Бронирование'}
               </DialogTitle>
@@ -628,30 +966,24 @@ export function ReservationModal({
                   <p className="text-xs text-stone-500">
                     {formatDate(currentReservation.date)} в {formatTime(currentReservation.time)}
                   </p>
+                  <Badge variant={getStatusVariant(currentReservation?.status || formData.status)} className="text-xs">
+                    {RESERVATION_STATUS_CONFIG[currentReservation?.status || formData.status].label}
+                  </Badge>
                 </div>
               )}
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-              {/* Status Badge */}
-              <div className="text-right">
-                <div className="text-lg font-bold text-stone-900">
-                  {formatCurrency(currentReservation?.total_amount || computedTotal)}
-                </div>
-                <Badge variant={getStatusVariant(currentReservation?.status || formData.status)} className="text-xs mt-1">
-                  {RESERVATION_STATUS_CONFIG[currentReservation?.status || formData.status].label}
-                </Badge>
-              </div>
-
+            {/* Action Buttons - всегда справа */}
+            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
               {mode === 'view' && reservation && (
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setMode('edit')}
-                  className="gap-2"
+                  className="gap-1 sm:gap-2 h-8 sm:h-9"
                 >
-                  <Settings className="h-4 w-4" />
-                  <span className="hidden sm:inline">Изменить</span>
+                  <Settings className="h-3 w-3 sm:h-4 sm:w-4" />
+                  <span className="hidden sm:inline text-xs sm:text-sm">Изменить</span>
                 </Button>
               )}
 
@@ -659,15 +991,15 @@ export function ReservationModal({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="text-stone-400 hover:text-rose-600 hover:bg-rose-50"
+                  className="text-stone-400 hover:text-rose-600 hover:bg-rose-50 h-8 w-8 sm:h-9 sm:w-9"
                   onClick={handleDelete}
                   disabled={isLoading}
                   title="Удалить бронь"
                 >
                   {deleteReservation.loading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
                   ) : (
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
                   )}
                 </Button>
               )}
@@ -679,10 +1011,10 @@ export function ReservationModal({
           mode === 'view' ? "max-h-[calc(80vh-140px)]" : "max-h-[calc(95vh-200px)]",
           mode !== 'view' && "pb-20"
         )}>
-          <div className="p-4 pr-10 space-y-4 break-anywhere">
+          <div className="modal-content space-y-4 break-anywhere">
             {/* Status Selection - Only show when editing */}
             {mode !== 'view' && (
-              <div className="space-y-3">
+              <div className="space-y-3 modal-form-section">
                 <Label className="text-sm font-medium">Статус бронирования</Label>
                 <div className="flex flex-wrap gap-2">
                   {statusOptions.map((status) => {
@@ -713,14 +1045,14 @@ export function ReservationModal({
             )}
 
             {/* Guest Information */}
-            <div className="space-y-4">
+            <div className="space-y-4 modal-form-section">
               <h3 className="font-semibold text-stone-900 flex items-center gap-2 border-b border-stone-200 pb-2">
                 <User className="h-4 w-4 shrink-0" />
                 Информация о госте
               </h3>
               {mode === 'view' ? (
                 <div className="space-y-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                     <div>
                       <Label className="text-xs text-stone-500">ФИО</Label>
                       <p className="mt-1 font-medium text-stone-900 break-anywhere">
@@ -795,349 +1127,420 @@ export function ReservationModal({
             </div>
 
             {/* Reservation Details */}
-            <div className="space-y-4">
+            <div className="space-y-4 modal-form-section">
               <h3 className="font-semibold text-stone-900 flex items-center gap-2 border-b border-stone-200 pb-2">
                 <Calendar className="h-4 w-4 shrink-0" />
                 Детали бронирования
               </h3>
               <div className="space-y-4">
-                {/* Date, Time, Hall */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <Label className="flex items-center gap-2 text-sm">
-                      <Calendar className="h-4 w-4 shrink-0" />
-                      Дата
-                    </Label>
-                    {mode === 'view' ? (
-                      <p className="mt-2 font-medium break-anywhere">{formatDate(currentReservation?.date || '')}</p>
-                    ) : (
-                      <Input
-                        type="date"
-                        value={formData.date}
-                        onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                        className="mt-2"
-                      />
-                    )}
+                {/* Mobile layout: 3 rows x 2 cols */}
+                <div className="space-y-4 sm:hidden">
+                  {/* Row 1: Date & Time */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="flex items-center gap-2 text-sm">
+                        <Calendar className="h-4 w-4 shrink-0" />
+                        Дата
+                      </Label>
+                      {mode === 'view' ? (
+                        <p className="mt-2 font-medium break-anywhere">{formatDate(currentReservation?.date || '')}</p>
+                      ) : (
+                        <Input
+                          type="date"
+                          value={formData.date}
+                          onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                          className="mt-2"
+                        />
+                      )}
+                    </div>
+
+                    <div>
+                      <Label className="flex items-center gap-2 text-sm">
+                        <Clock className="h-4 w-4 shrink-0" />
+                        Время
+                      </Label>
+                      {mode === 'view' ? (
+                        <p className="mt-2 font-medium break-anywhere">{formatTime(currentReservation?.time)}</p>
+                      ) : (
+                        <Input
+                          type="time"
+                          value={formData.time}
+                          onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                          className="mt-2"
+                          step="60"
+                        />
+                      )}
+                    </div>
                   </div>
 
-                  <div>
-                    <Label className="flex items-center gap-2 text-sm">
-                      <Clock className="h-4 w-4 shrink-0" />
-                      Время
-                    </Label>
-                    {mode === 'view' ? (
-                      <p className="mt-2 font-medium break-anywhere">{formatTime(currentReservation?.time)}</p>
-                    ) : (
-                      <Input
-                        type="time"
-                        value={formData.time}
-                        onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                        className="mt-2"
-                        step="60"
-                      />
-                    )}
+                  {/* Row 2: Guests & Children */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="flex items-center gap-2 text-sm">
+                        <Users className="h-4 w-4 shrink-0" />
+                        Гостей
+                      </Label>
+                      {mode === 'view' ? (
+                        <p className="mt-2 text-xl font-bold text-stone-900 break-anywhere">{currentReservation?.guests_count}</p>
+                      ) : (
+                        <Input
+                          type="number"
+                          min={1}
+                          value={formData.guests_count}
+                          onChange={(e) => setFormData({ ...formData, guests_count: parseInt(e.target.value) || 1 })}
+                          className="mt-2"
+                        />
+                      )}
+                    </div>
+
+                    <div>
+                      <Label className="flex items-center gap-2 text-sm">
+                        <Baby className="h-4 w-4 shrink-0" />
+                        Детей
+                      </Label>
+                      {mode === 'view' ? (
+                        <p className="mt-2 text-xl font-bold text-stone-900 break-anywhere">{currentReservation?.children_count || 0}</p>
+                      ) : (
+                        <Input
+                          type="number"
+                          min={0}
+                          value={formData.children_count}
+                          onChange={(e) => setFormData({ ...formData, children_count: parseInt(e.target.value) || 0 })}
+                          className="mt-2"
+                        />
+                      )}
+                    </div>
                   </div>
 
-                  <div>
-                    <Label className="flex items-center gap-2 text-sm">
-                      <MapPin className="h-4 w-4 shrink-0" />
-                      Зал
-                    </Label>
-                    {mode === 'view' ? (
-                      <p className="mt-2 break-anywhere">{currentReservation?.hall?.name}</p>
-                    ) : (
-                      <Select
-                        value={formData.hall_id}
-                        onValueChange={(v) => {
-                          setFormData({ ...formData, hall_id: v, table_id: '' })
-                          setSelectedTables([])
-                          setDraftTables([])
-                          setShowSchemePicker(false)
-                          setSelectionBox(null)
-                        }}
-                      >
-                        <SelectTrigger className="mt-2">
-                          <SelectValue placeholder="Выберите зал" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {halls.map(hall => (
-                            <SelectItem key={hall.id} value={hall.id}>
-                              {hall.name} (до {hall.capacity} чел.)
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </div>
-                </div>
-
-                {/* Guests Count */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="flex items-center gap-2 text-sm">
-                      <Users className="h-4 w-4 shrink-0" />
-                      Гостей
-                    </Label>
-                    {mode === 'view' ? (
-                      <p className="mt-2 text-xl font-bold text-stone-900 break-anywhere">{currentReservation?.guests_count}</p>
-                    ) : (
-                      <Input
-                        type="number"
-                        min={1}
-                        value={formData.guests_count}
-                        onChange={(e) => setFormData({ ...formData, guests_count: parseInt(e.target.value) || 1 })}
-                        className="mt-2"
-                      />
-                    )}
-                  </div>
-
-                  <div>
-                    <Label className="flex items-center gap-2 text-sm">
-                      <Baby className="h-4 w-4 shrink-0" />
-                      Детей
-                    </Label>
-                    {mode === 'view' ? (
-                      <p className="mt-2 text-xl font-bold text-stone-900 break-anywhere">{currentReservation?.children_count || 0}</p>
-                    ) : (
-                      <Input
-                        type="number"
-                        min={0}
-                        value={formData.children_count}
-                        onChange={(e) => setFormData({ ...formData, children_count: parseInt(e.target.value) || 0 })}
-                        className="mt-2"
-                      />
-                    )}
-                  </div>
-                </div>
-
-                {/* Table Selection */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label className="flex items-center gap-2 text-sm">
-                      <MapPin className="h-4 w-4" />
-                      Столы
-                    </Label>
-                    {mode !== 'view' && (
-                      <Button
-                        type="button"
-                        variant={showSchemePicker ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => setShowSchemePicker((v) => !v)}
-                      >
-                        {showSchemePicker ? 'Скрыть схему' : 'Выбрать на схеме'}
-                      </Button>
-                    )}
-                  </div>
-
-                  {mode === 'view' ? (
-                    <p className="text-stone-900 break-anywhere">
-                      {currentReservation?.tables?.length
-                        ? currentReservation.tables.map((t) => t.number).join(', ')
-                        : currentReservation?.table?.number
-                          ? `${currentReservation.table.number}`
-                          : 'Не выбраны'}
-                    </p>
-                  ) : (
-                    <div className="space-y-3">
-                      <Select
-                        value={formData.table_id || 'none'}
-                        onValueChange={(v) => {
-                          const id = v === 'none' ? '' : v
-                          setFormData({ ...formData, table_id: id })
-                          const next = id ? [id] : []
-                          setSelectedTables(next)
-                          if (showSchemePicker) setDraftTables(next)
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Выберите стол" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Без стола</SelectItem>
-                          {tables.map(table => {
-                            const occupiedColor = occupiedTableMap.get(table.id)
-                            return (
-                              <SelectItem key={table.id} value={table.id}>
-                                <span className="inline-flex items-center gap-2">
-                                  {occupiedColor && (
-                                    <span
-                                      className="inline-block h-3 w-3 rounded-full border border-stone-300"
-                                      style={{ backgroundColor: occupiedColor }}
-                                    />
-                                  )}
-                                  {table.number} • {table.capacity} чел.{occupiedColor ? ' (занят)' : ''}
-                                </span>
+                  {/* Row 3: Hall & Tables */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="flex items-center gap-2 text-sm">
+                        <MapPin className="h-4 w-4 shrink-0" />
+                        Зал
+                      </Label>
+                      {mode === 'view' ? (
+                        <p className="mt-2 break-anywhere">{currentReservation?.hall?.name}</p>
+                      ) : (
+                        <Select
+                          value={formData.hall_id}
+                          onValueChange={(v) => {
+                            setFormData({ ...formData, hall_id: v, table_id: '' })
+                            setSelectedTables([])
+                            setDraftTables([])
+                            setShowSchemePicker(false)
+                            setSelectionBox(null)
+                          }}
+                        >
+                          <SelectTrigger className="mt-2">
+                            <SelectValue placeholder="Выберите зал" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {halls.map(hall => (
+                              <SelectItem key={hall.id} value={hall.id}>
+                                {hall.name} (до {hall.capacity} чел.)
                               </SelectItem>
-                            )
-                          })}
-                        </SelectContent>
-                      </Select>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
 
-                      {/* Table Scheme Picker */}
-                      <AnimatePresence>
-                        {showSchemePicker && (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            exit={{ opacity: 0, height: 0 }}
-                            className="space-y-3"
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <Label className="flex items-center gap-2 text-sm">
+                          <MapPin className="h-4 w-4 shrink-0" />
+                          Столы
+                        </Label>
+                        {mode !== 'view' && (
+                          <Button
+                            type="button"
+                            variant={(showSchemePicker || showMobileTablePicker) ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => {
+                              if (isMobile) {
+                                setShowMobileTablePicker(true)
+                              } else {
+                                setShowSchemePicker((v) => !v)
+                              }
+                            }}
+                            className="text-xs"
                           >
-                            <div className="flex items-center justify-between">
-                              <p className="text-sm text-stone-600 break-anywhere">
-                                Кликните по столу или выделите рамкой
-                              </p>
-                              <div className="flex gap-2">
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    setDraftTables([])
-                                    setSelectedTables([])
-                                    setFormData((prev) => ({ ...prev, table_id: '' }))
-                                  }}
-                                >
-                                  Сбросить
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  onClick={() => {
-                                    setSelectedTables(draftTables)
-                                    setFormData((prev) => ({ ...prev, table_id: draftTables[0] ?? '' }))
-                                    setShowSchemePicker(false)
-                                  }}
-                                >
-                                  Готово
-                                </Button>
-                              </div>
-                            </div>
-
-                            <div className="overflow-auto max-h-96">
-                              <div
-                                ref={schemeRef}
-                                className="relative bg-white border border-stone-200 overflow-hidden rounded-lg mx-auto"
-                                style={{
-                                  width: CANVAS_WIDTH,
-                                  height: CANVAS_HEIGHT,
-                                  backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)',
-                                  backgroundSize: '16px 16px',
-                                  maxWidth: '100%',
-                                  aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`
-                                }}
-                                onMouseDown={handleSchemeMouseDown}
-                                onMouseMove={handleSchemeMouseMove}
-                                onMouseUp={handleSchemeMouseUp}
-                                onMouseLeave={handleSchemeMouseUp}
-                              >
-                                {tables.map((table) => {
-                                  const isSelected = draftTables.includes(table.id)
-                                  const occupiedColor = occupiedTableMap.get(table.id)
-                                  return (
-                                    <div
-                                      key={table.id}
-                                      className={cn(
-                                        "absolute border-2 flex items-center justify-center text-sm font-semibold transition select-none",
-                                        table.shape === 'round' && "rounded-full",
-                                        table.shape === 'rectangle' && "rounded-xl",
-                                        table.shape === 'square' && "rounded-lg",
-                                        isSelected
-                                          ? "border-amber-500 bg-amber-50"
-                                          : occupiedColor
-                                            ? "border-stone-300 bg-white"
-                                            : "border-stone-300 bg-white hover:border-amber-400"
-                                      )}
-                                      style={{
-                                        left: table.position_x,
-                                        top: table.position_y,
-                                        width: table.width,
-                                        height: table.height,
-                                        transform: `rotate(${table.rotation ?? 0}deg)`,
-                                        transformOrigin: 'top left',
-                                      }}
-                                      onMouseDown={(e) => e.stopPropagation()}
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        handleSchemeClick(table.id)
-                                      }}
-                                      title={occupiedColor ? 'Занято другим бронированием' : undefined}
-                                    >
-                                      {table.number}
+                            {(showSchemePicker || showMobileTablePicker) ? 'Скрыть схему' : 'Выбрать на схеме'}
+                          </Button>
+                        )}
+                      </div>
+                      {mode === 'view' ? (
+                        <p className="mt-2 break-anywhere">
+                          {currentReservation?.tables?.length
+                            ? currentReservation.tables.map((t) => t.number).join(', ')
+                            : currentReservation?.table?.number
+                              ? `${currentReservation.table.number}`
+                              : 'Не выбраны'}
+                        </p>
+                      ) : (
+                        <div className="mt-2 space-y-2">
+                          <Select
+                            value={formData.table_id || 'none'}
+                            onValueChange={(v) => {
+                              const id = v === 'none' ? '' : v
+                              setFormData({ ...formData, table_id: id })
+                              const next = id ? [id] : []
+                              setSelectedTables(next)
+                              if (showSchemePicker) setDraftTables(next)
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Выберите стол" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Без стола</SelectItem>
+                              {tables.map(table => {
+                                const occupiedColor = occupiedTableMap.get(table.id)
+                                return (
+                                  <SelectItem key={table.id} value={table.id}>
+                                    <span className="inline-flex items-center gap-2">
                                       {occupiedColor && (
                                         <span
-                                          className="absolute -top-2 -right-2 h-3.5 w-3.5 rounded-full border border-white shadow"
+                                          className="inline-block h-3 w-3 rounded-full border border-stone-300"
                                           style={{ backgroundColor: occupiedColor }}
                                         />
                                       )}
-                                    </div>
-                                  )
-                                })}
-
-                                {selectionBox && (
-                                  <div
-                                    className="absolute border-2 border-amber-400 bg-amber-200/20 pointer-events-none"
-                                    style={{
-                                      left: Math.min(selectionBox.x1, selectionBox.x2),
-                                      top: Math.min(selectionBox.y1, selectionBox.y2),
-                                      width: Math.abs(selectionBox.x2 - selectionBox.x1),
-                                      height: Math.abs(selectionBox.y2 - selectionBox.y1),
-                                    }}
-                                  />
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="flex flex-wrap gap-3 text-sm">
-                              {draftTables.length > 0 && (
-                                <span className="text-stone-700 break-anywhere">Выбрано: {draftTables.length}</span>
-                              )}
-                              {occupiedTableMap.size > 0 && (
-                                <span className="text-rose-600 break-anywhere">
-                                  Заняты: {tables.filter(t => occupiedTableMap.has(t.id)).map(t => t.number).join(', ')}
-                                </span>
-                              )}
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-
-                      {/* Color Picker */}
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <Label className="text-sm">Цвет бронирования</Label>
-                        <div className="flex items-center gap-2">
-                          {COLOR_PRESETS.map((c) => (
-                            <button
-                              key={c}
-                              type="button"
-                              className={cn(
-                                "h-6 w-6 rounded-full border-2",
-                                formData.color === c ? "ring-2 ring-offset-1 ring-amber-500 border-stone-300" : "border-stone-200"
-                              )}
-                              style={{ backgroundColor: c }}
-                              onClick={() => setFormData({ ...formData, color: c })}
-                            />
-                          ))}
-                          <Input
-                            type="color"
-                            value={formData.color}
-                            onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                            className="h-8 w-14 p-1"
-                          />
+                                      {table.number} • {table.capacity} чел.{occupiedColor ? ' (занят)' : ''}
+                                    </span>
+                                  </SelectItem>
+                                )
+                              })}
+                            </SelectContent>
+                          </Select>
                         </div>
-                      </div>
+                      )}
                     </div>
-                  )}
+                  </div>
+                </div>
+
+                {/* Desktop layout: 2 rows x 3 cols */}
+                <div className="hidden sm:block">
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <Label className="flex items-center gap-2 text-sm">
+                        <Calendar className="h-4 w-4 shrink-0" />
+                        Дата
+                      </Label>
+                      {mode === 'view' ? (
+                        <p className="mt-2 font-medium break-anywhere">{formatDate(currentReservation?.date || '')}</p>
+                      ) : (
+                        <Input
+                          type="date"
+                          value={formData.date}
+                          onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                          className="mt-2"
+                        />
+                      )}
+                    </div>
+
+                    <div>
+                      <Label className="flex items-center gap-2 text-sm">
+                        <Clock className="h-4 w-4 shrink-0" />
+                        Время
+                      </Label>
+                      {mode === 'view' ? (
+                        <p className="mt-2 font-medium break-anywhere">{formatTime(currentReservation?.time)}</p>
+                      ) : (
+                        <Input
+                          type="time"
+                          value={formData.time}
+                          onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                          className="mt-2"
+                          step="60"
+                        />
+                      )}
+                    </div>
+
+                    <div>
+                      <Label className="flex items-center gap-2 text-sm">
+                        <MapPin className="h-4 w-4 shrink-0" />
+                        Зал
+                      </Label>
+                      {mode === 'view' ? (
+                        <p className="mt-2 break-anywhere">{currentReservation?.hall?.name}</p>
+                      ) : (
+                        <Select
+                          value={formData.hall_id}
+                          onValueChange={(v) => {
+                            setFormData({ ...formData, hall_id: v, table_id: '' })
+                            setSelectedTables([])
+                            setDraftTables([])
+                            setShowSchemePicker(false)
+                            setSelectionBox(null)
+                          }}
+                        >
+                          <SelectTrigger className="mt-2">
+                            <SelectValue placeholder="Выберите зал" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {halls.map(hall => (
+                              <SelectItem key={hall.id} value={hall.id}>
+                                {hall.name} (до {hall.capacity} чел.)
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+
+                    <div>
+                      <Label className="flex items-center gap-2 text-sm">
+                        <Users className="h-4 w-4 shrink-0" />
+                        Гостей
+                      </Label>
+                      {mode === 'view' ? (
+                        <p className="mt-2 text-xl font-bold text-stone-900 break-anywhere">{currentReservation?.guests_count}</p>
+                      ) : (
+                        <Input
+                          type="number"
+                          min={1}
+                          value={formData.guests_count}
+                          onChange={(e) => setFormData({ ...formData, guests_count: parseInt(e.target.value) || 1 })}
+                          className="mt-2"
+                        />
+                      )}
+                    </div>
+
+                    <div>
+                      <Label className="flex items-center gap-2 text-sm">
+                        <Baby className="h-4 w-4 shrink-0" />
+                        Детей
+                      </Label>
+                      {mode === 'view' ? (
+                        <p className="mt-2 text-xl font-bold text-stone-900 break-anywhere">{currentReservation?.children_count || 0}</p>
+                      ) : (
+                        <Input
+                          type="number"
+                          min={0}
+                          value={formData.children_count}
+                          onChange={(e) => setFormData({ ...formData, children_count: parseInt(e.target.value) || 0 })}
+                          className="mt-2"
+                        />
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <Label className="flex items-center gap-2 text-sm">
+                          <MapPin className="h-4 w-4 shrink-0" />
+                          Столы
+                        </Label>
+                        {mode !== 'view' && (
+                          <Button
+                            type="button"
+                            variant={(showSchemePicker || showMobileTablePicker) ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => {
+                              if (isMobile) {
+                                setShowMobileTablePicker(true)
+                              } else {
+                                setShowSchemePicker((v) => !v)
+                              }
+                            }}
+                            className="text-xs"
+                          >
+                            {(showSchemePicker || showMobileTablePicker) ? 'Скрыть схему' : 'Выбрать на схеме'}
+                          </Button>
+                        )}
+                      </div>
+                      {mode === 'view' ? (
+                        <p className="mt-2 break-anywhere">
+                          {currentReservation?.tables?.length
+                            ? currentReservation.tables.map((t) => t.number).join(', ')
+                            : currentReservation?.table?.number
+                              ? `${currentReservation.table.number}`
+                              : 'Не выбраны'}
+                        </p>
+                      ) : (
+                        <div className="mt-2 space-y-2">
+                          <Select
+                            value={formData.table_id || 'none'}
+                            onValueChange={(v) => {
+                              const id = v === 'none' ? '' : v
+                              setFormData({ ...formData, table_id: id })
+                              const next = id ? [id] : []
+                              setSelectedTables(next)
+                              if (showSchemePicker) setDraftTables(next)
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Выберите стол" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Без стола</SelectItem>
+                              {tables.map(table => {
+                                const occupiedColor = occupiedTableMap.get(table.id)
+                                return (
+                                  <SelectItem key={table.id} value={table.id}>
+                                    <span className="inline-flex items-center gap-2">
+                                      {occupiedColor && (
+                                        <span
+                                          className="inline-block h-3 w-3 rounded-full border border-stone-300"
+                                          style={{ backgroundColor: occupiedColor }}
+                                        />
+                                      )}
+                                      {table.number} • {table.capacity} чел.{occupiedColor ? ' (занят)' : ''}
+                                    </span>
+                                  </SelectItem>
+                                )
+                              })}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Color Picker */}
+                <div className="space-y-3">
+                  <Label className="text-sm">Цвет бронирования</Label>
+                  <div className="flex flex-col gap-3">
+                    {/* Preset colors in grid */}
+                    <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
+                      {COLOR_PRESETS.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          className={cn(
+                            "h-6 w-6 sm:h-5 sm:w-5 rounded-full border-2 touch-manipulation",
+                            formData.color === c ? "ring-2 ring-offset-1 ring-amber-500 border-stone-300" : "border-stone-200"
+                          )}
+                          style={{ backgroundColor: c }}
+                          onClick={() => setFormData({ ...formData, color: c })}
+                          title={`Выбрать цвет ${c}`}
+                        />
+                      ))}
+                    </div>
+                    {/* Custom color picker */}
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs text-stone-600">Или выберите свой:</Label>
+                      <Input
+                        type="color"
+                        value={formData.color}
+                        onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                        className="h-8 w-12 p-1"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
 
             {/* Menu Section */}
             {(mode === 'edit' || currentMenu) && (
-              <div className="space-y-4">
+              <div className="space-y-4 modal-form-section">
                 <h3 className="font-semibold text-stone-900 flex items-center gap-2 border-b border-stone-200 pb-2">
                   <ChefHat className="h-4 w-4 shrink-0" />
                   Меню: {currentMenu?.name || 'Не выбрано'}
                 </h3>
+
                 <div className="space-y-4">
                   {/* Menu Header */}
                   <div className="p-4 rounded-xl bg-amber-50 border border-amber-200">
@@ -1159,7 +1562,7 @@ export function ReservationModal({
                           value={formData.menu_id}
                           onValueChange={(v) => setFormData({ ...formData, menu_id: v })}
                         >
-                          <SelectTrigger className="w-[180px]">
+                          <SelectTrigger className="w-full sm:w-[180px]">
                             <SelectValue placeholder="Выберите меню" />
                           </SelectTrigger>
                           <SelectContent>
@@ -1266,11 +1669,11 @@ export function ReservationModal({
                   )}
 
                   {mode !== 'view' && currentMenu && (
-                    <Button
+                      <Button
                       variant="outline"
                       size="sm"
                       onClick={handleToggleMenuEdit}
-                      className="w-full"
+                      className="w-full min-h-[44px]"
                     >
                       <Settings className="h-4 w-4 mr-2" />
                       {showMenuEdit ? 'Скрыть позиции' : 'Изменить позиции'}
@@ -1287,11 +1690,11 @@ export function ReservationModal({
                   <CreditCard className="h-4 w-4 shrink-0" />
                   Предоплаты
                 </h3>
-                <div className="space-y-3 pr-4">
+                <div className="space-y-3">
                   {currentReservation.payments.map((payment) => (
                     <div
                       key={payment.id}
-                      className="flex items-center justify-between p-3 rounded-lg bg-green-50 border border-green-200"
+                      className="flex items-center justify-between p-3 sm:p-4 rounded-lg bg-green-50 border border-green-200"
                     >
                       <div className="flex-1">
                         <p className="font-semibold text-green-900 break-anywhere">
@@ -1338,15 +1741,15 @@ export function ReservationModal({
             )}
 
             {/* Total Amount - Always visible */}
-            <div className="rounded-xl bg-linear-to-r from-amber-50 to-orange-50 border border-amber-200 p-4">
-              <div className="flex items-center justify-between">
+            <div className="rounded-xl bg-linear-to-r from-amber-50 to-orange-50 border border-amber-200 p-3 sm:p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
                 <div className="flex-1">
-                  <p className="text-sm text-amber-700">Итоговая стоимость</p>
-                  <p className="text-2xl font-bold text-amber-900 break-anywhere">
+                  <p className="text-xs sm:text-sm text-amber-700">Итоговая стоимость</p>
+                  <p className="text-xl sm:text-2xl font-bold text-amber-900 break-anywhere">
                     {formatCurrency(computedTotal)}
                   </p>
                 </div>
-                <div className="text-right text-sm shrink-0">
+                <div className="text-left sm:text-right text-xs sm:text-sm shrink-0">
                   <p className="text-amber-700 break-anywhere">
                     {currentMenu?.name}
                   </p>
