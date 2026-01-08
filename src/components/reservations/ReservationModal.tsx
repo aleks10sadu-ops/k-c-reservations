@@ -113,6 +113,7 @@ export function ReservationModal({
   })
   const [showSchemePicker, setShowSchemePicker] = useState(false)
   const [showMobileTablePicker, setShowMobileTablePicker] = useState(false)
+  const [showDesktopTablePicker, setShowDesktopTablePicker] = useState(false)
   const [selectedTables, setSelectedTables] = useState<string[]>([])
   const [draftTables, setDraftTables] = useState<string[]>([])
   const [selectionBox, setSelectionBox] = useState<{
@@ -194,7 +195,7 @@ export function ReservationModal({
 
   // Предотвращаем прокрутку body при открытии модального окна
   useEffect(() => {
-    if (isOpen || showMobileTablePicker) {
+    if (isOpen || showMobileTablePicker || showDesktopTablePicker) {
       // Сохраняем текущую позицию прокрутки
       const scrollY = window.scrollY
 
@@ -324,6 +325,7 @@ export function ReservationModal({
       }
       setShowSchemePicker(false)
       setShowMobileTablePicker(false)
+      setShowDesktopTablePicker(false)
       setSelectionBox(null)
       // Reset new guest form when modal opens/closes
       setShowNewGuest(false)
@@ -438,12 +440,36 @@ export function ReservationModal({
     setMobileZoomCenter({ x: 0, y: 0 })
   }
 
+  const handlePanStart = (clientX: number, clientY: number) => {
+    setIsPanning(true)
+    setLastPanPoint({ x: clientX, y: clientY })
+  }
+
   const handleMobilePanStart = (event: React.TouchEvent) => {
     if (event.touches.length === 1) {
       // Начинаем pan
       const touch = event.touches[0]
-      setIsPanning(true)
-      setLastPanPoint({ x: touch.clientX, y: touch.clientY })
+      handlePanStart(touch.clientX, touch.clientY)
+    }
+  }
+
+  const handleDesktopPanStart = (event: React.MouseEvent) => {
+    if (event.button === 0) { // Left mouse button only
+      handlePanStart(event.clientX, event.clientY)
+    }
+  }
+
+  const handlePanMove = (clientX: number, clientY: number) => {
+    if (isPanning) {
+      const deltaX = clientX - lastPanPoint.x
+      const deltaY = clientY - lastPanPoint.y
+
+      setMobilePanOffset(prev => ({
+        x: prev.x + deltaX,
+        y: prev.y + deltaY
+      }))
+
+      setLastPanPoint({ x: clientX, y: clientY })
     }
   }
 
@@ -451,15 +477,7 @@ export function ReservationModal({
     if (event.touches.length === 1 && isPanning) {
       // Pan gesture - preventDefault не нужен благодаря touch-action: none
       const touch = event.touches[0]
-      const deltaX = touch.clientX - lastPanPoint.x
-      const deltaY = touch.clientY - lastPanPoint.y
-
-      setMobilePanOffset(prev => ({
-        x: prev.x + deltaX,
-        y: prev.y + deltaY
-      }))
-
-      setLastPanPoint({ x: touch.clientX, y: touch.clientY })
+      handlePanMove(touch.clientX, touch.clientY)
     } else if (event.touches.length === 2) {
       // Pinch gesture - preventDefault не нужен благодаря touch-action: none
       const touch1 = event.touches[0]
@@ -483,6 +501,12 @@ export function ReservationModal({
       } else if (currentDistance < 100) {
         setMobileZoom(prev => Math.max(prev / 1.02, 0.5))
       }
+    }
+  }
+
+  const handleDesktopPanMove = (event: React.MouseEvent) => {
+    if (event.buttons === 1 && isPanning) { // Left mouse button held
+      handlePanMove(event.clientX, event.clientY)
     }
   }
 
@@ -786,6 +810,160 @@ export function ReservationModal({
   }
 
   const isLoading = createReservation.loading || updateReservation.loading || deleteReservation.loading || createGuest.loading
+
+  // Десктопное модальное окно для выбора столов
+  if (showDesktopTablePicker && !isMobile) {
+    return (
+      <Dialog open={showDesktopTablePicker} onOpenChange={() => setShowDesktopTablePicker(false)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] w-full">
+          <div className="flex flex-col h-full">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-stone-200">
+              <h3 className="text-xl font-semibold">Выбор столов</h3>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowDesktopTablePicker(false)}
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+
+            {/* Controls */}
+            <div className="flex items-center justify-center gap-4 p-4 bg-stone-50 border-b border-stone-200">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleMobileZoomOut}
+                disabled={mobileZoom <= 0.5}
+              >
+                <ZoomOut className="h-4 w-4 mr-2" />
+                Уменьшить
+              </Button>
+              <span className="text-sm text-stone-600 min-w-[4rem] text-center">
+                {Math.round(mobileZoom * 100)}%
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleMobileZoomIn}
+                disabled={mobileZoom >= 3}
+              >
+                <ZoomIn className="h-4 w-4 mr-2" />
+                Увеличить
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleMobileResetZoom}
+              >
+                <RotateCcw className="h-4 w-4 mr-2" />
+                Сбросить
+              </Button>
+            </div>
+
+            {/* Map Container */}
+            <div className="flex-1 overflow-hidden relative min-h-[400px]">
+              <div
+                className="absolute inset-0 cursor-grab active:cursor-grabbing"
+                style={{
+                  backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)',
+                  backgroundSize: '20px 20px'
+                }}
+                onMouseDown={handleDesktopPanStart}
+                onMouseMove={handleDesktopPanMove}
+                onMouseUp={handleMobilePanEnd}
+                onMouseLeave={handleMobilePanEnd}
+              >
+                <div
+                  className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2"
+                  style={{
+                    width: CANVAS_WIDTH,
+                    height: CANVAS_HEIGHT,
+                    transform: `translate(-50%, -50%) translate(${mobilePanOffset.x}px, ${mobilePanOffset.y}px) scale(${mobileZoom})`,
+                    transformOrigin: 'center center',
+                    transition: 'transform 0.1s ease-out'
+                  }}
+                >
+                  {tables.map((table) => {
+                    const isSelected = draftTables.includes(table.id)
+                    const occupiedColor = occupiedTableMap.get(table.id)
+                    return (
+                      <div
+                        key={table.id}
+                        className={cn(
+                          "absolute border-2 flex items-center justify-center text-sm font-semibold transition-all cursor-pointer select-none",
+                          table.shape === 'round' && "rounded-full",
+                          table.shape === 'rectangle' && "rounded-xl",
+                          table.shape === 'square' && "rounded-lg",
+                          isSelected
+                            ? "border-amber-500 bg-amber-50 shadow-lg"
+                            : occupiedColor
+                              ? "border-stone-300 bg-white"
+                              : "border-stone-300 bg-white hover:border-amber-400 hover:shadow-md"
+                        )}
+                        style={{
+                          left: table.position_x,
+                          top: table.position_y,
+                          width: table.width,
+                          height: table.height,
+                          transform: `rotate(${table.rotation ?? 0}deg)`,
+                          transformOrigin: 'top left',
+                        }}
+                        onClick={() => handleMobileTableClick(table.id)}
+                        title={occupiedColor ? 'Занято другим бронированием' : `Стол ${table.number} (${table.capacity} мест)`}
+                      >
+                        {table.number}
+                        {occupiedColor && (
+                          <div
+                            className="absolute -top-2 -right-2 h-4 w-4 rounded-full border-2 border-white shadow-md"
+                            style={{ backgroundColor: occupiedColor }}
+                          />
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between p-6 border-t border-stone-200">
+              <div className="text-sm text-stone-600">
+                Выбрано столов: {draftTables.length}
+                {draftTables.length > 0 && (
+                  <span className="ml-2">
+                    (№{tables.filter(t => draftTables.includes(t.id)).map(t => t.number).join(', ')})
+                  </span>
+                )}
+              </div>
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setDraftTables([])
+                    setSelectedTables([])
+                    setFormData((prev) => ({ ...prev, table_id: '' }))
+                  }}
+                >
+                  Сбросить
+                </Button>
+                <Button
+                  onClick={() => {
+                    setSelectedTables(draftTables)
+                    setFormData((prev) => ({ ...prev, table_id: draftTables[0] ?? '' }))
+                    setShowDesktopTablePicker(false)
+                  }}
+                >
+                  Готово
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    )
+  }
 
   // Мобильное модальное окно для выбора столов
   if (showMobileTablePicker && isMobile) {
@@ -1255,18 +1433,18 @@ export function ReservationModal({
                         {mode !== 'view' && (
                           <Button
                             type="button"
-                            variant={(showSchemePicker || showMobileTablePicker) ? 'default' : 'outline'}
+                            variant={(showSchemePicker || showMobileTablePicker || showDesktopTablePicker) ? 'default' : 'outline'}
                             size="sm"
-                            onClick={() => {
-                              if (isMobile) {
-                                setShowMobileTablePicker(true)
-                              } else {
-                                setShowSchemePicker((v) => !v)
-                              }
-                            }}
+                          onClick={() => {
+                            if (isMobile) {
+                              setShowMobileTablePicker(true)
+                            } else {
+                              setShowDesktopTablePicker(true)
+                            }
+                          }}
                             className="text-xs"
                           >
-                            {(showSchemePicker || showMobileTablePicker) ? 'Скрыть схему' : 'Выбрать на схеме'}
+                            {(showSchemePicker || showMobileTablePicker || showDesktopTablePicker) ? 'Скрыть схему' : 'Выбрать на схеме'}
                           </Button>
                         )}
                       </div>
@@ -1434,18 +1612,18 @@ export function ReservationModal({
                         {mode !== 'view' && (
                           <Button
                             type="button"
-                            variant={(showSchemePicker || showMobileTablePicker) ? 'default' : 'outline'}
+                            variant={(showSchemePicker || showMobileTablePicker || showDesktopTablePicker) ? 'default' : 'outline'}
                             size="sm"
-                            onClick={() => {
-                              if (isMobile) {
-                                setShowMobileTablePicker(true)
-                              } else {
-                                setShowSchemePicker((v) => !v)
-                              }
-                            }}
+                          onClick={() => {
+                            if (isMobile) {
+                              setShowMobileTablePicker(true)
+                            } else {
+                              setShowDesktopTablePicker(true)
+                            }
+                          }}
                             className="text-xs"
                           >
-                            {(showSchemePicker || showMobileTablePicker) ? 'Скрыть схему' : 'Выбрать на схеме'}
+                            {(showSchemePicker || showMobileTablePicker || showDesktopTablePicker) ? 'Скрыть схему' : 'Выбрать на схеме'}
                           </Button>
                         )}
                       </div>
