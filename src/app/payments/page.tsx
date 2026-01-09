@@ -37,6 +37,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { DateTimePicker } from '@/components/ui/datetime-picker'
 import { useReservations, useCreateMutation, useDeleteMutation, useUpdateMutation } from '@/hooks/useSupabase'
 import { formatCurrency, formatDate, formatTime, cn } from '@/lib/utils'
 import { RESERVATION_STATUS_CONFIG, Payment, Reservation } from '@/types'
@@ -204,10 +205,11 @@ export default function PaymentsPage() {
                 <Calendar className="h-4 w-4" />
                 Фильтр по дате бронирования:
               </Label>
-              <Input
-                type="date"
+              <DateTimePicker
                 value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
+                onChange={(date) => setSelectedDate(date)}
+                dateOnly={true}
+                placeholder="Выберите дату"
                 className="w-auto"
               />
               {selectedDate && (

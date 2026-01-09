@@ -46,6 +46,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { DateTimePicker } from '@/components/ui/datetime-picker'
+import TimeWheelPicker from '@/components/TimeWheelPicker'
 import { useHalls, useMenus, useMenuItems, useMenuItemTypes, useGuests, useTables, useCreateMutation, useUpdateMutation, useDeleteMutation, useReservations } from '@/hooks/useSupabase'
 import { X, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react'
 import { format } from 'date-fns'
@@ -1323,10 +1325,10 @@ export function ReservationModal({
                       {mode === 'view' ? (
                         <p className="mt-2 font-medium break-anywhere">{formatDate(currentReservation?.date || '')}</p>
                       ) : (
-                        <Input
-                          type="date"
+                        <DateTimePicker
                           value={formData.date}
-                          onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                          onChange={(date) => setFormData({ ...formData, date })}
+                          dateOnly={true}
                           className="mt-2"
                         />
                       )}
@@ -1340,12 +1342,10 @@ export function ReservationModal({
                       {mode === 'view' ? (
                         <p className="mt-2 font-medium break-anywhere">{formatTime(currentReservation?.time)}</p>
                       ) : (
-                        <Input
-                          type="time"
+                        <TimeWheelPicker
                           value={formData.time}
-                          onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                          onChange={(time) => setFormData({ ...formData, time })}
                           className="mt-2"
-                          step="60"
                         />
                       )}
                     </div>
@@ -1508,10 +1508,10 @@ export function ReservationModal({
                       {mode === 'view' ? (
                         <p className="mt-2 font-medium break-anywhere">{formatDate(currentReservation?.date || '')}</p>
                       ) : (
-                        <Input
-                          type="date"
+                        <DateTimePicker
                           value={formData.date}
-                          onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                          onChange={(date) => setFormData({ ...formData, date })}
+                          dateOnly={true}
                           className="mt-2"
                         />
                       )}
@@ -1525,12 +1525,11 @@ export function ReservationModal({
                       {mode === 'view' ? (
                         <p className="mt-2 font-medium break-anywhere">{formatTime(currentReservation?.time)}</p>
                       ) : (
-                        <Input
-                          type="time"
+                        <DateTimePicker
                           value={formData.time}
-                          onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                          onChange={(_, time) => time && setFormData({ ...formData, time })}
+                          timeOnly={true}
                           className="mt-2"
-                          step="60"
                         />
                       )}
                     </div>

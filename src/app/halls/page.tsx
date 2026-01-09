@@ -18,6 +18,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DateTimePicker } from '@/components/ui/datetime-picker'
 
 export default function HallsPage() {
   const [selectedHallId, setSelectedHallId] = useState<string | null>(null)
@@ -97,35 +98,45 @@ export default function HallsPage() {
   }, [])
 
   // Keep preview/editor scaled to fit containers without overflow
-  const computeScale = (el: HTMLDivElement | null, setter: (n: number) => void, isMobile = false) => {
-    if (!el) return
-    const padding = 16
+  const computePreviewScale = () => {
+    // Get available width from viewport minus padding (32px page padding + 16px card padding each side)
+    const availableW = window.innerWidth - 64
+    const availableH = window.innerHeight * 0.55 // Max 55% of viewport height
+
+    // Use mobile dimensions if on small screen
+    const canvasW = window.innerWidth < 768 ? CANVAS_WIDTH_MOBILE : CANVAS_WIDTH
+    const canvasH = window.innerWidth < 768 ? CANVAS_HEIGHT_MOBILE : CANVAS_HEIGHT
+
+    const scale = Math.min(1, Math.min(availableW / canvasW, availableH / canvasH))
+    return Math.max(0.35, scale) // Minimum 35% scale
+  }
+
+  const computeEditorScale = (el: HTMLDivElement | null) => {
+    if (!el) return 1
+    const padding = 32
     const availableW = el.clientWidth - padding
-    const availableH = el.clientHeight - padding
-    if (availableW <= 0 || availableH <= 0) return
+    const availableH = window.innerHeight * 0.5
 
-    // Use mobile dimensions if on small screen or explicitly mobile
-    const canvasW = isMobile || window.innerWidth < 768 ? CANVAS_WIDTH_MOBILE : CANVAS_WIDTH
-    const canvasH = isMobile || window.innerWidth < 768 ? CANVAS_HEIGHT_MOBILE : CANVAS_HEIGHT
+    const canvasW = window.innerWidth < 768 ? CANVAS_WIDTH_MOBILE : CANVAS_WIDTH
+    const canvasH = window.innerWidth < 768 ? CANVAS_HEIGHT_MOBILE : CANVAS_HEIGHT
 
-    const next = Math.min(1, Math.min(availableW / canvasW, availableH / canvasH))
-    setter(next || 1)
+    const scale = Math.min(1, Math.min(availableW / canvasW, availableH / canvasH))
+    return Math.max(0.35, scale)
   }
 
   useEffect(() => {
-    const el = previewWrapperRef.current
-    if (!el) return
-    computeScale(el, setPreviewScale, isMobile)
-    const ro = new ResizeObserver(() => computeScale(el, setPreviewScale, isMobile))
-    ro.observe(el)
-    return () => ro.disconnect()
+    const updateScale = () => setPreviewScale(computePreviewScale())
+    updateScale()
+    window.addEventListener('resize', updateScale)
+    return () => window.removeEventListener('resize', updateScale)
   }, [isMobile])
 
   useEffect(() => {
     const el = editorWrapperRef.current
     if (!el) return
-    computeScale(el, setEditorScale, isMobile)
-    const ro = new ResizeObserver(() => computeScale(el, setEditorScale, isMobile))
+    const updateScale = () => setEditorScale(computeEditorScale(el))
+    updateScale()
+    const ro = new ResizeObserver(updateScale)
     ro.observe(el)
     return () => ro.disconnect()
   }, [isEditorOpen, isMobile])
@@ -341,40 +352,40 @@ export default function HallsPage() {
                     </Card>
 
                     {/* Floor Plan */}
-                    <div className="lg:col-span-2">
+                    <div className="lg:col-span-2 order-first lg:order-none">
                       <Card className="h-full">
                         <CardHeader>
                           <CardTitle className="flex items-center justify-between gap-3">
                             <span>Схема зала</span>
-                            <Input
-                              type="date"
+                            <DateTimePicker
                               value={selectedDate}
-                              onChange={(e) => setSelectedDate(e.target.value)}
+                              onChange={(date) => setSelectedDate(date)}
+                              dateOnly={true}
+                              placeholder="Выберите дату"
                               className="w-[150px]"
                             />
                           </CardTitle>
                         </CardHeader>
-                        <CardContent>
+                        <CardContent className="overflow-hidden">
                           <div
                             ref={previewWrapperRef}
-                            className="relative bg-stone-50 rounded-xl border-2 border-dashed border-stone-200 overflow-hidden flex items-center justify-center min-h-[300px] sm:min-h-[400px] touch-manipulation"
+                            className="relative bg-stone-50 rounded-xl border-2 border-dashed border-stone-200 overflow-hidden touch-manipulation mx-auto"
                             style={{
-                              width: '100%',
-                              maxWidth: isMobile ? CANVAS_WIDTH_MOBILE : CANVAS_WIDTH,
-                              height: isMobile ? CANVAS_HEIGHT_MOBILE : CANVAS_HEIGHT,
+                              width: (isMobile ? CANVAS_WIDTH_MOBILE : CANVAS_WIDTH) * previewScale,
+                              height: (isMobile ? CANVAS_HEIGHT_MOBILE : CANVAS_HEIGHT) * previewScale,
+                              maxWidth: '100%',
                               backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)',
-                              backgroundSize: '16px 16px'
+                              backgroundSize: `${16 * previewScale}px ${16 * previewScale}px`
                             }}
                           >
                             <div
                               ref={previewRef}
                               role="button"
-                              className="relative cursor-pointer"
+                              className="relative cursor-pointer origin-top-left"
                               style={{
                                 width: isMobile ? CANVAS_WIDTH_MOBILE : CANVAS_WIDTH,
                                 height: isMobile ? CANVAS_HEIGHT_MOBILE : CANVAS_HEIGHT,
                                 transform: `scale(${previewScale})`,
-                                transformOrigin: 'top left',
                               }}
                               onClick={() => setIsEditorOpen(true)}
                             >
@@ -849,23 +860,23 @@ export default function HallsPage() {
           }
         }}
       >
-        <DialogContent className="max-w-5xl w-[95vw] sm:w-full">
-          <DialogHeader>
-            <DialogTitle>Редактор схемы зала</DialogTitle>
-            <DialogDescription>
-              Перемещайте, растягивайте и поворачивайте столы и элементы. Двойной клик — редактирование параметров.
+        <DialogContent className="max-w-5xl w-[95vw] sm:w-full max-h-[95vh] sm:max-h-[90vh]">
+          <DialogHeader className="pb-2 sm:pb-4">
+            <DialogTitle className="text-lg sm:text-xl">Редактор схемы зала</DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm">
+              {isMobile ? 'Перетаскивайте столы. Двойной тап — редактирование.' : 'Перемещайте, растягивайте и поворачивайте столы и элементы. Двойной клик — редактирование параметров.'}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-              <div className="text-sm text-stone-600">
-                Снап к сетке: {GRID}px • Двигать/ресайзить/крутить можно только в этом редакторе.
+          <div className="space-y-3 sm:space-y-4 overflow-y-auto flex-1">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-3">
+              <div className="text-xs sm:text-sm text-stone-600 hidden sm:block">
+                Снап к сетке: {GRID}px • Двигать/ресайзить/крутить можно только в этом редакторе
               </div>
               <div className="flex flex-wrap gap-2 w-full sm:w-auto">
                 {selectedHall && (
                   <Button
-                    size="default"
-                    className="flex-1 sm:flex-none"
+                    size={isMobile ? "sm" : "default"}
+                    className="flex-1 sm:flex-none text-xs sm:text-sm"
                     onClick={() => {
                       setEditingTable(null)
                       setTableForm({
@@ -881,15 +892,15 @@ export default function HallsPage() {
                       setIsTableDialogOpen(true)
                     }}
                   >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Добавить стол
+                    <Plus className="h-4 w-4 mr-1 sm:mr-2" />
+                    {isMobile ? 'Стол' : 'Добавить стол'}
                   </Button>
                 )}
                 {selectedHall && (
                   <Button
-                    size="default"
+                    size={isMobile ? "sm" : "default"}
                     variant="outline"
-                    className="flex-1 sm:flex-none"
+                    className="flex-1 sm:flex-none text-xs sm:text-sm"
                     onClick={() => {
                       setEditingLayoutItem(null)
                       setLayoutForm({
@@ -907,32 +918,35 @@ export default function HallsPage() {
                       setIsLayoutDialogOpen(true)
                     }}
                   >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Добавить элемент
+                    <Plus className="h-4 w-4 mr-1 sm:mr-2" />
+                    {isMobile ? 'Элемент' : 'Добавить элемент'}
                   </Button>
                 )}
                 <Button
-                  size="default"
-                  className="flex-1 sm:flex-none gap-2"
+                  size={isMobile ? "sm" : "default"}
+                  className="flex-1 sm:flex-none gap-1 sm:gap-2 text-xs sm:text-sm"
                   onClick={async () => {
                     await Promise.all([refetchTables(), refetchLayoutItems()])
                     setIsEditorOpen(false)
                   }}
                 >
                   <Save className="h-4 w-4" />
-                  Сохранить
+                  {isMobile ? 'ОК' : 'Сохранить'}
                 </Button>
               </div>
             </div>
 
             <div
               ref={editorWrapperRef}
-              className="flex items-center justify-center w-full"
-              style={{ minHeight: CANVAS_HEIGHT + 80 }}
+              className="flex items-center justify-center w-full overflow-hidden"
+              style={{ 
+                minHeight: isMobile ? 280 : Math.min(CANVAS_HEIGHT + 80, window.innerHeight * 0.55),
+                maxHeight: isMobile ? 'calc(100vh - 280px)' : 'calc(100vh - 300px)'
+              }}
             >
               <div
                 ref={editorRef}
-                className="relative bg-white rounded-xl border border-stone-200 overflow-hidden"
+                className="relative bg-white rounded-xl border border-stone-200 overflow-hidden touch-manipulation"
                 style={{
                   width: isMobile ? CANVAS_WIDTH_MOBILE : CANVAS_WIDTH,
                   height: isMobile ? CANVAS_HEIGHT_MOBILE : CANVAS_HEIGHT,
@@ -940,6 +954,111 @@ export default function HallsPage() {
                   transformOrigin: 'top left',
                   backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)',
                   backgroundSize: '16px 16px',
+                  touchAction: 'none', // Prevent browser touch gestures while editing
+                }}
+                onTouchMove={(e) => {
+                  if (!editorRef.current || (!dragging && !resizing)) return
+                  e.preventDefault()
+                  const touch = e.touches[0]
+                  const rect = editorRef.current.getBoundingClientRect()
+                  const mouseX = (touch.clientX - rect.left) / editorScale
+                  const mouseY = (touch.clientY - rect.top) / editorScale
+
+                  const clamp = (val: number, min: number, max: number) => Math.min(Math.max(val, min), max)
+                  const canvasW = isMobile ? CANVAS_WIDTH_MOBILE : CANVAS_WIDTH
+                  const canvasH = isMobile ? CANVAS_HEIGHT_MOBILE : CANVAS_HEIGHT
+
+                  if (dragging) {
+                    const sourceTable = dragging.target === 'table' ? tables.find(t => t.id === dragging.id) : null
+                    const sourceLayout = dragging.target === 'layout' ? layoutItems.find(li => li.id === dragging.id) : null
+                    const size = previewSize[dragging.id] 
+                      ?? (dragging.target === 'table' 
+                        ? { w: sourceTable?.width ?? 100, h: sourceTable?.height ?? 100 }
+                        : { w: sourceLayout?.width ?? 120, h: sourceLayout?.height ?? 40 })
+                    const maxX = Math.max(0, canvasW - size.w)
+                    const maxY = Math.max(0, canvasH - size.h)
+                    const x = dragging.startX + (mouseX - dragging.startMouseX)
+                    const y = dragging.startY + (mouseY - dragging.startMouseY)
+                    setPreviewPos((prev) => ({ ...prev, [dragging.id]: { x: clamp(x, 0, maxX), y: clamp(y, 0, maxY) } }))
+                  }
+
+                  if (resizing) {
+                    const sourceTable = resizing.target === 'table' ? tables.find(t => t.id === resizing.id) : null
+                    const sourceLayout = resizing.target === 'layout' ? layoutItems.find(li => li.id === resizing.id) : null
+                    const baseW = sourceTable?.width ?? sourceLayout?.width ?? 100
+                    const baseH = sourceTable?.height ?? sourceLayout?.height ?? 100
+                    const { startMouseX, startMouseY, startW, startH, startX, startY, id, corner } = resizing
+                    const deltaX = mouseX - startMouseX
+                    const deltaY = mouseY - startMouseY
+                    const currentRot = previewRotation[id] ?? (resizing.target === 'table'
+                      ? tables.find(t => t.id === id)?.rotation ?? 0
+                      : layoutItems.find(li => li.id === id)?.rotation ?? 0)
+                    const rad = (currentRot * Math.PI) / 180
+                    const cos = Math.cos(rad)
+                    const sin = Math.sin(rad)
+                    const localX = deltaX * cos + deltaY * sin
+                    const localY = -deltaX * sin + deltaY * cos
+
+                    let newW = startW || baseW
+                    let newH = startH || baseH
+                    let newX = startX
+                    let newY = startY
+
+                    if (corner === 'right') newW = startW + localX
+                    else if (corner === 'left') { newW = startW - localX; newX = startX + localX * cos; newY = startY + localX * -sin }
+                    else if (corner === 'bottom') newH = startH + localY
+                    else if (corner === 'top') { newH = startH - localY; newX = startX + localY * sin; newY = startY + localY * cos }
+                    else if (corner === 'br') { newW = startW + localX; newH = startH + localY }
+                    else if (corner === 'tr') { newW = startW + localX; newH = startH - localY; newX = startX + localY * sin; newY = startY + localY * cos }
+                    else if (corner === 'bl') { newW = startW - localX; newH = startH + localY; newX = startX + localX * cos; newY = startY + localX * -sin }
+                    else if (corner === 'tl') { newW = startW - localX; newH = startH - localY; newX = startX + localX * cos + localY * sin; newY = startY - localX * sin + localY * cos }
+
+                    newW = Math.max(40, newW)
+                    newH = Math.max(40, newH)
+                    const maxX = Math.max(0, canvasW - newW)
+                    const maxY = Math.max(0, canvasH - newH)
+                    newX = clamp(newX, 0, maxX)
+                    newY = clamp(newY, 0, maxY)
+                    newW = clamp(newW, 40, canvasW - newX)
+                    newH = clamp(newH, 40, canvasH - newY)
+
+                    setPreviewPos((prev) => ({ ...prev, [id]: { x: newX, y: newY } }))
+                    setPreviewSize((prev) => ({ ...prev, [id]: { w: newW, h: newH } }))
+                  }
+                }}
+                onTouchEnd={() => {
+                  if (dragging) {
+                    const pos = previewPos[dragging.id]
+                    if (pos) {
+                      const snapX = Math.round(pos.x / GRID) * GRID
+                      const snapY = Math.round(pos.y / GRID) * GRID
+                      if (dragging.target === 'table') {
+                        updateTable.mutate(dragging.id, { position_x: snapX, position_y: snapY })
+                      } else {
+                        updateLayoutItem.mutate(dragging.id, { position_x: snapX, position_y: snapY })
+                      }
+                      setPreviewPos((prev) => ({ ...prev, [dragging.id]: { x: snapX, y: snapY } }))
+                    }
+                    setDragging(null)
+                  }
+                  if (resizing) {
+                    const pos = previewPos[resizing.id]
+                    const size = previewSize[resizing.id]
+                    if (pos && size) {
+                      const snapX = Math.round(pos.x / GRID) * GRID
+                      const snapY = Math.round(pos.y / GRID) * GRID
+                      const snapW = Math.round(size.w / GRID) * GRID
+                      const snapH = Math.round(size.h / GRID) * GRID
+                      if (resizing.target === 'table') {
+                        updateTable.mutate(resizing.id, { position_x: snapX, position_y: snapY, width: snapW, height: snapH })
+                      } else {
+                        updateLayoutItem.mutate(resizing.id, { position_x: snapX, position_y: snapY, width: snapW, height: snapH })
+                      }
+                      setPreviewPos((prev) => ({ ...prev, [resizing.id]: { x: snapX, y: snapY } }))
+                      setPreviewSize((prev) => ({ ...prev, [resizing.id]: { w: snapW, h: snapH } }))
+                    }
+                    setResizing(null)
+                  }
                 }}
                 onMouseMove={(e) => {
                 if (!editorRef.current) return
@@ -1113,12 +1232,25 @@ export default function HallsPage() {
                       e.stopPropagation()
                       const rect = editorRef.current?.getBoundingClientRect()
                       if (!rect) return
-                      // Middle button rotates, left button drags
                       setDragging({
                         id: item.id,
                         target: 'layout',
-                        startMouseX: e.clientX - rect.left,
-                        startMouseY: e.clientY - rect.top,
+                        startMouseX: (e.clientX - rect.left) / editorScale,
+                        startMouseY: (e.clientY - rect.top) / editorScale,
+                        startX: pos.x,
+                        startY: pos.y,
+                      })
+                    }}
+                    onTouchStart={(e) => {
+                      e.stopPropagation()
+                      const rect = editorRef.current?.getBoundingClientRect()
+                      if (!rect) return
+                      const touch = e.touches[0]
+                      setDragging({
+                        id: item.id,
+                        target: 'layout',
+                        startMouseX: (touch.clientX - rect.left) / editorScale,
+                        startMouseY: (touch.clientY - rect.top) / editorScale,
                         startX: pos.x,
                         startY: pos.y,
                       })
@@ -1239,8 +1371,22 @@ export default function HallsPage() {
                       setDragging({
                         id: table.id,
                         target: 'table',
-                        startMouseX: e.clientX - rect.left,
-                        startMouseY: e.clientY - rect.top,
+                        startMouseX: (e.clientX - rect.left) / editorScale,
+                        startMouseY: (e.clientY - rect.top) / editorScale,
+                        startX: pos.x,
+                        startY: pos.y,
+                      })
+                    }}
+                    onTouchStart={(e) => {
+                      e.stopPropagation()
+                      const rect = editorRef.current?.getBoundingClientRect()
+                      if (!rect) return
+                      const touch = e.touches[0]
+                      setDragging({
+                        id: table.id,
+                        target: 'table',
+                        startMouseX: (touch.clientX - rect.left) / editorScale,
+                        startMouseY: (touch.clientY - rect.top) / editorScale,
                         startX: pos.x,
                         startY: pos.y,
                       })

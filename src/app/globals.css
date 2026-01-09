@@ -276,6 +276,20 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
+/* Скрытие scrollbar для webkit браузеров */
+*::-webkit-scrollbar {
+  width: 0px;
+  height: 0px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+
 /* Hide scrollbar utility */
 .scrollbar-hide {
   -ms-overflow-style: none;  /* Internet Explorer 10+ */
@@ -406,4 +420,345 @@ input[type="number"] {
   white-space: normal;
   word-wrap: break-word;
   overflow-wrap: break-word;
+}
+
+/* Прозрачные индикаторы выбора времени в TimeWheelPicker */
+.absolute.border-amber-500.bg-amber-500 {
+  background-color: transparent !important;
+  background: transparent !important;
+}
+
+/* Более специфичное правило для индикаторов колес */
+div[class*="border-amber-500"][class*="bg-amber-500"][class*="bg-opacity-10"] {
+  background-color: transparent !important;
+  background: transparent !important;
+}
+
+/* Исправление прокрутки колес в модальных окнах */
+.modal-form-section .overflow-y-scroll,
+.modal-content .overflow-y-scroll {
+  overflow-x: visible !important;
+  overflow-y: scroll !important;
+}
+
+/* Обеспечиваем правильную работу колес в модальных формах */
+.modal-form-section div[style*="overflow-y: scroll"],
+.modal-content div[style*="overflow-y: scroll"] {
+  overflow-x: visible !important;
+  overflow-y: scroll !important;
+  touch-action: auto !important;
+  pointer-events: auto !important;
+}
+
+/* Специфично для TimeWheelPicker в модальных окнах */
+.modal-form-section div[class*="w-16"][class*="h-40"],
+.modal-content div[class*="w-16"][class*="h-40"],
+.modal-form-section .overflow-y-scroll,
+.modal-content .overflow-y-scroll {
+  overflow-x: visible !important;
+  overflow-y: scroll !important;
+  touch-action: manipulation !important;
+  -webkit-overflow-scrolling: touch !important;
+  pointer-events: auto !important;
+}
+
+/* Переопределяем стили для всех элементов внутри TimeWheelPicker */
+.modal-form-section div[ref*="Ref"],
+.modal-content div[ref*="Ref"] {
+  overflow-x: visible !important;
+  overflow-y: scroll !important;
+  touch-action: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+/* Агрессивное переопределение для колес в модальных окнах */
+.modal-form-section [style*="overflow-y: scroll"],
+.modal-content [style*="overflow-y: scroll"] {
+  overflow-x: visible !important;
+  overflow-y: scroll !important;
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+/* Специфично для колес выбора времени */
+.modal-form-section div[style*="scroll-snap-type"],
+.modal-content div[style*="scroll-snap-type"] {
+  overflow-x: visible !important;
+  overflow-y: scroll !important;
+  touch-action: manipulation !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+/* Переопределяем стили для PopoverContent внутри модальных окон */
+.modal-form-section .absolute.z-50,
+.modal-content .absolute.z-50 {
+  pointer-events: auto !important;
+}
+
+/* Обеспечиваем работу колес внутри любых контейнеров */
+.modal-form-section *,
+.modal-content * {
+  touch-action: auto !important;
+}
+
+/* Специфично для колес внутри grid-контейнеров */
+.grid div[class*="w-16"],
+.grid div[class*="w-20"] {
+  overflow-x: visible !important;
+  overflow-y: scroll !important;
+  touch-action: manipulation !important;
+  width: 80px !important;
+}
+
+/* Мобильные устройства - более агрессивные правила */
+@media (max-width: 768px) {
+  /* Переопределяем любые ограничения ширины на мобильных */
+  div[style*="width: 64px"],
+  div[style*="width: 80px"] {
+    width: 80px !important;
+    min-width: 80px !important;
+    max-width: 80px !important;
+  }
+
+  /* Увеличиваем ширину Popover на мобильных */
+  [data-radix-popover-content] {
+    width: 300px !important;
+    max-width: 90vw !important;
+  }
+
+  /* Убеждаемся, что колеса видны и функциональны на мобильных */
+  .grid div[class*="w-16"] {
+    width: 64px !important;
+    overflow-y: scroll !important;
+    touch-action: manipulation !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .grid div[class*="w-20"] {
+    width: 80px !important;
+    overflow-y: scroll !important;
+    touch-action: manipulation !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .grid div[class*="w-24"] {
+    width: 96px !important;
+    overflow-y: scroll !important;
+    touch-action: manipulation !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+}
+
+/* Глобальное исправление для TimeWheelPicker везде */
+div[ref*="Ref"] {
+  overflow-x: visible !important;
+  overflow-y: scroll !important;
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+/* Супер агрессивное правило для всех скроллируемых элементов */
+* [style*="overflow-y: scroll"] {
+  overflow-x: visible !important;
+  overflow-y: scroll !important;
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+}
+
+/* Специфично для Radix Popover (который используется в TimeWheelPicker) */
+[data-radix-popover-content] {
+  pointer-events: auto !important;
+}
+
+[data-radix-popover-content] * {
+  pointer-events: auto !important;
+  touch-action: auto !important;
+}
+
+/* Исправление для Radix Dialog в ReservationModal */
+[data-radix-dialog-content] {
+  pointer-events: auto !important;
+  touch-action: auto !important;
+}
+
+[data-radix-dialog-content] * {
+  pointer-events: auto !important;
+  touch-action: auto !important;
+}
+
+/* Специфично для колес внутри Dialog */
+[data-radix-dialog-content] div[style*="overflow-y: scroll"],
+[data-radix-dialog-content] div[style*="scroll-snap-type"] {
+  overflow-x: visible !important;
+  overflow-y: scroll !important;
+  touch-action: manipulation !important;
+  -webkit-overflow-scrolling: touch !important;
+  pointer-events: auto !important;
+}
+
+/* Переопределяем любые pointer-events в Dialog */
+[data-radix-dialog-overlay],
+[data-radix-dialog-content] {
+  pointer-events: auto !important;
+}
+
+/* Супер специфично для колес в Dialog */
+[data-radix-dialog-content] .modal-form-section div[class*="w-16"],
+[data-radix-dialog-content] .modal-content div[class*="w-16"] {
+  overflow-x: visible !important;
+  overflow-y: scroll !important;
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+}
+
+/* Глобальное исправление для всех колес выбора времени */
+div[style*="height: 40px"][style*="scroll-snap-align"] {
+  pointer-events: auto !important;
+  touch-action: manipulation !important;
+}
+
+div[style*="height: 160px"][style*="overflow-y: scroll"],
+div[style*="height: 200px"][style*="overflow-y: scroll"] {
+  overflow-x: visible !important;
+  overflow-y: scroll !important;
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+/* Исправление для всех элементов внутри TimeWheelPicker */
+div[style*="min-height: screen"] * {
+  touch-action: auto !important;
+  pointer-events: auto !important;
+}
+
+/* СУПЕР АГРЕССИВНОЕ исправление для колес */
+div[style*="width: 96px"][style*="height: 160px"],
+div[style*="width: 96px"][style*="height: 200px"],
+div[style*="width: 80px"][style*="height: 160px"],
+div[style*="width: 80px"][style*="height: 200px"],
+div[style*="width: 64px"][style*="height: 160px"],
+div[style*="width: 64px"][style*="height: 200px"] {
+  overflow-x: visible !important;
+  overflow-y: scroll !important;
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  scroll-behavior: auto !important;
+  position: relative !important;
+  z-index: 10 !important;
+}
+
+/* Для внутренних элементов колес */
+div[style*="width: 80px"] div[style*="height: 40px"],
+div[style*="width: 64px"] div[style*="height: 40px"] {
+  pointer-events: auto !important;
+  touch-action: manipulation !important;
+  user-select: none !important;
+}
+
+/* Переопределяем любые display или visibility проблемы */
+div[style*="width: 80px"][style*="height: 160px"] *,
+div[style*="width: 80px"][style*="height: 200px"] *,
+div[style*="width: 64px"][style*="height: 160px"] *,
+div[style*="width: 64px"][style*="height: 200px"] * {
+  pointer-events: auto !important;
+  touch-action: manipulation !important;
+  visibility: visible !important;
+  display: block !important;
+}
+
+/* Специфично для ReservationModal */
+.ReservationModal div[style*="width: 80px"],
+.ReservationModal div[style*="width: 64px"] {
+  overflow-y: scroll !important;
+  touch-action: manipulation !important;
+}
+
+/* Финальное решение - прямое переопределение для всех проблемных случаев */
+div[style*="width: 80px"][style*="background-color: rgb(244, 244, 243)"],
+div[style*="width: 64px"][style*="background-color: rgb(244, 244, 243)"] {
+  overflow-x: visible !important;
+  overflow-y: scroll !important;
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  cursor: ns-resize !important;
+}
+
+/* Для элементов с классом scrollbar-hide */
+.scrollbar-hide {
+  overflow-x: visible !important;
+  overflow-y: scroll !important;
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+}
+
+/* КРИТИЧНОЕ исправление - переопределяем body overflow: hidden для колес */
+body[style*="overflow: hidden"] div[style*="width: 96px"],
+body[style*="overflow: hidden"] div[style*="width: 80px"],
+body[style*="overflow: hidden"] div[style*="width: 64px"],
+body[style*="overflow: hidden"] div[style*="height: 160px"],
+body[style*="overflow: hidden"] div[style*="height: 200px"] {
+  overflow-x: visible !important;
+  overflow-y: scroll !important;
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+/* Дополнительное правило для случаев, когда body имеет inline overflow */
+body[style*="overflow:hidden"] div[class*="w-16"][class*="h-40"],
+body[style*="overflow:hidden"] div[style*="scroll-snap-type"] {
+  overflow-x: visible !important;
+  overflow-y: scroll !important;
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+}
+
+/* Глобальное исправление для любых элементов с overflow: hidden, содержащих колеса */
+*[style*="overflow: hidden"] div[style*="width: 80px"],
+*[style*="overflow: hidden"] div[style*="width: 64px"],
+*[style*="overflow: hidden"] div[style*="height: 160px"],
+*[style*="overflow: hidden"] div[style*="height: 200px"] {
+  overflow-x: visible !important;
+  overflow-y: scroll !important;
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+}
+
+/* Для всех родителей с overflow: hidden */
+div[style*="overflow: hidden"] div[style*="scroll-snap-type"],
+div[style*="overflow: hidden"] .scrollbar-hide {
+  overflow-x: visible !important;
+  overflow-y: scroll !important;
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+}
+
+/* Исправление для body с position: fixed (используется в ReservationModal) */
+body[style*="position: fixed"] div[style*="width: 80px"],
+body[style*="position: fixed"] div[style*="width: 64px"],
+body[style*="position: fixed"] div[style*="height: 160px"],
+body[style*="position: fixed"] div[style*="height: 200px"] {
+  overflow-x: visible !important;
+  overflow-y: scroll !important;
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+  position: relative !important;
+  z-index: 9999 !important;
+}
+
+/* Максимальное переопределение для любых блокировок */
+.TimeWheelPicker,
+.TimeWheelPicker *,
+[data-radix-popper-content-wrapper] div[style*="width: 64px"],
+[data-radix-popper-content-wrapper] div[style*="height: 160px"] {
+  overflow-x: visible !important;
+  overflow-y: scroll !important;
+  touch-action: manipulation !important;
+  pointer-events: auto !important;
+  -webkit-overflow-scrolling: touch !important;
 }

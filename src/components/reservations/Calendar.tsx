@@ -21,7 +21,9 @@ import {
   addMonths,
   subMonths,
   addYears,
-  subYears
+  subYears,
+  addDays,
+  subDays
 } from 'date-fns'
 import { ru } from 'date-fns/locale'
 import { Reservation } from '@/types'
@@ -104,16 +106,40 @@ export function Calendar({
     return reservations.filter((r) => isSameMonth(new Date(r.date), date))
   }
 
-  const handlePrevMonth = () => {
-    const newDate = viewMode === 'year' ? subYears(currentDate, 1) : subMonths(currentDate, 1)
+  const handlePrev = () => {
+    let newDate: Date
+    
+    if (viewMode === 'year') {
+      newDate = subYears(currentDate, 1)
+    } else if (viewMode === 'day' && selectedDate) {
+      // В режиме дня навигируем по дням
+      newDate = subDays(selectedDate, 1)
+      setSelectedDate(newDate)
+    } else {
+      newDate = subMonths(currentDate, 1)
+    }
+    
     setCurrentDate(newDate)
     onMonthChange?.(newDate)
   }
-  const handleNextMonth = () => {
-    const newDate = viewMode === 'year' ? addYears(currentDate, 1) : addMonths(currentDate, 1)
+  
+  const handleNext = () => {
+    let newDate: Date
+    
+    if (viewMode === 'year') {
+      newDate = addYears(currentDate, 1)
+    } else if (viewMode === 'day' && selectedDate) {
+      // В режиме дня навигируем по дням
+      newDate = addDays(selectedDate, 1)
+      setSelectedDate(newDate)
+    } else {
+      newDate = addMonths(currentDate, 1)
+    }
+    
     setCurrentDate(newDate)
     onMonthChange?.(newDate)
   }
+  
   const handleToday = () => {
     const today = new Date()
     setCurrentDate(today)
@@ -156,16 +182,26 @@ export function Calendar({
               onClick={() => onViewModeChange?.('year')}
               className="text-base sm:text-lg font-semibold"
             >
-              {format(currentDate, 'yyyy', { locale: ru })}
+              {format(viewMode === 'day' && selectedDate ? selectedDate : currentDate, 'yyyy', { locale: ru })}
             </Button>
             <Button
-              variant={viewMode === 'month' ? 'default' : 'ghost'}
+              variant={viewMode === 'month' || viewMode === 'list' ? 'default' : 'ghost'}
               size="sm"
               onClick={() => onViewModeChange?.('month')}
               className="text-base sm:text-lg font-semibold capitalize"
             >
-              {format(currentDate, 'LLLL', { locale: ru })}
+              {format(viewMode === 'day' && selectedDate ? selectedDate : currentDate, 'LLLL', { locale: ru })}
             </Button>
+            {/* Day view indicator */}
+            {viewMode === 'day' && selectedDate && (
+              <Button
+                variant="default"
+                size="sm"
+                className="text-base sm:text-lg font-semibold"
+              >
+                {format(selectedDate, 'd', { locale: ru })}
+              </Button>
+            )}
             {/* Mobile List View Button */}
             {isMobile && (
               <Button
@@ -195,14 +231,14 @@ export function Calendar({
             <Button
               variant="ghost"
               size="icon"
-              onClick={handlePrevMonth}
+              onClick={handlePrev}
             >
               <ChevronLeft className="h-5 w-5" />
             </Button>
             <Button
               variant="ghost"
               size="icon"
-              onClick={handleNextMonth}
+              onClick={handleNext}
             >
               <ChevronRight className="h-5 w-5" />
             </Button>
