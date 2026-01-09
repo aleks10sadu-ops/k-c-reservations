@@ -1693,9 +1693,9 @@ export default function HallsPage() {
                         📞 {reservation.guest.phone}
                       </div>
                     )}
-                    {reservation.comment && (
+                    {reservation.comments && (
                       <div className="text-sm text-stone-500 italic">
-                        💬 {reservation.comment}
+                        💬 {reservation.comments}
                       </div>
                     )}
                     <div className="text-xs text-amber-600 mt-2 flex items-center gap-1">
