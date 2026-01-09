@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Users, MapPin, Loader2, Trash2, Save, Pencil, RotateCw } from 'lucide-react'
+import { Plus, Users, MapPin, Loader2, Trash2, Save, Pencil, RotateCw, ZoomIn, ZoomOut, Move } from 'lucide-react'
 import { PageTransition } from '@/components/layout/PageTransition'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -88,6 +88,19 @@ export default function HallsPage() {
   const ROTATE_HANDLE_OFFSET = 24
   const [previewScale, setPreviewScale] = useState(1)
   const [editorScale, setEditorScale] = useState(1)
+  
+  // Pan & Zoom state for editor
+  const [editorZoom, setEditorZoom] = useState(1)
+  const [editorPan, setEditorPan] = useState({ x: 0, y: 0 })
+  const [isPanning, setIsPanning] = useState(false)
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 })
+  const [lastPinchDistance, setLastPinchDistance] = useState<number | null>(null)
+  
+  // Reset pan/zoom when opening editor
+  const resetEditorView = () => {
+    setEditorZoom(1)
+    setEditorPan({ x: 0, y: 0 })
+  }
 
   // Check if mobile
   useEffect(() => {
@@ -215,7 +228,10 @@ export default function HallsPage() {
                 <Button 
                 size="lg"
                   className="gap-2 shadow-lg shadow-amber-500/25"
-                onClick={() => setIsEditorOpen(true)}
+                onClick={() => {
+                  resetEditorView()
+                  setIsEditorOpen(true)
+                }}
                 >
                   Редактор схемы
                 </Button>
@@ -387,7 +403,10 @@ export default function HallsPage() {
                                 height: isMobile ? CANVAS_HEIGHT_MOBILE : CANVAS_HEIGHT,
                                 transform: `scale(${previewScale})`,
                               }}
-                              onClick={() => setIsEditorOpen(true)}
+                              onClick={() => {
+                                resetEditorView()
+                                setIsEditorOpen(true)
+                              }}
                             >
                               {/* Layout items preview */}
                               {layoutItems
@@ -936,33 +955,133 @@ export default function HallsPage() {
               </div>
             </div>
 
+            {/* Zoom controls */}
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setEditorZoom(z => Math.max(0.5, z - 0.25))}
+                disabled={editorZoom <= 0.5}
+              >
+                <ZoomOut className="h-4 w-4" />
+              </Button>
+              <span className="text-sm text-stone-600 min-w-[60px] text-center">
+                {Math.round(editorZoom * 100)}%
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setEditorZoom(z => Math.min(3, z + 0.25))}
+                disabled={editorZoom >= 3}
+              >
+                <ZoomIn className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={resetEditorView}
+                className="ml-2"
+              >
+                <Move className="h-4 w-4 mr-1" />
+                Сброс
+              </Button>
+            </div>
+
             <div
               ref={editorWrapperRef}
-              className="flex items-center justify-center w-full overflow-hidden"
+              className="flex items-center justify-center w-full overflow-hidden relative"
               style={{ 
                 minHeight: isMobile ? 280 : Math.min(CANVAS_HEIGHT + 80, window.innerHeight * 0.55),
                 maxHeight: isMobile ? 'calc(100vh - 280px)' : 'calc(100vh - 300px)'
               }}
+              onMouseDown={(e) => {
+                // Start panning if clicking on the wrapper (not on canvas elements)
+                if (e.target === e.currentTarget || (e.target as HTMLElement).dataset.pannable) {
+                  setIsPanning(true)
+                  setPanStart({ x: e.clientX - editorPan.x, y: e.clientY - editorPan.y })
+                }
+              }}
+              onMouseMove={(e) => {
+                if (isPanning && !dragging && !resizing) {
+                  setEditorPan({
+                    x: e.clientX - panStart.x,
+                    y: e.clientY - panStart.y
+                  })
+                }
+              }}
+              onMouseUp={() => setIsPanning(false)}
+              onMouseLeave={() => setIsPanning(false)}
+              onTouchStart={(e) => {
+                // Handle pinch-to-zoom
+                if (e.touches.length === 2) {
+                  const distance = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                  )
+                  setLastPinchDistance(distance)
+                } else if (e.touches.length === 1 && !dragging && !resizing) {
+                  // Single finger pan
+                  setIsPanning(true)
+                  setPanStart({ 
+                    x: e.touches[0].clientX - editorPan.x, 
+                    y: e.touches[0].clientY - editorPan.y 
+                  })
+                }
+              }}
+              onTouchMove={(e) => {
+                if (e.touches.length === 2 && lastPinchDistance !== null) {
+                  // Pinch zoom
+                  const distance = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                  )
+                  const scale = distance / lastPinchDistance
+                  setEditorZoom(z => Math.max(0.5, Math.min(3, z * scale)))
+                  setLastPinchDistance(distance)
+                  e.preventDefault()
+                } else if (isPanning && e.touches.length === 1 && !dragging && !resizing) {
+                  setEditorPan({
+                    x: e.touches[0].clientX - panStart.x,
+                    y: e.touches[0].clientY - panStart.y
+                  })
+                }
+              }}
+              onTouchEnd={() => {
+                setIsPanning(false)
+                setLastPinchDistance(null)
+              }}
+              onWheel={(e) => {
+                // Mouse wheel zoom
+                e.preventDefault()
+                const delta = e.deltaY > 0 ? -0.1 : 0.1
+                setEditorZoom(z => Math.max(0.5, Math.min(3, z + delta)))
+              }}
             >
               <div
-                ref={editorRef}
-                className="relative bg-white rounded-xl border border-stone-200 overflow-hidden touch-manipulation"
                 style={{
-                  width: isMobile ? CANVAS_WIDTH_MOBILE : CANVAS_WIDTH,
-                  height: isMobile ? CANVAS_HEIGHT_MOBILE : CANVAS_HEIGHT,
-                  transform: `scale(${editorScale})`,
-                  transformOrigin: 'top left',
-                  backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)',
-                  backgroundSize: '16px 16px',
-                  touchAction: 'none', // Prevent browser touch gestures while editing
+                  transform: `translate(${editorPan.x}px, ${editorPan.y}px)`,
+                  transition: isPanning ? 'none' : 'transform 0.1s ease-out'
                 }}
+              >
+                <div
+                  ref={editorRef}
+                  className="relative bg-white rounded-xl border border-stone-200 overflow-hidden touch-manipulation"
+                  style={{
+                    width: isMobile ? CANVAS_WIDTH_MOBILE : CANVAS_WIDTH,
+                    height: isMobile ? CANVAS_HEIGHT_MOBILE : CANVAS_HEIGHT,
+                    transform: `scale(${editorScale * editorZoom})`,
+                    transformOrigin: 'center center',
+                    backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)',
+                    backgroundSize: '16px 16px',
+                    touchAction: 'none', // Prevent browser touch gestures while editing
+                  }}
                 onTouchMove={(e) => {
                   if (!editorRef.current || (!dragging && !resizing)) return
                   e.preventDefault()
                   const touch = e.touches[0]
                   const rect = editorRef.current.getBoundingClientRect()
-                  const mouseX = (touch.clientX - rect.left) / editorScale
-                  const mouseY = (touch.clientY - rect.top) / editorScale
+                  const mouseX = (touch.clientX - rect.left) / (editorScale * editorZoom)
+                  const mouseY = (touch.clientY - rect.top) / (editorScale * editorZoom)
 
                   const clamp = (val: number, min: number, max: number) => Math.min(Math.max(val, min), max)
                   const canvasW = isMobile ? CANVAS_WIDTH_MOBILE : CANVAS_WIDTH
@@ -1235,8 +1354,8 @@ export default function HallsPage() {
                       setDragging({
                         id: item.id,
                         target: 'layout',
-                        startMouseX: (e.clientX - rect.left) / editorScale,
-                        startMouseY: (e.clientY - rect.top) / editorScale,
+                        startMouseX: (e.clientX - rect.left) / (editorScale * editorZoom),
+                        startMouseY: (e.clientY - rect.top) / (editorScale * editorZoom),
                         startX: pos.x,
                         startY: pos.y,
                       })
@@ -1249,8 +1368,8 @@ export default function HallsPage() {
                       setDragging({
                         id: item.id,
                         target: 'layout',
-                        startMouseX: (touch.clientX - rect.left) / editorScale,
-                        startMouseY: (touch.clientY - rect.top) / editorScale,
+                        startMouseX: (touch.clientX - rect.left) / (editorScale * editorZoom),
+                        startMouseY: (touch.clientY - rect.top) / (editorScale * editorZoom),
                         startX: pos.x,
                         startY: pos.y,
                       })
@@ -1371,8 +1490,8 @@ export default function HallsPage() {
                       setDragging({
                         id: table.id,
                         target: 'table',
-                        startMouseX: (e.clientX - rect.left) / editorScale,
-                        startMouseY: (e.clientY - rect.top) / editorScale,
+                        startMouseX: (e.clientX - rect.left) / (editorScale * editorZoom),
+                        startMouseY: (e.clientY - rect.top) / (editorScale * editorZoom),
                         startX: pos.x,
                         startY: pos.y,
                       })
@@ -1385,8 +1504,8 @@ export default function HallsPage() {
                       setDragging({
                         id: table.id,
                         target: 'table',
-                        startMouseX: (touch.clientX - rect.left) / editorScale,
-                        startMouseY: (touch.clientY - rect.top) / editorScale,
+                        startMouseX: (touch.clientX - rect.left) / (editorScale * editorZoom),
+                        startMouseY: (touch.clientY - rect.top) / (editorScale * editorZoom),
                         startX: pos.x,
                         startY: pos.y,
                       })
@@ -1468,6 +1587,7 @@ export default function HallsPage() {
                   </div>
                 )
               })}
+              </div>
               </div>
             </div>
           </div>
