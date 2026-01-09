@@ -35,17 +35,8 @@ export default function HomePage() {
     maxChildren: ''
   })
 
-  // Set default view mode based on screen size
-  useEffect(() => {
-    const checkMobile = () => {
-      if (window.innerWidth < 768 && viewMode === 'month') {
-        setViewMode('list')
-      }
-    }
-    checkMobile()
-    window.addEventListener('resize', checkMobile)
-    return () => window.removeEventListener('resize', checkMobile)
-  }, [])
+  // Mobile devices stay in month view with compact dots display
+  // (removed auto-switch to list view - users can tap a day to see details)
 
   const { data: halls } = useHalls()
   const { data: menus } = useMenus()
