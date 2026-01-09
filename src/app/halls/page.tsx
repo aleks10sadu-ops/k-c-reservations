@@ -87,14 +87,17 @@ export default function HallsPage() {
   const CANVAS_HEIGHT_MOBILE = 450
   const ROTATE_HANDLE_OFFSET = 24
   const [previewScale, setPreviewScale] = useState(1)
-  const [editorScale, setEditorScale] = useState(1)
+  const [baseEditorScale, setBaseEditorScale] = useState(1) // Scale to fit canvas in container
   
-  // Pan & Zoom state for editor
+  // Pan & Zoom state for editor (100% = fits container, 200% = 2x larger, etc.)
   const [editorZoom, setEditorZoom] = useState(1)
   const [editorPan, setEditorPan] = useState({ x: 0, y: 0 })
   const [isPanning, setIsPanning] = useState(false)
   const [panStart, setPanStart] = useState({ x: 0, y: 0 })
   const [lastPinchDistance, setLastPinchDistance] = useState<number | null>(null)
+  
+  // Combined scale = base scale (to fit) * user zoom
+  const editorScale = baseEditorScale * editorZoom
   
   // Reset pan/zoom when opening editor
   const resetEditorView = () => {
@@ -147,7 +150,7 @@ export default function HallsPage() {
   useEffect(() => {
     const el = editorWrapperRef.current
     if (!el) return
-    const updateScale = () => setEditorScale(computeEditorScale(el))
+    const updateScale = () => setBaseEditorScale(computeEditorScale(el))
     updateScale()
     const ro = new ResizeObserver(updateScale)
     ro.observe(el)
@@ -1069,7 +1072,7 @@ export default function HallsPage() {
                   style={{
                     width: isMobile ? CANVAS_WIDTH_MOBILE : CANVAS_WIDTH,
                     height: isMobile ? CANVAS_HEIGHT_MOBILE : CANVAS_HEIGHT,
-                    transform: `scale(${editorScale * editorZoom})`,
+                    transform: `scale(${editorScale})`,
                     transformOrigin: 'center center',
                     backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)',
                     backgroundSize: '16px 16px',
@@ -1080,8 +1083,8 @@ export default function HallsPage() {
                   e.preventDefault()
                   const touch = e.touches[0]
                   const rect = editorRef.current.getBoundingClientRect()
-                  const mouseX = (touch.clientX - rect.left) / (editorScale * editorZoom)
-                  const mouseY = (touch.clientY - rect.top) / (editorScale * editorZoom)
+                  const mouseX = (touch.clientX - rect.left) / (editorScale)
+                  const mouseY = (touch.clientY - rect.top) / (editorScale)
 
                   const clamp = (val: number, min: number, max: number) => Math.min(Math.max(val, min), max)
                   const canvasW = isMobile ? CANVAS_WIDTH_MOBILE : CANVAS_WIDTH
@@ -1354,8 +1357,8 @@ export default function HallsPage() {
                       setDragging({
                         id: item.id,
                         target: 'layout',
-                        startMouseX: (e.clientX - rect.left) / (editorScale * editorZoom),
-                        startMouseY: (e.clientY - rect.top) / (editorScale * editorZoom),
+                        startMouseX: (e.clientX - rect.left) / (editorScale),
+                        startMouseY: (e.clientY - rect.top) / (editorScale),
                         startX: pos.x,
                         startY: pos.y,
                       })
@@ -1368,8 +1371,8 @@ export default function HallsPage() {
                       setDragging({
                         id: item.id,
                         target: 'layout',
-                        startMouseX: (touch.clientX - rect.left) / (editorScale * editorZoom),
-                        startMouseY: (touch.clientY - rect.top) / (editorScale * editorZoom),
+                        startMouseX: (touch.clientX - rect.left) / (editorScale),
+                        startMouseY: (touch.clientY - rect.top) / (editorScale),
                         startX: pos.x,
                         startY: pos.y,
                       })
@@ -1490,8 +1493,8 @@ export default function HallsPage() {
                       setDragging({
                         id: table.id,
                         target: 'table',
-                        startMouseX: (e.clientX - rect.left) / (editorScale * editorZoom),
-                        startMouseY: (e.clientY - rect.top) / (editorScale * editorZoom),
+                        startMouseX: (e.clientX - rect.left) / (editorScale),
+                        startMouseY: (e.clientY - rect.top) / (editorScale),
                         startX: pos.x,
                         startY: pos.y,
                       })
@@ -1504,8 +1507,8 @@ export default function HallsPage() {
                       setDragging({
                         id: table.id,
                         target: 'table',
-                        startMouseX: (touch.clientX - rect.left) / (editorScale * editorZoom),
-                        startMouseY: (touch.clientY - rect.top) / (editorScale * editorZoom),
+                        startMouseX: (touch.clientX - rect.left) / (editorScale),
+                        startMouseY: (touch.clientY - rect.top) / (editorScale),
                         startX: pos.x,
                         startY: pos.y,
                       })
