@@ -48,7 +48,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { DateTimePicker } from '@/components/ui/datetime-picker'
 import TimeWheelPicker from '@/components/TimeWheelPicker'
-import { useHalls, useMenus, useMenuItems, useMenuItemTypes, useGuests, useTables, useCreateMutation, useUpdateMutation, useDeleteMutation, useReservations } from '@/hooks/useSupabase'
+import { useHalls, useMenus, useMenuItems, useMenuItemTypes, useGuests, useTables, useLayoutItems, useCreateMutation, useUpdateMutation, useDeleteMutation, useReservations } from '@/hooks/useSupabase'
 import { X, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -170,6 +170,7 @@ export function ReservationModal({
   const { data: customTypes } = useMenuItemTypes(formData.menu_id || undefined)
   const { data: guests } = useGuests()
   const { data: tables } = useTables(formData.hall_id)
+  const { data: layoutItems = [] } = useLayoutItems(formData.hall_id)
   const { data: dayReservations } = useReservations(
     formData.date
       ? { date: formData.date, hall_id: formData.hall_id || undefined }
@@ -218,10 +219,11 @@ export function ReservationModal({
     }
   }, [isOpen, showMobileTablePicker])
 
-  // Авто-центрирование карты при открытии мобильного окна
+  // Авто-центрирование карты при открытии мобильного/десктопного окна
   useEffect(() => {
-    if (showMobileTablePicker && isMobile && tables.length > 0) {
-      // Вычисляем bounding box всех столов
+    const shouldCenter = (showMobileTablePicker && isMobile) || (showDesktopTablePicker && !isMobile)
+    if (shouldCenter && (tables.length > 0 || layoutItems.length > 0)) {
+      // Вычисляем bounding box всех элементов (столы + layout items)
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
 
       tables.forEach(table => {
@@ -231,29 +233,39 @@ export function ReservationModal({
         maxY = Math.max(maxY, table.position_y + table.height)
       })
 
-      const tablesWidth = maxX - minX
-      const tablesHeight = maxY - minY
-      const tablesCenterX = (minX + maxX) / 2
-      const tablesCenterY = (minY + maxY) / 2
+      layoutItems.forEach(item => {
+        minX = Math.min(minX, item.position_x)
+        maxX = Math.max(maxX, item.position_x + item.width)
+        minY = Math.min(minY, item.position_y)
+        maxY = Math.max(maxY, item.position_y + item.height)
+      })
+
+      // Если нет элементов, используем весь canvas
+      if (minX === Infinity) {
+        minX = 0
+        maxX = CANVAS_WIDTH
+        minY = 0
+        maxY = CANVAS_HEIGHT
+      }
+
+      const contentWidth = maxX - minX
+      const contentHeight = maxY - minY
+      const contentCenterX = (minX + maxX) / 2
+      const contentCenterY = (minY + maxY) / 2
 
       // Вычисляем оптимальный зум
-      const containerWidth = window.innerWidth * 0.9 // 90% от ширины экрана
-      const containerHeight = window.innerHeight * 0.7 // 70% от высоты экрана (учитывая header и footer)
+      const containerWidth = isMobile ? window.innerWidth * 0.9 : 800 // Ширина контейнера
+      const containerHeight = isMobile ? window.innerHeight * 0.7 : 400 // Высота контейнера
 
-      const scaleX = containerWidth / tablesWidth
-      const scaleY = containerHeight / tablesHeight
-      const optimalZoom = Math.min(scaleX, scaleY, 1) * 0.8 // Добавляем небольшой отступ
+      const scaleX = containerWidth / contentWidth
+      const scaleY = containerHeight / contentHeight
+      const optimalZoom = Math.min(scaleX, scaleY, 1.5) * 0.85 // Добавляем отступ
 
-      // Вычисляем смещение для центрирования
-      const canvasCenterX = CANVAS_WIDTH / 2
-      const canvasCenterY = CANVAS_HEIGHT / 2
-      const targetCenterX = canvasCenterX - tablesCenterX * optimalZoom
-      const targetCenterY = canvasCenterY - tablesCenterY * optimalZoom
-
-      setMobileZoom(optimalZoom)
-      setMobilePanOffset({ x: targetCenterX, y: targetCenterY })
+      // Сбрасываем смещение - canvas будет центрирован автоматически через CSS
+      setMobileZoom(Math.max(0.5, optimalZoom))
+      setMobilePanOffset({ x: 0, y: 0 })
     }
-  }, [showMobileTablePicker, isMobile, tables, CANVAS_WIDTH, CANVAS_HEIGHT])
+  }, [showMobileTablePicker, showDesktopTablePicker, isMobile, tables, layoutItems, CANVAS_WIDTH, CANVAS_HEIGHT])
 
   // Обновляем локальное состояние при изменении пропа reservation
   useEffect(() => {
@@ -878,15 +890,39 @@ export function ReservationModal({
                 onMouseLeave={handleMobilePanEnd}
               >
                 <div
-                  className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2"
+                  className="absolute top-1/2 left-1/2 bg-white border border-stone-200 rounded-xl"
                   style={{
                     width: CANVAS_WIDTH,
                     height: CANVAS_HEIGHT,
                     transform: `translate(-50%, -50%) translate(${mobilePanOffset.x}px, ${mobilePanOffset.y}px) scale(${mobileZoom})`,
                     transformOrigin: 'center center',
-                    transition: 'transform 0.1s ease-out'
+                    transition: 'transform 0.1s ease-out',
+                    backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)',
+                    backgroundSize: '16px 16px'
                   }}
                 >
+                  {/* Layout items (labels, shapes) */}
+                  {layoutItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className="absolute flex items-center justify-center text-sm pointer-events-none select-none"
+                      style={{
+                        left: item.position_x,
+                        top: item.position_y,
+                        width: item.width,
+                        height: item.height,
+                        transform: `rotate(${item.rotation ?? 0}deg)`,
+                        transformOrigin: 'top left',
+                        color: item.color || '#1f2937',
+                        backgroundColor: item.bg_color || 'transparent',
+                        borderRadius: item.type === 'shape' ? '8px' : undefined,
+                        border: item.type === 'shape' ? '2px dashed #d4d4d8' : undefined
+                      }}
+                    >
+                      {item.text}
+                    </div>
+                  ))}
+                  {/* Tables */}
                   {tables.map((table) => {
                     const isSelected = draftTables.includes(table.id)
                     const occupiedColor = occupiedTableMap.get(table.id)
@@ -1029,14 +1065,38 @@ export function ReservationModal({
                 onTouchEnd={handleMobilePanEnd}
               >
                 <div
-                  className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2"
+                  className="absolute top-1/2 left-1/2 bg-white border border-stone-200 rounded-xl"
                   style={{
                     width: CANVAS_WIDTH,
                     height: CANVAS_HEIGHT,
                     transform: `translate(-50%, -50%) translate(${mobilePanOffset.x}px, ${mobilePanOffset.y}px) scale(${mobileZoom})`,
-                    transformOrigin: 'center center'
+                    transformOrigin: 'center center',
+                    backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)',
+                    backgroundSize: '16px 16px'
                   }}
                 >
+                  {/* Layout items (labels, shapes) */}
+                  {layoutItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className="absolute flex items-center justify-center text-sm pointer-events-none select-none"
+                      style={{
+                        left: item.position_x,
+                        top: item.position_y,
+                        width: item.width,
+                        height: item.height,
+                        transform: `rotate(${item.rotation ?? 0}deg)`,
+                        transformOrigin: 'top left',
+                        color: item.color || '#1f2937',
+                        backgroundColor: item.bg_color || 'transparent',
+                        borderRadius: item.type === 'shape' ? '8px' : undefined,
+                        border: item.type === 'shape' ? '2px dashed #d4d4d8' : undefined
+                      }}
+                    >
+                      {item.text}
+                    </div>
+                  ))}
+                  {/* Tables */}
                   {tables.map((table) => {
                     const isSelected = draftTables.includes(table.id)
                     const occupiedColor = occupiedTableMap.get(table.id)
