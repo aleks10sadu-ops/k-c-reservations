@@ -19,13 +19,21 @@ function useSupabaseQuery<T>(
   tableName: string,
   selectQuery: string = '*',
   filters?: Record<string, any>,
-  orderBy?: { column: string; ascending?: boolean }
+  orderBy?: { column: string; ascending?: boolean },
+  skip?: boolean  // Если true, запрос не выполняется и возвращается пустой массив
 ) {
   const [data, setData] = useState<T[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!skip)
   const [error, setError] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
+    // Пропускаем запрос если skip=true
+    if (skip) {
+      setData([])
+      setLoading(false)
+      return
+    }
+    
     setLoading(true)
     setError(null)
     
@@ -79,7 +87,7 @@ function useSupabaseQuery<T>(
     } finally {
       setLoading(false)
     }
-  }, [tableName, selectQuery, JSON.stringify(filters), JSON.stringify(orderBy)])
+  }, [tableName, selectQuery, JSON.stringify(filters), JSON.stringify(orderBy), skip])
 
   useEffect(() => {
     fetchData()
@@ -118,12 +126,20 @@ export function useHalls() {
   )
 }
 
-export function useTables(hallId?: string) {
+export function useTables(hallId?: string | null, loadAll?: boolean) {
+  // Если hallId не задан или пустой, и не требуется загрузка всех - 
+  // используем skip чтобы не делать запрос вообще
+  const shouldSkip = !loadAll && (!hallId || hallId.length === 0)
+  const filters = loadAll 
+    ? undefined 
+    : (hallId && hallId.length > 0 ? { hall_id: hallId } : undefined)
+  
   return useSupabaseQuery<Table>(
     'tables',
     '*',
-    hallId ? { hall_id: hallId } : undefined,
-    { column: 'number' }
+    filters,
+    { column: 'number' },
+    shouldSkip  // Пропускаем запрос если нет hallId
   )
 }
 

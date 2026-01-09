@@ -19,6 +19,8 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DateTimePicker } from '@/components/ui/datetime-picker'
+import { ReservationModal } from '@/components/reservations/ReservationModal'
+import { Reservation } from '@/types'
 
 export default function HallsPage() {
   const [selectedHallId, setSelectedHallId] = useState<string | null>(null)
@@ -80,11 +82,19 @@ export default function HallsPage() {
   const editorRef = useRef<HTMLDivElement | null>(null)
   const editorWrapperRef = useRef<HTMLDivElement | null>(null)
   const GRID = 10
+  
+  // Состояние для показа броней стола
+  const [selectedTableForInfo, setSelectedTableForInfo] = useState<Table | null>(null)
+  
+  // Состояние для открытия ReservationModal
+  const [reservationModalOpen, setReservationModalOpen] = useState(false)
+  const [reservationToEdit, setReservationToEdit] = useState<Reservation | null>(null)
+  const [preselectedTableId, setPreselectedTableId] = useState<string | null>(null)
+  const [preselectedHallId, setPreselectedHallId] = useState<string | null>(null)
   const [isMobile, setIsMobile] = useState(false)
+  // Фиксированные размеры канваса - одинаковые везде для консистентности
   const CANVAS_WIDTH = 800
   const CANVAS_HEIGHT = 600
-  const CANVAS_WIDTH_MOBILE = 600
-  const CANVAS_HEIGHT_MOBILE = 450
   const ROTATE_HANDLE_OFFSET = 24
   const [previewScale, setPreviewScale] = useState(1)
   const [baseEditorScale, setBaseEditorScale] = useState(1) // Scale to fit canvas in container
@@ -119,11 +129,7 @@ export default function HallsPage() {
     const availableW = window.innerWidth - 64
     const availableH = window.innerHeight * 0.55 // Max 55% of viewport height
 
-    // Use mobile dimensions if on small screen
-    const canvasW = window.innerWidth < 768 ? CANVAS_WIDTH_MOBILE : CANVAS_WIDTH
-    const canvasH = window.innerWidth < 768 ? CANVAS_HEIGHT_MOBILE : CANVAS_HEIGHT
-
-    const scale = Math.min(1, Math.min(availableW / canvasW, availableH / canvasH))
+    const scale = Math.min(1, Math.min(availableW / CANVAS_WIDTH, availableH / CANVAS_HEIGHT))
     return Math.max(0.35, scale) // Minimum 35% scale
   }
 
@@ -133,11 +139,8 @@ export default function HallsPage() {
     const availableW = el.clientWidth - padding
     const availableH = window.innerHeight * 0.55 // Use more height
 
-    const canvasW = window.innerWidth < 768 ? CANVAS_WIDTH_MOBILE : CANVAS_WIDTH
-    const canvasH = window.innerWidth < 768 ? CANVAS_HEIGHT_MOBILE : CANVAS_HEIGHT
-
     // Scale to fit the available space (can scale up or down)
-    const scale = Math.min(availableW / canvasW, availableH / canvasH)
+    const scale = Math.min(availableW / CANVAS_WIDTH, availableH / CANVAS_HEIGHT)
     return Math.max(0.5, scale) // Minimum 50% scale
   }
 
@@ -160,7 +163,7 @@ export default function HallsPage() {
 
   // Fetch data
   const { data: halls, loading: hallsLoading } = useHalls()
-  const { data: tables, refetch: refetchTables } = useTables()
+  const { data: tables, refetch: refetchTables } = useTables(undefined, true) // loadAll = true для страницы залов
   const { data: layoutItems, refetch: refetchLayoutItems } = useLayoutItems(selectedHallId || undefined)
   
   // Mutations
@@ -391,8 +394,8 @@ export default function HallsPage() {
                             ref={previewWrapperRef}
                             className="relative bg-stone-50 rounded-xl border-2 border-dashed border-stone-200 overflow-hidden touch-manipulation mx-auto"
                             style={{
-                              width: (isMobile ? CANVAS_WIDTH_MOBILE : CANVAS_WIDTH) * previewScale,
-                              height: (isMobile ? CANVAS_HEIGHT_MOBILE : CANVAS_HEIGHT) * previewScale,
+                              width: CANVAS_WIDTH * previewScale,
+                              height: CANVAS_HEIGHT * previewScale,
                               maxWidth: '100%',
                               backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)',
                               backgroundSize: `${16 * previewScale}px ${16 * previewScale}px`
@@ -400,16 +403,11 @@ export default function HallsPage() {
                           >
                             <div
                               ref={previewRef}
-                              role="button"
-                              className="relative cursor-pointer origin-top-left"
+                              className="relative origin-top-left"
                               style={{
-                                width: isMobile ? CANVAS_WIDTH_MOBILE : CANVAS_WIDTH,
-                                height: isMobile ? CANVAS_HEIGHT_MOBILE : CANVAS_HEIGHT,
+                                width: CANVAS_WIDTH,
+                                height: CANVAS_HEIGHT,
                                 transform: `scale(${previewScale})`,
-                              }}
-                              onClick={() => {
-                                resetEditorView()
-                                setIsEditorOpen(true)
                               }}
                             >
                               {/* Layout items preview */}
@@ -444,15 +442,16 @@ export default function HallsPage() {
                                     key={table.id}
                                     initial={{ opacity: 0, scale: 0 }}
                                     animate={{ opacity: 1, scale: 1 }}
-                                    whileHover={{ scale: 1.02 }}
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.98 }}
                                     className={cn(
-                                      "absolute transition-all border-2 flex flex-col items-center justify-center p-2",
+                                      "absolute transition-all border-2 flex flex-col items-center justify-center p-2 cursor-pointer",
                                       table.shape === 'round' && "rounded-full",
                                       table.shape === 'rectangle' && "rounded-xl",
                                       table.shape === 'square' && "rounded-lg",
                                       reservation 
-                                        ? "shadow-lg" 
-                                        : "bg-white border-stone-300"
+                                        ? "shadow-lg hover:shadow-xl" 
+                                        : "bg-white border-stone-300 hover:border-amber-400 hover:shadow-md"
                                     )}
                                     style={{
                                       left: table.position_x,
@@ -462,18 +461,27 @@ export default function HallsPage() {
                                       backgroundColor: reservation?.color || statusConfig?.bgColor || 'white',
                                       borderColor: reservation?.color || statusConfig?.borderColor || '#D1D5DB',
                                       transform: `rotate(${table.rotation ?? 0}deg)`,
-                                    transformOrigin: 'top left',
+                                      transformOrigin: 'top left',
+                                    }}
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setSelectedTableForInfo(table)
                                     }}
                                   >
-                            {reservation && (
-                              <span
-                                className="absolute -top-2 -right-2 h-3.5 w-3.5 rounded-full border border-white shadow"
-                              style={{ backgroundColor: reservation.color || statusConfig?.borderColor || '#f59e0b' }}
-                              />
-                            )}
-                                    <span className="font-bold text-lg" style={{ color: statusConfig?.color || '#374151' }}>
+                                    {reservation && (
+                                      <span
+                                        className="absolute -top-2 -right-2 h-3.5 w-3.5 rounded-full border border-white shadow"
+                                        style={{ backgroundColor: reservation.color || statusConfig?.borderColor || '#f59e0b' }}
+                                      />
+                                    )}
+                                    <span className="font-bold text-lg leading-tight" style={{ color: statusConfig?.color || '#374151' }}>
                                       {table.number}
                                     </span>
+                                    {table.capacity > 0 && (
+                                      <span className="text-[10px] text-stone-500 leading-tight">
+                                        {table.capacity} чел
+                                      </span>
+                                    )}
                                   </motion.div>
                                 )
                               })}
@@ -1071,8 +1079,8 @@ export default function HallsPage() {
                   ref={editorRef}
                   className="relative bg-white rounded-xl border border-stone-200 overflow-hidden touch-manipulation"
                   style={{
-                    width: isMobile ? CANVAS_WIDTH_MOBILE : CANVAS_WIDTH,
-                    height: isMobile ? CANVAS_HEIGHT_MOBILE : CANVAS_HEIGHT,
+                    width: CANVAS_WIDTH,
+                    height: CANVAS_HEIGHT,
                     transform: `scale(${editorScale})`,
                     transformOrigin: 'center center',
                     backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)',
@@ -1088,8 +1096,6 @@ export default function HallsPage() {
                   const mouseY = (touch.clientY - rect.top) / (editorScale)
 
                   const clamp = (val: number, min: number, max: number) => Math.min(Math.max(val, min), max)
-                  const canvasW = isMobile ? CANVAS_WIDTH_MOBILE : CANVAS_WIDTH
-                  const canvasH = isMobile ? CANVAS_HEIGHT_MOBILE : CANVAS_HEIGHT
 
                   if (dragging) {
                     const sourceTable = dragging.target === 'table' ? tables.find(t => t.id === dragging.id) : null
@@ -1098,8 +1104,8 @@ export default function HallsPage() {
                       ?? (dragging.target === 'table' 
                         ? { w: sourceTable?.width ?? 100, h: sourceTable?.height ?? 100 }
                         : { w: sourceLayout?.width ?? 120, h: sourceLayout?.height ?? 40 })
-                    const maxX = Math.max(0, canvasW - size.w)
-                    const maxY = Math.max(0, canvasH - size.h)
+                    const maxX = Math.max(0, CANVAS_WIDTH - size.w)
+                    const maxY = Math.max(0, CANVAS_HEIGHT - size.h)
                     const x = dragging.startX + (mouseX - dragging.startMouseX)
                     const y = dragging.startY + (mouseY - dragging.startMouseY)
                     setPreviewPos((prev) => ({ ...prev, [dragging.id]: { x: clamp(x, 0, maxX), y: clamp(y, 0, maxY) } }))
@@ -1138,12 +1144,12 @@ export default function HallsPage() {
 
                     newW = Math.max(40, newW)
                     newH = Math.max(40, newH)
-                    const maxX = Math.max(0, canvasW - newW)
-                    const maxY = Math.max(0, canvasH - newH)
+                    const maxX = Math.max(0, CANVAS_WIDTH - newW)
+                    const maxY = Math.max(0, CANVAS_HEIGHT - newY)
                     newX = clamp(newX, 0, maxX)
                     newY = clamp(newY, 0, maxY)
-                    newW = clamp(newW, 40, canvasW - newX)
-                    newH = clamp(newH, 40, canvasH - newY)
+                    newW = clamp(newW, 40, CANVAS_WIDTH - newX)
+                    newH = clamp(newH, 40, CANVAS_HEIGHT - newY)
 
                     setPreviewPos((prev) => ({ ...prev, [id]: { x: newX, y: newY } }))
                     setPreviewSize((prev) => ({ ...prev, [id]: { w: newW, h: newH } }))
@@ -1186,8 +1192,9 @@ export default function HallsPage() {
                 onMouseMove={(e) => {
                 if (!editorRef.current) return
                 const rect = editorRef.current.getBoundingClientRect()
-                const mouseX = e.clientX - rect.left
-                const mouseY = e.clientY - rect.top
+                // ВАЖНО: делим на editorScale для правильного пересчёта координат
+                const mouseX = (e.clientX - rect.left) / editorScale
+                const mouseY = (e.clientY - rect.top) / editorScale
 
                 const clamp = (val: number, min: number, max: number) => Math.min(Math.max(val, min), max)
 
@@ -1198,8 +1205,9 @@ export default function HallsPage() {
                     ?? (dragging.target === 'table' 
                       ? { w: sourceTable?.width ?? 100, h: sourceTable?.height ?? 100 }
                       : { w: sourceLayout?.width ?? 120, h: sourceLayout?.height ?? 40 })
-                  const maxX = Math.max(0, rect.width - size.w)
-                  const maxY = Math.max(0, rect.height - size.h)
+                  // Используем CANVAS размеры, а не rect
+                  const maxX = Math.max(0, CANVAS_WIDTH - size.w)
+                  const maxY = Math.max(0, CANVAS_HEIGHT - size.h)
                   const x = dragging.startX + (mouseX - dragging.startMouseX)
                   const y = dragging.startY + (mouseY - dragging.startMouseY)
                   const clampedX = clamp(x, 0, maxX)
@@ -1266,13 +1274,14 @@ export default function HallsPage() {
                   newW = Math.max(40, newW)
                   newH = Math.max(40, newH)
 
-                  const maxX = Math.max(0, rect.width - newW)
-                  const maxY = Math.max(0, rect.height - newH)
+                  // Используем CANVAS размеры, а не rect
+                  const maxX = Math.max(0, CANVAS_WIDTH - newW)
+                  const maxY = Math.max(0, CANVAS_HEIGHT - newH)
 
                   newX = clamp(newX, 0, maxX)
                   newY = clamp(newY, 0, maxY)
-                  newW = clamp(newW, 40, rect.width - newX)
-                  newH = clamp(newH, 40, rect.height - newY)
+                  newW = clamp(newW, 40, CANVAS_WIDTH - newX)
+                  newH = clamp(newH, 40, CANVAS_HEIGHT - newY)
 
                   setPreviewPos((prev) => ({ ...prev, [id]: { x: newX, y: newY } }))
                   setPreviewSize((prev) => ({ ...prev, [id]: { w: newW, h: newH } }))
@@ -1535,9 +1544,14 @@ export default function HallsPage() {
                         style={{ backgroundColor: reservation.color || statusConfig?.borderColor || '#f59e0b' }}
                       />
                     )}
-                    <span className="font-bold text-lg" style={{ color: statusConfig?.color || '#374151' }}>
+                    <span className="font-bold text-lg leading-tight" style={{ color: statusConfig?.color || '#374151' }}>
                       {table.number}
                     </span>
+                    {table.capacity > 0 && (
+                      <span className="text-[10px] text-stone-500 leading-tight">
+                        {table.capacity} чел
+                      </span>
+                    )}
                     <div
                       className="absolute inset-0 pointer-events-none"
                     >
@@ -1597,6 +1611,153 @@ export default function HallsPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Table Info Modal - показывает брони для выбранного стола */}
+      <Dialog open={!!selectedTableForInfo} onOpenChange={(open) => !open && setSelectedTableForInfo(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className={cn(
+                "w-10 h-10 flex items-center justify-center border-2 text-lg font-bold",
+                selectedTableForInfo?.shape === 'round' && "rounded-full",
+                selectedTableForInfo?.shape === 'rectangle' && "rounded-xl",
+                selectedTableForInfo?.shape === 'square' && "rounded-lg",
+              )}>
+                {selectedTableForInfo?.number}
+              </span>
+              <div>
+                <div>Стол {selectedTableForInfo?.number}</div>
+                <div className="text-sm font-normal text-stone-500">
+                  Вместимость: {selectedTableForInfo?.capacity} чел
+                </div>
+              </div>
+            </DialogTitle>
+          </DialogHeader>
+          
+          {/* Брони за этим столом на выбранную дату */}
+          <div className="space-y-3 mt-4">
+            <h4 className="text-sm font-medium text-stone-700">
+              Бронирования на {format(new Date(selectedDate), 'dd.MM.yyyy')}
+            </h4>
+            {(() => {
+              const tableReservations = dateReservations.filter(r => 
+                (r.table_ids?.includes(selectedTableForInfo?.id || '') || r.table_id === selectedTableForInfo?.id)
+              )
+              
+              if (tableReservations.length === 0) {
+                return (
+                  <div className="text-center py-6 text-stone-400">
+                    <div className="text-4xl mb-2">🪑</div>
+                    <p>Стол свободен на эту дату</p>
+                  </div>
+                )
+              }
+              
+              return tableReservations.map(reservation => {
+                const statusConfig = RESERVATION_STATUS_CONFIG[reservation.status]
+                return (
+                  <div
+                    key={reservation.id}
+                    className="p-3 rounded-lg border-2 space-y-1 cursor-pointer hover:shadow-md transition-shadow"
+                    style={{
+                      borderColor: reservation.color || statusConfig?.borderColor || '#D1D5DB',
+                      backgroundColor: reservation.color ? `${reservation.color}10` : statusConfig?.bgColor || 'white'
+                    }}
+                    onClick={() => {
+                      setReservationToEdit(reservation)
+                      setReservationModalOpen(true)
+                      setSelectedTableForInfo(null)
+                    }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">
+                        {reservation.guest?.first_name} {reservation.guest?.last_name}
+                      </span>
+                      <Badge
+                        className="text-xs"
+                        style={{
+                          backgroundColor: statusConfig?.bgColor,
+                          color: statusConfig?.color,
+                          borderColor: statusConfig?.borderColor
+                        }}
+                      >
+                        {statusConfig?.label}
+                      </Badge>
+                    </div>
+                    <div className="text-sm text-stone-600 flex items-center gap-3">
+                      <span>🕐 {reservation.time}</span>
+                      <span>👥 {reservation.guests_count} чел</span>
+                    </div>
+                    {reservation.guest?.phone && (
+                      <div className="text-sm text-stone-500">
+                        📞 {reservation.guest.phone}
+                      </div>
+                    )}
+                    {reservation.comment && (
+                      <div className="text-sm text-stone-500 italic">
+                        💬 {reservation.comment}
+                      </div>
+                    )}
+                    <div className="text-xs text-amber-600 mt-2 flex items-center gap-1">
+                      <Pencil className="w-3 h-3" /> Нажмите чтобы открыть
+                    </div>
+                  </div>
+                )
+              })
+            })()}
+          </div>
+          
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setSelectedTableForInfo(null)}>
+              Закрыть
+            </Button>
+            {(() => {
+              const tableReservations = dateReservations.filter(r => 
+                (r.table_ids?.includes(selectedTableForInfo?.id || '') || r.table_id === selectedTableForInfo?.id)
+              )
+              
+              if (tableReservations.length === 0) {
+                // Стол свободен - кнопка создания брони
+                return (
+                  <Button onClick={() => {
+                    // Находим зал для этого стола
+                    const tableHall = halls.find(h => 
+                      tables.some(t => t.id === selectedTableForInfo?.id && t.hall_id === h.id)
+                    )
+                    setPreselectedTableId(selectedTableForInfo?.id || null)
+                    setPreselectedHallId(tableHall?.id || null)
+                    setReservationToEdit(null)
+                    setReservationModalOpen(true)
+                    setSelectedTableForInfo(null)
+                  }}>
+                    <Plus className="w-4 h-4 mr-1" />
+                    Добавить бронь
+                  </Button>
+                )
+              }
+              
+              // Есть брони - можно кликнуть на конкретную бронь выше
+              return null
+            })()}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ReservationModal */}
+      <ReservationModal
+        isOpen={reservationModalOpen}
+        onClose={() => {
+          setReservationModalOpen(false)
+          setReservationToEdit(null)
+          setPreselectedTableId(null)
+          setPreselectedHallId(null)
+        }}
+        mode={reservationToEdit ? 'edit' : 'create'}
+        reservation={reservationToEdit}
+        preselectedTableId={preselectedTableId}
+        preselectedHallId={preselectedHallId}
+        preselectedDate={selectedDate}
+      />
     </PageTransition>
   )
 }

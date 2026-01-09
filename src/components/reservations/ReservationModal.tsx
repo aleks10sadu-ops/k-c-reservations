@@ -49,7 +49,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { DateTimePicker } from '@/components/ui/datetime-picker'
 import TimeWheelPicker from '@/components/TimeWheelPicker'
 import { useHalls, useMenus, useMenuItems, useMenuItemTypes, useGuests, useTables, useLayoutItems, useCreateMutation, useUpdateMutation, useDeleteMutation, useReservations } from '@/hooks/useSupabase'
-import { X, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react'
+import { X } from 'lucide-react'
+import { HallScheme } from '@/components/halls/HallScheme'
 import { format } from 'date-fns'
 
 interface ReservationModalProps {
@@ -59,6 +60,9 @@ interface ReservationModalProps {
   onSaveSuccess?: (saved?: Reservation) => void
   mode?: 'view' | 'edit' | 'create'
   initialDate?: Date | null
+  preselectedTableId?: string | null
+  preselectedHallId?: string | null
+  preselectedDate?: string | null
 }
 
 export function ReservationModal({
@@ -67,7 +71,10 @@ export function ReservationModal({
   onClose,
   onSaveSuccess,
   mode: initialMode = 'view',
-  initialDate
+  initialDate,
+  preselectedTableId,
+  preselectedHallId,
+  preselectedDate
 }: ReservationModalProps) {
   const [mode, setMode] = useState(initialMode)
   const [showMenuEdit, setShowMenuEdit] = useState(false)
@@ -118,33 +125,9 @@ export function ReservationModal({
   const [showDesktopTablePicker, setShowDesktopTablePicker] = useState(false)
   const [selectedTables, setSelectedTables] = useState<string[]>([])
   const [draftTables, setDraftTables] = useState<string[]>([])
-  const [selectionBox, setSelectionBox] = useState<{
-    x1: number
-    y1: number
-    x2: number
-    y2: number
-    active: boolean
-    moved: boolean
-  } | null>(null)
-
-  // Состояние для мобильного выбора столов
-  const [mobilePanOffset, setMobilePanOffset] = useState({ x: 0, y: 0 })
-  const [mobileZoom, setMobileZoom] = useState(1)
-  const [mobileZoomCenter, setMobileZoomCenter] = useState({ x: 0, y: 0 })
-  const [isPanning, setIsPanning] = useState(false)
-  const [lastPanPoint, setLastPanPoint] = useState({ x: 0, y: 0 })
-  const schemeRef = useRef<HTMLDivElement | null>(null)
-
-  // Состояние для зума карты
-  const [zoom, setZoom] = useState(1)
-  const [zoomCenter, setZoomCenter] = useState({ x: 0, y: 0 })
 
   const [isMobile, setIsMobile] = useState(false)
   const [menuCollapsed, setMenuCollapsed] = useState(true) // Свернуто по умолчанию на мобильных
-
-  // Фиксированные размеры канваса - такие же как в меню "Залы"
-  const CANVAS_WIDTH = 800
-  const CANVAS_HEIGHT = 600
   const COLOR_PRESETS = ['#f97316', '#f59e0b', '#10b981', '#3b82f6', '#6366f1', '#ec4899', '#ef4444', '#6b7280']
 
   // Fetch data
@@ -163,6 +146,19 @@ export function ReservationModal({
       ? { date: formData.date, hall_id: formData.hall_id || undefined }
       : undefined
   )
+
+  // Вычисление вместимости выбранных столов
+  const selectedCapacity = useMemo(() => {
+    return tables
+      .filter(t => draftTables.includes(t.id))
+      .reduce((sum, t) => sum + (t.capacity || 0), 0)
+  }, [tables, draftTables])
+
+  // Требуемая вместимость (количество гостей + дети)
+  const requiredCapacity = formData.guests_count + formData.children_count
+
+  // Достаточно ли вместимости
+  const hasEnoughCapacity = draftTables.length === 0 || selectedCapacity >= requiredCapacity
 
   // Mutations
   const createReservation = useCreateMutation<Reservation>('reservations')
@@ -208,54 +204,6 @@ export function ReservationModal({
       }
     }
   }, [isOpen, showMobileTablePicker])
-
-  // Авто-центрирование карты при открытии мобильного/десктопного окна
-  useEffect(() => {
-    const shouldCenter = (showMobileTablePicker && isMobile) || (showDesktopTablePicker && !isMobile)
-    if (shouldCenter && (tables.length > 0 || layoutItems.length > 0)) {
-      // Вычисляем bounding box всех элементов (столы + layout items)
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
-
-      tables.forEach(table => {
-        minX = Math.min(minX, table.position_x)
-        maxX = Math.max(maxX, table.position_x + table.width)
-        minY = Math.min(minY, table.position_y)
-        maxY = Math.max(maxY, table.position_y + table.height)
-      })
-
-      layoutItems.forEach(item => {
-        minX = Math.min(minX, item.position_x)
-        maxX = Math.max(maxX, item.position_x + item.width)
-        minY = Math.min(minY, item.position_y)
-        maxY = Math.max(maxY, item.position_y + item.height)
-      })
-
-      // Если нет элементов, используем весь canvas
-      if (minX === Infinity) {
-        minX = 0
-        maxX = CANVAS_WIDTH
-        minY = 0
-        maxY = CANVAS_HEIGHT
-      }
-
-      const contentWidth = maxX - minX
-      const contentHeight = maxY - minY
-      const contentCenterX = (minX + maxX) / 2
-      const contentCenterY = (minY + maxY) / 2
-
-      // Вычисляем оптимальный зум
-      const containerWidth = isMobile ? window.innerWidth * 0.9 : 800 // Ширина контейнера
-      const containerHeight = isMobile ? window.innerHeight * 0.7 : 400 // Высота контейнера
-
-      const scaleX = containerWidth / contentWidth
-      const scaleY = containerHeight / contentHeight
-      const optimalZoom = Math.min(scaleX, scaleY, 1.5) * 0.85 // Добавляем отступ
-
-      // Сбрасываем смещение - canvas будет центрирован автоматически через CSS
-      setMobileZoom(Math.max(0.5, optimalZoom))
-      setMobilePanOffset({ x: 0, y: 0 })
-    }
-  }, [showMobileTablePicker, showDesktopTablePicker, isMobile, tables, layoutItems, CANVAS_WIDTH, CANVAS_HEIGHT])
 
   // Обновляем локальное состояние при изменении пропа reservation
   useEffect(() => {
@@ -309,37 +257,48 @@ export function ReservationModal({
           setSelectedSalads([])
         }
       } else if (initialMode === 'create') {
+        // Определяем hall_id - приоритет preselectedHallId, затем hall стола, затем первый зал
+        let hallId = preselectedHallId || ''
+        if (!hallId && preselectedTableId) {
+          // Находим зал по столу (tables загружаются позже, поэтому используем halls[0])
+          hallId = halls[0]?.id || ''
+        }
+        if (!hallId) {
+          hallId = halls[0]?.id || ''
+        }
+        
         setFormData({
-          date: initialDate ? format(initialDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
+          date: preselectedDate || (initialDate ? format(initialDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd')),
           time: '18:00',
-          hall_id: halls[0]?.id || '',
-          table_id: '',
+          hall_id: hallId,
+          table_id: preselectedTableId || '',
           guest_id: '',
           guests_count: 10,
           children_count: 0,
           menu_id: menus[0]?.id || '',
-        color: '#f59e0b',
+          color: '#f59e0b',
           status: 'new',
           total_amount: 0,
           comments: ''
         })
-        setSelectedTables([])
-        setDraftTables([])
+        // Устанавливаем выбранные столы если есть preselectedTableId
+        if (preselectedTableId) {
+          setSelectedTables([preselectedTableId])
+          setDraftTables([preselectedTableId])
+        } else {
+          setSelectedTables([])
+          setDraftTables([])
+        }
         setSelectedSalads([])
       }
       setShowSchemePicker(false)
       setShowMobileTablePicker(false)
       setShowDesktopTablePicker(false)
-      setSelectionBox(null)
       // Reset new guest form when modal opens/closes
       setShowNewGuest(false)
       setNewGuestData({ first_name: '', last_name: '', phone: '' })
-      // Reset mobile table picker state
-      setMobilePanOffset({ x: 0, y: 0 })
-      setMobileZoom(1)
-      setMobileZoomCenter({ x: 0, y: 0 })
     })
-  }, [currentReservation, initialMode, isOpen, initialDate, halls, menus])
+  }, [currentReservation, initialMode, isOpen, initialDate, halls, menus, preselectedTableId, preselectedHallId, preselectedDate])
 
   const statusOptions: ReservationStatus[] = ['new', 'in_progress', 'prepaid', 'paid', 'canceled']
   
@@ -433,183 +392,7 @@ export function ReservationModal({
     }, {} as Partial<Record<MenuItemType, typeof items>>)
   }, [currentMenu, menuItems])
 
-  const clamp = (val: number, min: number, max: number) => Math.min(Math.max(val, min), max)
-
-  // Функции для мобильного выбора столов
-  const handleMobileZoomIn = () => setMobileZoom(prev => Math.min(prev * 1.2, 3))
-  const handleMobileZoomOut = () => setMobileZoom(prev => Math.max(prev / 1.2, 0.5))
-  const handleMobileResetZoom = () => {
-    setMobileZoom(1)
-    setMobilePanOffset({ x: 0, y: 0 })
-    setMobileZoomCenter({ x: 0, y: 0 })
-  }
-
-  const handlePanStart = (clientX: number, clientY: number) => {
-    setIsPanning(true)
-    setLastPanPoint({ x: clientX, y: clientY })
-  }
-
-  const handleMobilePanStart = (event: React.TouchEvent) => {
-    if (event.touches.length === 1) {
-      // Начинаем pan
-      const touch = event.touches[0]
-      handlePanStart(touch.clientX, touch.clientY)
-    }
-  }
-
-  const handleDesktopPanStart = (event: React.MouseEvent) => {
-    if (event.button === 0) { // Left mouse button only
-      handlePanStart(event.clientX, event.clientY)
-    }
-  }
-
-  const handlePanMove = (clientX: number, clientY: number) => {
-    if (isPanning) {
-      const deltaX = clientX - lastPanPoint.x
-      const deltaY = clientY - lastPanPoint.y
-
-      setMobilePanOffset(prev => ({
-        x: prev.x + deltaX,
-        y: prev.y + deltaY
-      }))
-
-      setLastPanPoint({ x: clientX, y: clientY })
-    }
-  }
-
-  const handleMobilePanMove = (event: React.TouchEvent) => {
-    if (event.touches.length === 1 && isPanning) {
-      // Pan gesture - preventDefault не нужен благодаря touch-action: none
-      const touch = event.touches[0]
-      handlePanMove(touch.clientX, touch.clientY)
-    } else if (event.touches.length === 2) {
-      // Pinch gesture - preventDefault не нужен благодаря touch-action: none
-      const touch1 = event.touches[0]
-      const touch2 = event.touches[1]
-
-      const currentDistance = Math.sqrt(
-        Math.pow(touch2.clientX - touch1.clientX, 2) +
-        Math.pow(touch2.clientY - touch1.clientY, 2)
-      )
-
-      // Более точная логика pinch
-      const centerX = (touch1.clientX + touch2.clientX) / 2
-      const centerY = (touch1.clientY + touch2.clientY) / 2
-
-      setMobileZoomCenter({ x: centerX, y: centerY })
-
-      // Определяем направление зума по сравнению с предыдущим расстоянием
-      // Для простоты используем фиксированный порог
-      if (currentDistance > 150) {
-        setMobileZoom(prev => Math.min(prev * 1.02, 3))
-      } else if (currentDistance < 100) {
-        setMobileZoom(prev => Math.max(prev / 1.02, 0.5))
-      }
-    }
-  }
-
-  const handleDesktopPanMove = (event: React.MouseEvent) => {
-    if (event.buttons === 1 && isPanning) { // Left mouse button held
-      handlePanMove(event.clientX, event.clientY)
-    }
-  }
-
-  const handleMobilePanEnd = () => {
-    setIsPanning(false)
-  }
-
   const handleMobileTableClick = (tableId: string) => {
-    setDraftTables((prev) => {
-      const exists = prev.includes(tableId)
-      if (exists) {
-        return prev.filter((id) => id !== tableId)
-      }
-      return [...prev, tableId]
-    })
-  }
-
-  // Функции управления зумом
-  const handleZoomIn = () => setZoom(prev => Math.min(prev * 1.2, 3))
-  const handleZoomOut = () => setZoom(prev => Math.max(prev / 1.2, 0.5))
-  const handleResetZoom = () => {
-    setZoom(1)
-    setZoomCenter({ x: 0, y: 0 })
-  }
-
-  const getTableAABB = (table: typeof tables[number]) => {
-    const rot = (table.rotation ?? 0) * (Math.PI / 180)
-    const cos = Math.cos(rot)
-    const sin = Math.sin(rot)
-    const corners = [
-      { x: 0, y: 0 },
-      { x: table.width, y: 0 },
-      { x: table.width, y: table.height },
-      { x: 0, y: table.height },
-    ].map((c) => ({
-      x: table.position_x + c.x * cos - c.y * sin,
-      y: table.position_y + c.x * sin + c.y * cos,
-    }))
-    const xs = corners.map((c) => c.x)
-    const ys = corners.map((c) => c.y)
-    return {
-      minX: Math.min(...xs),
-      maxX: Math.max(...xs),
-      minY: Math.min(...ys),
-      maxY: Math.max(...ys),
-    }
-  }
-
-  const handleSchemeMouseDown = (e: React.MouseEvent) => {
-    if (!schemeRef.current) return
-    const rect = schemeRef.current.getBoundingClientRect()
-    const x = clamp(e.clientX - rect.left, 0, CANVAS_WIDTH)
-    const y = clamp(e.clientY - rect.top, 0, CANVAS_HEIGHT)
-    setSelectionBox({ x1: x, y1: y, x2: x, y2: y, active: true, moved: false })
-  }
-
-  const handleSchemeMouseMove = (e: React.MouseEvent) => {
-    if (!schemeRef.current || !selectionBox?.active) return
-    const rect = schemeRef.current.getBoundingClientRect()
-    const x = clamp(e.clientX - rect.left, 0, CANVAS_WIDTH)
-    const y = clamp(e.clientY - rect.top, 0, CANVAS_HEIGHT)
-    setSelectionBox((prev) => {
-      if (!prev) return prev
-      const moved = prev.moved || Math.abs(x - prev.x1) > 3 || Math.abs(y - prev.y1) > 3
-      return { ...prev, x2: x, y2: y, moved }
-    })
-  }
-
-  const handleSchemeMouseUp = () => {
-    if (!selectionBox || !tables.length) {
-      setSelectionBox(null)
-      return
-    }
-    if (!selectionBox.moved) {
-      setSelectionBox(null)
-      return
-    }
-    const minX = Math.min(selectionBox.x1, selectionBox.x2)
-    const maxX = Math.max(selectionBox.x1, selectionBox.x2)
-    const minY = Math.min(selectionBox.y1, selectionBox.y2)
-    const maxY = Math.max(selectionBox.y1, selectionBox.y2)
-
-    const nextSelected = tables
-      .filter((t) => {
-        const box = getTableAABB(t)
-        const intersects =
-          box.maxX >= minX &&
-          box.minX <= maxX &&
-          box.maxY >= minY &&
-          box.minY <= maxY
-        return intersects
-      })
-      .map((t) => t.id)
-
-    setDraftTables(nextSelected)
-    setSelectionBox(null)
-  }
-
-  const handleSchemeClick = (tableId: string) => {
     setDraftTables((prev) => {
       const exists = prev.includes(tableId)
       if (exists) {
@@ -819,10 +602,10 @@ export function ReservationModal({
   if (showDesktopTablePicker && !isMobile) {
     return (
       <Dialog open={showDesktopTablePicker} onOpenChange={() => setShowDesktopTablePicker(false)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] w-full">
-          <div className="flex flex-col h-full">
+        <DialogContent className="max-w-4xl max-h-[90vh] w-full p-0">
+          <div className="flex flex-col h-[80vh]">
             {/* Header */}
-            <div className="flex items-center justify-between p-6 border-b border-stone-200">
+            <div className="flex items-center justify-between p-4 border-b border-stone-200">
               <h3 className="text-xl font-semibold">Выбор столов</h3>
               <Button
                 variant="ghost"
@@ -833,136 +616,44 @@ export function ReservationModal({
               </Button>
             </div>
 
-            {/* Controls */}
-            <div className="flex items-center justify-center gap-4 p-4 bg-stone-50 border-b border-stone-200">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleMobileZoomOut}
-                disabled={mobileZoom <= 0.5}
-              >
-                <ZoomOut className="h-4 w-4 mr-2" />
-                Уменьшить
-              </Button>
-              <span className="text-sm text-stone-600 min-w-[4rem] text-center">
-                {Math.round(mobileZoom * 100)}%
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleMobileZoomIn}
-                disabled={mobileZoom >= 3}
-              >
-                <ZoomIn className="h-4 w-4 mr-2" />
-                Увеличить
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleMobileResetZoom}
-              >
-                <RotateCcw className="h-4 w-4 mr-2" />
-                Сбросить
-              </Button>
-            </div>
-
-            {/* Map Container */}
-            <div className="flex-1 overflow-hidden relative min-h-[400px]">
-              <div
-                className="absolute inset-0 cursor-grab active:cursor-grabbing"
-                style={{
-                  backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)',
-                  backgroundSize: '20px 20px'
-                }}
-                onMouseDown={handleDesktopPanStart}
-                onMouseMove={handleDesktopPanMove}
-                onMouseUp={handleMobilePanEnd}
-                onMouseLeave={handleMobilePanEnd}
-              >
-                <div
-                  className="absolute top-1/2 left-1/2 bg-white border border-stone-200 rounded-xl"
-                  style={{
-                    width: CANVAS_WIDTH,
-                    height: CANVAS_HEIGHT,
-                    transform: `translate(-50%, -50%) translate(${mobilePanOffset.x}px, ${mobilePanOffset.y}px) scale(${mobileZoom})`,
-                    transformOrigin: 'center center',
-                    transition: 'transform 0.1s ease-out',
-                    backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)',
-                    backgroundSize: '16px 16px'
-                  }}
-                >
-                  {/* Layout items (labels, shapes) */}
-                  {layoutItems.map((item) => (
-                    <div
-                      key={item.id}
-                      className="absolute flex items-center justify-center text-sm pointer-events-none select-none"
-                      style={{
-                        left: item.position_x,
-                        top: item.position_y,
-                        width: item.width,
-                        height: item.height,
-                        transform: `rotate(${item.rotation ?? 0}deg)`,
-                        transformOrigin: 'top left',
-                        color: item.color || '#1f2937',
-                        backgroundColor: item.bg_color || 'transparent',
-                        borderRadius: item.type === 'shape' ? '8px' : undefined,
-                        border: item.type === 'shape' ? '2px dashed #d4d4d8' : undefined
-                      }}
-                    >
-                      {item.text}
-                    </div>
-                  ))}
-                  {/* Tables */}
-                  {tables.map((table) => {
-                    const isSelected = draftTables.includes(table.id)
-                    const occupiedColor = occupiedTableMap.get(table.id)
-                    return (
-                      <div
-                        key={table.id}
-                        className={cn(
-                          "absolute border-2 flex items-center justify-center text-sm font-semibold transition-all cursor-pointer select-none",
-                          table.shape === 'round' && "rounded-full",
-                          table.shape === 'rectangle' && "rounded-xl",
-                          table.shape === 'square' && "rounded-lg",
-                          isSelected
-                            ? "border-amber-500 bg-amber-50 shadow-lg"
-                            : occupiedColor
-                              ? "border-stone-300 bg-white"
-                              : "border-stone-300 bg-white hover:border-amber-400 hover:shadow-md"
-                        )}
-                        style={{
-                          left: table.position_x,
-                          top: table.position_y,
-                          width: table.width,
-                          height: table.height,
-                          transform: `rotate(${table.rotation ?? 0}deg)`,
-                          transformOrigin: 'top left',
-                        }}
-                        onClick={() => handleMobileTableClick(table.id)}
-                        title={occupiedColor ? 'Занято другим бронированием' : `Стол ${table.number} (${table.capacity} мест)`}
-                      >
-                        {table.number}
-                        {occupiedColor && (
-                          <div
-                            className="absolute -top-2 -right-2 h-4 w-4 rounded-full border-2 border-white shadow-md"
-                            style={{ backgroundColor: occupiedColor }}
-                          />
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
+            {/* Hall Scheme */}
+            <HallScheme
+              tables={tables}
+              layoutItems={layoutItems}
+              mode="select"
+              selectedTables={draftTables}
+              onSelectTable={handleMobileTableClick}
+              occupiedTableMap={occupiedTableMap}
+              currentReservationId={currentReservation?.id}
+              className="flex-1"
+              showCapacity={true}
+              requiredCapacity={requiredCapacity}
+            />
 
             {/* Footer */}
-            <div className="flex items-center justify-between p-6 border-t border-stone-200">
-              <div className="text-sm text-stone-600">
-                Выбрано столов: {draftTables.length}
+            <div className="flex items-center justify-between p-4 border-t border-stone-200">
+              <div className="text-sm">
+                <div className="text-stone-600">
+                  Выбрано столов: {draftTables.length}
+                  {draftTables.length > 0 && (
+                    <span className="ml-2">
+                      (№{tables.filter(t => draftTables.includes(t.id)).map(t => t.number).join(', ')})
+                    </span>
+                  )}
+                </div>
+                {/* Информация о вместимости */}
                 {draftTables.length > 0 && (
-                  <span className="ml-2">
-                    (№{tables.filter(t => draftTables.includes(t.id)).map(t => t.number).join(', ')})
-                  </span>
+                  <div className={cn(
+                    "text-sm mt-1",
+                    hasEnoughCapacity ? "text-green-600" : "text-red-500"
+                  )}>
+                    Вместимость: {selectedCapacity} из {requiredCapacity} чел
+                    {!hasEnoughCapacity && (
+                      <span className="ml-1 font-medium">
+                        (нужно ещё {requiredCapacity - selectedCapacity})
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
               <div className="flex gap-3">
@@ -982,6 +673,7 @@ export function ReservationModal({
                     setFormData((prev) => ({ ...prev, table_id: draftTables[0] ?? '' }))
                     setShowDesktopTablePicker(false)
                   }}
+                  disabled={draftTables.length > 0 && !hasEnoughCapacity}
                 >
                   Готово
                 </Button>
@@ -1011,132 +703,41 @@ export function ReservationModal({
               </Button>
             </div>
 
-            {/* Controls */}
-            <div className="flex items-center justify-center gap-2 p-3 bg-stone-50 border-b border-stone-200">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleMobileZoomOut}
-                disabled={mobileZoom <= 0.5}
-              >
-                <ZoomOut className="h-4 w-4" />
-              </Button>
-              <span className="text-sm text-stone-600 min-w-[3rem] text-center">
-                {Math.round(mobileZoom * 100)}%
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleMobileZoomIn}
-                disabled={mobileZoom >= 3}
-              >
-                <ZoomIn className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleMobileResetZoom}
-              >
-                <RotateCcw className="h-4 w-4" />
-              </Button>
-            </div>
-
-            {/* Map Container */}
-            <div className="flex-1 overflow-hidden relative">
-              <div
-                className="absolute inset-0 cursor-grab active:cursor-grabbing touch-none"
-                style={{
-                  backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)',
-                  backgroundSize: '16px 16px',
-                  touchAction: 'none' // Предотвращает прокрутку страницы
-                }}
-                onTouchStart={handleMobilePanStart}
-                onTouchMove={handleMobilePanMove}
-                onTouchEnd={handleMobilePanEnd}
-              >
-                <div
-                  className="absolute top-1/2 left-1/2 bg-white border border-stone-200 rounded-xl"
-                  style={{
-                    width: CANVAS_WIDTH,
-                    height: CANVAS_HEIGHT,
-                    transform: `translate(-50%, -50%) translate(${mobilePanOffset.x}px, ${mobilePanOffset.y}px) scale(${mobileZoom})`,
-                    transformOrigin: 'center center',
-                    backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)',
-                    backgroundSize: '16px 16px'
-                  }}
-                >
-                  {/* Layout items (labels, shapes) */}
-                  {layoutItems.map((item) => (
-                    <div
-                      key={item.id}
-                      className="absolute flex items-center justify-center text-sm pointer-events-none select-none"
-                      style={{
-                        left: item.position_x,
-                        top: item.position_y,
-                        width: item.width,
-                        height: item.height,
-                        transform: `rotate(${item.rotation ?? 0}deg)`,
-                        transformOrigin: 'top left',
-                        color: item.color || '#1f2937',
-                        backgroundColor: item.bg_color || 'transparent',
-                        borderRadius: item.type === 'shape' ? '8px' : undefined,
-                        border: item.type === 'shape' ? '2px dashed #d4d4d8' : undefined
-                      }}
-                    >
-                      {item.text}
-                    </div>
-                  ))}
-                  {/* Tables */}
-                  {tables.map((table) => {
-                    const isSelected = draftTables.includes(table.id)
-                    const occupiedColor = occupiedTableMap.get(table.id)
-                    return (
-                      <div
-                        key={table.id}
-                        className={cn(
-                          "absolute border-2 flex items-center justify-center text-sm font-semibold transition-all select-none cursor-pointer",
-                          table.shape === 'round' && "rounded-full",
-                          table.shape === 'rectangle' && "rounded-xl",
-                          table.shape === 'square' && "rounded-lg",
-                          isSelected
-                            ? "border-amber-500 bg-amber-50"
-                            : occupiedColor
-                              ? "border-stone-300 bg-white"
-                              : "border-stone-300 bg-white hover:border-amber-400"
-                        )}
-                        style={{
-                          left: table.position_x,
-                          top: table.position_y,
-                          width: table.width,
-                          height: table.height,
-                          transform: `rotate(${table.rotation ?? 0}deg)`,
-                          transformOrigin: 'top left',
-                        }}
-                        onClick={() => handleMobileTableClick(table.id)}
-                        title={occupiedColor ? 'Занято другим бронированием' : undefined}
-                      >
-                        {table.number}
-                        {occupiedColor && (
-                          <span
-                            className="absolute -top-2 -right-2 h-3.5 w-3.5 rounded-full border border-white shadow"
-                            style={{ backgroundColor: occupiedColor }}
-                          />
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
+            {/* Hall Scheme */}
+            <HallScheme
+              tables={tables}
+              layoutItems={layoutItems}
+              mode="select"
+              selectedTables={draftTables}
+              onSelectTable={handleMobileTableClick}
+              occupiedTableMap={occupiedTableMap}
+              currentReservationId={currentReservation?.id}
+              className="flex-1"
+              showCapacity={true}
+              requiredCapacity={requiredCapacity}
+            />
 
             {/* Footer */}
             <div className="flex items-center justify-between p-4 border-t border-stone-200">
-              <div className="text-sm text-stone-600">
-                Выбрано: {draftTables.length}
+              <div className="text-sm">
+                <div className="text-stone-600">
+                  Выбрано: {draftTables.length}
+                </div>
+                {/* Информация о вместимости */}
+                {draftTables.length > 0 && (
+                  <div className={cn(
+                    "text-xs mt-0.5",
+                    hasEnoughCapacity ? "text-green-600" : "text-red-500"
+                  )}>
+                    {selectedCapacity}/{requiredCapacity} чел
+                    {!hasEnoughCapacity && ` (−${requiredCapacity - selectedCapacity})`}
+                  </div>
+                )}
               </div>
               <div className="flex gap-2">
                 <Button
                   variant="outline"
+                  size="sm"
                   onClick={() => {
                     setDraftTables([])
                     setSelectedTables([])
@@ -1146,11 +747,13 @@ export function ReservationModal({
                   Сбросить
                 </Button>
                 <Button
+                  size="sm"
                   onClick={() => {
                     setSelectedTables(draftTables)
                     setFormData((prev) => ({ ...prev, table_id: draftTables[0] ?? '' }))
                     setShowMobileTablePicker(false)
                   }}
+                  disabled={draftTables.length > 0 && !hasEnoughCapacity}
                 >
                   Готово
                 </Button>
@@ -1457,7 +1060,6 @@ export function ReservationModal({
                             setSelectedTables([])
                             setDraftTables([])
                             setShowSchemePicker(false)
-                            setSelectionBox(null)
                           }}
                         >
                           <SelectTrigger className="mt-2">
@@ -1566,7 +1168,6 @@ export function ReservationModal({
                             setSelectedTables([])
                             setDraftTables([])
                             setShowSchemePicker(false)
-                            setSelectionBox(null)
                           }}
                         >
                           <SelectTrigger className="mt-2">
