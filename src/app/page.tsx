@@ -1,14 +1,15 @@
 "use client"
 
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Plus, Filter, Search, Loader2 } from 'lucide-react'
+import { Plus, Filter, Search, Loader2, X, Clock, MapPin, Users } from 'lucide-react'
 import { PageTransition } from '@/components/layout/PageTransition'
 import { Calendar } from '@/components/reservations/Calendar'
 import { ReservationModal } from '@/components/reservations/ReservationModal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Reservation, RESERVATION_STATUS_CONFIG, ReservationStatus } from '@/types'
+import { formatDate, formatTime } from '@/lib/utils'
 import { useHalls, useMenus, useReservations } from '@/hooks/useSupabase'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -25,6 +26,8 @@ export default function HomePage() {
   const [viewMode, setViewMode] = useState<'year' | 'month' | 'day' | 'list'>('month')
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [isFiltersOpen, setIsFiltersOpen] = useState(false)
+  const [isSearchFocused, setIsSearchFocused] = useState(false)
+  const searchRef = useRef<HTMLDivElement>(null)
   const [filters, setFilters] = useState({
     hallId: 'all',
     menuId: 'all',
@@ -37,6 +40,17 @@ export default function HomePage() {
 
   // Mobile devices stay in month view with compact dots display
   // (removed auto-switch to list view - users can tap a day to see details)
+
+  // Close search dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setIsSearchFocused(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   const { data: halls } = useHalls()
   const { data: menus } = useMenus()
@@ -70,14 +84,32 @@ export default function HomePage() {
     )
   }, [filters, searchQuery, statusFilter])
 
+  // Multi-word search function - each word must match at least one searchable field
+  const matchesMultiWordSearch = (reservation: Reservation, query: string): boolean => {
+    if (!query.trim()) return true
+    
+    // Create a combined searchable string from all relevant fields
+    const searchableFields = [
+      reservation.guest?.last_name || '',
+      reservation.guest?.first_name || '',
+      reservation.guest?.middle_name || '',
+      reservation.guest?.phone || '',
+      reservation.comments || '',
+      reservation.hall?.name || '',
+    ].map(field => field.toLowerCase())
+    
+    // Split query into words (handles multiple spaces)
+    const queryWords = query.toLowerCase().trim().split(/\s+/).filter(word => word.length > 0)
+    
+    // Each query word must match at least one field
+    return queryWords.every(word => 
+      searchableFields.some(field => field.includes(word))
+    )
+  }
+
   const filteredReservations = useMemo(() => {
     return reservations.filter(reservation => {
-      const normalizedQuery = searchQuery.toLowerCase().trim()
-      const matchesSearch = normalizedQuery === '' || 
-        reservation.guest?.last_name?.toLowerCase().includes(normalizedQuery) ||
-        reservation.guest?.first_name?.toLowerCase().includes(normalizedQuery) ||
-        reservation.guest?.phone?.includes(normalizedQuery) ||
-        reservation.comments?.toLowerCase().includes(normalizedQuery)
+      const matchesSearch = matchesMultiWordSearch(reservation, searchQuery)
       
       const matchesStatus = statusFilter === 'all' || reservation.status === statusFilter
       const matchesHall = filters.hallId === 'all' || reservation.hall_id === filters.hallId
@@ -104,6 +136,15 @@ export default function HomePage() {
       )
     })
   }, [reservations, searchQuery, statusFilter, filters])
+
+  // Search results for dropdown (search all reservations, not just current month)
+  const searchResults = useMemo(() => {
+    if (!searchQuery.trim()) return []
+    return (reservationsForFilters || [])
+      .filter(reservation => matchesMultiWordSearch(reservation, searchQuery))
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 10) // Limit to 10 results
+  }, [reservationsForFilters, searchQuery])
 
   const handleReservationClick = (reservation: Reservation) => {
     setSelectedReservation(reservation)
@@ -249,14 +290,26 @@ export default function HomePage() {
         >
             <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-3">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400" />
+              <div className="relative" ref={searchRef}>
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400 z-10" />
                 <Input
                   placeholder="Поиск по имени, телефону или комментарию..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  onFocus={() => setIsSearchFocused(true)}
                   className="pl-10 pr-20"
                 />
+                {searchQuery && (
+                  <button
+                    onClick={() => {
+                      setSearchQuery('')
+                      setIsSearchFocused(false)
+                    }}
+                    className="absolute right-24 top-1/2 -translate-y-1/2 p-1 hover:bg-stone-100 rounded-full text-stone-400 hover:text-stone-600 transition-colors"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
                   {statusFilter !== 'all' && (
                     <Badge
@@ -279,6 +332,90 @@ export default function HomePage() {
                     <span className="hidden sm:inline">Фильтры</span>
                   </Button>
                 </div>
+
+                {/* Search Results Dropdown */}
+                <AnimatePresence>
+                  {isSearchFocused && searchQuery.trim() && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl border border-stone-200 shadow-lg z-50 max-h-[400px] overflow-y-auto"
+                    >
+                      {searchResults.length === 0 ? (
+                        <div className="p-4 text-center text-stone-500">
+                          <Search className="h-8 w-8 mx-auto mb-2 text-stone-300" />
+                          <p className="text-sm">Ничего не найдено</p>
+                          <p className="text-xs text-stone-400 mt-1">Попробуйте изменить запрос</p>
+                        </div>
+                      ) : (
+                        <div className="py-2">
+                          <div className="px-3 py-2 text-xs font-medium text-stone-500 border-b border-stone-100">
+                            Найдено: {searchResults.length} {searchResults.length === 1 ? 'бронь' : searchResults.length < 5 ? 'брони' : 'броней'}
+                          </div>
+                          {searchResults.map((reservation) => {
+                            const statusConfig = RESERVATION_STATUS_CONFIG[reservation.status]
+                            return (
+                              <motion.div
+                                key={reservation.id}
+                                whileHover={{ backgroundColor: 'rgba(245, 158, 11, 0.05)' }}
+                                onClick={() => {
+                                  handleReservationClick(reservation)
+                                  setIsSearchFocused(false)
+                                }}
+                                className="px-3 py-3 cursor-pointer border-b border-stone-50 last:border-b-0"
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <div 
+                                        className="w-2 h-2 rounded-full flex-shrink-0" 
+                                        style={{ backgroundColor: statusConfig.borderColor }}
+                                      />
+                                      <span className="font-medium text-stone-900 truncate">
+                                        {reservation.guest?.last_name} {reservation.guest?.first_name}
+                                      </span>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone-500">
+                                      <span className="flex items-center gap-1">
+                                        <Clock className="h-3 w-3" />
+                                        {formatDate(reservation.date)} {formatTime(reservation.time)}
+                                      </span>
+                                      <span className="flex items-center gap-1">
+                                        <MapPin className="h-3 w-3" />
+                                        {reservation.hall?.name}
+                                      </span>
+                                      <span className="flex items-center gap-1">
+                                        <Users className="h-3 w-3" />
+                                        {reservation.guests_count}
+                                      </span>
+                                    </div>
+                                    {reservation.guest?.phone && (
+                                      <div className="text-xs text-stone-400 mt-1">
+                                        {reservation.guest.phone}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <Badge
+                                    variant={
+                                      reservation.status === 'new' ? 'new' :
+                                      reservation.status === 'in_progress' ? 'inProgress' :
+                                      reservation.status === 'prepaid' ? 'prepaid' :
+                                      reservation.status === 'paid' ? 'paid' : 'canceled'
+                                    }
+                                    className="text-[10px] px-1.5 py-0.5 flex-shrink-0"
+                                  >
+                                    {statusConfig.label}
+                                  </Badge>
+                                </div>
+                              </motion.div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </div>
 
