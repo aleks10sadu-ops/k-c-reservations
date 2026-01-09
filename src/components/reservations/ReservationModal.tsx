@@ -1508,51 +1508,19 @@ export function ReservationModal({
                           </Button>
                         )}
                       </div>
-                      {mode === 'view' ? (
-                        <p className="mt-2 break-anywhere">
-                          {currentReservation?.tables?.length
-                            ? currentReservation.tables.map((t) => t.number).join(', ')
+                      <p className="mt-2 break-anywhere text-sm text-stone-600">
+                        {mode === 'view' ? (
+                          currentReservation?.tables?.length
+                            ? currentReservation.tables.map((t) => `Стол ${t.number}`).join(', ')
                             : currentReservation?.table?.number
-                              ? `${currentReservation.table.number}`
-                              : 'Не выбраны'}
-                        </p>
-                      ) : (
-                        <div className="mt-2 space-y-2">
-                          <Select
-                            value={formData.table_id || 'none'}
-                            onValueChange={(v) => {
-                              const id = v === 'none' ? '' : v
-                              setFormData({ ...formData, table_id: id })
-                              const next = id ? [id] : []
-                              setSelectedTables(next)
-                              if (showSchemePicker) setDraftTables(next)
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Выберите стол" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none">Без стола</SelectItem>
-                              {tables.map(table => {
-                                const occupiedColor = occupiedTableMap.get(table.id)
-                                return (
-                                  <SelectItem key={table.id} value={table.id}>
-                                    <span className="inline-flex items-center gap-2">
-                                      {occupiedColor && (
-                                        <span
-                                          className="inline-block h-3 w-3 rounded-full border border-stone-300"
-                                          style={{ backgroundColor: occupiedColor }}
-                                        />
-                                      )}
-                                      {table.number} • {table.capacity} чел.{occupiedColor ? ' (занят)' : ''}
-                                    </span>
-                                  </SelectItem>
-                                )
-                              })}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
+                              ? `Стол ${currentReservation.table.number}`
+                              : 'Не выбраны'
+                        ) : (
+                          selectedTables.length > 0
+                            ? tables.filter(t => selectedTables.includes(t.id)).map(t => `Стол ${t.number}`).join(', ')
+                            : 'Не выбраны'
+                        )}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -1585,10 +1553,9 @@ export function ReservationModal({
                       {mode === 'view' ? (
                         <p className="mt-2 font-medium break-anywhere">{formatTime(currentReservation?.time)}</p>
                       ) : (
-                        <DateTimePicker
+                        <TimeWheelPicker
                           value={formData.time}
-                          onChange={(_, time) => time && setFormData({ ...formData, time })}
-                          timeOnly={true}
+                          onChange={(time) => setFormData({ ...formData, time })}
                           className="mt-2"
                         />
                       )}
@@ -1686,51 +1653,19 @@ export function ReservationModal({
                           </Button>
                         )}
                       </div>
-                      {mode === 'view' ? (
-                        <p className="mt-2 break-anywhere">
-                          {currentReservation?.tables?.length
-                            ? currentReservation.tables.map((t) => t.number).join(', ')
+                      <p className="mt-2 break-anywhere text-sm text-stone-600">
+                        {mode === 'view' ? (
+                          currentReservation?.tables?.length
+                            ? currentReservation.tables.map((t) => `Стол ${t.number}`).join(', ')
                             : currentReservation?.table?.number
-                              ? `${currentReservation.table.number}`
-                              : 'Не выбраны'}
-                        </p>
-                      ) : (
-                        <div className="mt-2 space-y-2">
-                          <Select
-                            value={formData.table_id || 'none'}
-                            onValueChange={(v) => {
-                              const id = v === 'none' ? '' : v
-                              setFormData({ ...formData, table_id: id })
-                              const next = id ? [id] : []
-                              setSelectedTables(next)
-                              if (showSchemePicker) setDraftTables(next)
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Выберите стол" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none">Без стола</SelectItem>
-                              {tables.map(table => {
-                                const occupiedColor = occupiedTableMap.get(table.id)
-                                return (
-                                  <SelectItem key={table.id} value={table.id}>
-                                    <span className="inline-flex items-center gap-2">
-                                      {occupiedColor && (
-                                        <span
-                                          className="inline-block h-3 w-3 rounded-full border border-stone-300"
-                                          style={{ backgroundColor: occupiedColor }}
-                                        />
-                                      )}
-                                      {table.number} • {table.capacity} чел.{occupiedColor ? ' (занят)' : ''}
-                                    </span>
-                                  </SelectItem>
-                                )
-                              })}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
+                              ? `Стол ${currentReservation.table.number}`
+                              : 'Не выбраны'
+                        ) : (
+                          selectedTables.length > 0
+                            ? tables.filter(t => selectedTables.includes(t.id)).map(t => `Стол ${t.number}`).join(', ')
+                            : 'Не выбраны'
+                        )}
+                      </p>
                     </div>
                   </div>
                 </div>
