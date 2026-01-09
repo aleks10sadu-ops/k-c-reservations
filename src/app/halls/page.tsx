@@ -131,13 +131,14 @@ export default function HallsPage() {
     if (!el) return 1
     const padding = 32
     const availableW = el.clientWidth - padding
-    const availableH = window.innerHeight * 0.5
+    const availableH = window.innerHeight * 0.55 // Use more height
 
     const canvasW = window.innerWidth < 768 ? CANVAS_WIDTH_MOBILE : CANVAS_WIDTH
     const canvasH = window.innerWidth < 768 ? CANVAS_HEIGHT_MOBILE : CANVAS_HEIGHT
 
-    const scale = Math.min(1, Math.min(availableW / canvasW, availableH / canvasH))
-    return Math.max(0.35, scale)
+    // Scale to fit the available space (can scale up or down)
+    const scale = Math.min(availableW / canvasW, availableH / canvasH)
+    return Math.max(0.5, scale) // Minimum 50% scale
   }
 
   useEffect(() => {
