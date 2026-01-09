@@ -174,7 +174,12 @@ export default function HomePage() {
       setSelectedReservation(saved)
       setModalMode('view')
       setIsModalOpen(true)
+      // Navigate to the month of the saved reservation
+      const reservationDate = new Date(saved.date)
+      setCurrentDate(reservationDate)
     }
+    // Always return to month view after saving
+    setViewMode('month')
     refetch()
   }
 
