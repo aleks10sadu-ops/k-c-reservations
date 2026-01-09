@@ -141,23 +141,10 @@ export function ReservationModal({
 
   const [isMobile, setIsMobile] = useState(false)
   const [menuCollapsed, setMenuCollapsed] = useState(true) // Свернуто по умолчанию на мобильных
-  const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 })
 
-  // Адаптивные размеры карты зала - вычисляем в эффекте
-  useEffect(() => {
-    const updateCanvasSize = () => {
-      const width = Math.max(600, window.innerWidth - 64)
-      const height = Math.max(450, window.innerHeight * 0.6)
-      setCanvasSize({ width, height })
-    }
-
-    updateCanvasSize()
-    window.addEventListener('resize', updateCanvasSize)
-    return () => window.removeEventListener('resize', updateCanvasSize)
-  }, [])
-
-  const CANVAS_WIDTH = canvasSize.width
-  const CANVAS_HEIGHT = canvasSize.height
+  // Фиксированные размеры канваса - такие же как в меню "Залы"
+  const CANVAS_WIDTH = 800
+  const CANVAS_HEIGHT = 600
   const COLOR_PRESETS = ['#f97316', '#f59e0b', '#10b981', '#3b82f6', '#6366f1', '#ec4899', '#ef4444', '#6b7280']
 
   // Fetch data
@@ -191,10 +178,13 @@ export function ReservationModal({
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
 
-  // Обновляем isMobile вместе с canvas size
+  // Проверяем мобильное устройство
   useEffect(() => {
-    setIsMobile(window.innerWidth < 768)
-  }, [canvasSize])
+    const checkMobile = () => setIsMobile(window.innerWidth < 768)
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   // Предотвращаем прокрутку body при открытии модального окна
   useEffect(() => {
