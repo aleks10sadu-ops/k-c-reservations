@@ -157,7 +157,7 @@ export default function LoginPage() {
           transition={{ delay: 0.7 }}
           className="text-center text-sm text-stone-400 mt-6"
         >
-          © 2024 Kucher&Conga Restaurant. Все права защищены.
+          © 2026 Kucher&Conga Restaurant. Все права защищены.
         </motion.p>
       </motion.div>
     </div>
