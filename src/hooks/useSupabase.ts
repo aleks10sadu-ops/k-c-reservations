@@ -2,12 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { 
-  Hall, 
-  Menu, 
-  MenuItem, 
-  Guest, 
-  Reservation, 
+import {
+  Hall,
+  Menu,
+  MenuItem,
+  Guest,
+  Reservation,
   Payment,
   Table,
   LayoutItem,
@@ -33,10 +33,10 @@ function useSupabaseQuery<T>(
       setLoading(false)
       return
     }
-    
+
     setLoading(true)
     setError(null)
-    
+
     try {
       const supabase = createClient()
       let query = supabase.from(tableName).select(selectQuery)
@@ -70,7 +70,7 @@ function useSupabaseQuery<T>(
         })
         throw queryError
       }
-      
+
       // Логируем для menu_item_types
       if (tableName === 'menu_item_types') {
         console.log(`[useSupabaseQuery] Fetched ${tableName}:`, result?.length || 0, 'items', result)
@@ -78,7 +78,7 @@ function useSupabaseQuery<T>(
           console.warn(`[useSupabaseQuery] No types found for menu_id:`, filters.menu_id)
         }
       }
-      
+
       // Явно приводим ответ к ожидаемому типу данных
       setData((result || []) as T[])
     } catch (err: any) {
@@ -130,10 +130,10 @@ export function useTables(hallId?: string | null, loadAll?: boolean) {
   // Если hallId не задан или пустой, и не требуется загрузка всех - 
   // используем skip чтобы не делать запрос вообще
   const shouldSkip = !loadAll && (!hallId || hallId.length === 0)
-  const filters = loadAll 
-    ? undefined 
+  const filters = loadAll
+    ? undefined
     : (hallId && hallId.length > 0 ? { hall_id: hallId } : undefined)
-  
+
   return useSupabaseQuery<Table>(
     'tables',
     '*',
@@ -211,7 +211,7 @@ export function useReservations(filters?: {
   const fetchData = useCallback(async () => {
     setLoading(true)
     setError(null)
-    
+
     try {
       const supabase = createClient()
       let query = supabase
@@ -258,7 +258,11 @@ export function useReservations(filters?: {
         .order('date')
         .order('time')
 
-      if (queryError) throw queryError
+      if (queryError) {
+        console.error('[useReservations] Query Error:', queryError)
+        throw queryError
+      }
+
       const normalized = (result || []).map((row: any) => {
         const tables = (row.reservation_tables || [])
           .map((rt: any) => rt.table)
@@ -275,7 +279,11 @@ export function useReservations(filters?: {
             menu_item: rmi.menu_item
           }))
           .filter(Boolean)
-        return { ...row, tables, table_ids, selected_menu_items }
+
+        // Calculate prepaid amount from payments array
+        const prepaid_amount = (row.payments || []).reduce((sum: number, p: any) => sum + (p.amount || 0), 0)
+
+        return { ...row, tables, table_ids, selected_menu_items, prepaid_amount }
       })
       setData(normalized as Reservation[])
     } catch (err: any) {
@@ -288,6 +296,33 @@ export function useReservations(filters?: {
 
   useEffect(() => {
     fetchData()
+  }, [fetchData])
+
+  // Subscribe to changes
+  useEffect(() => {
+    const supabase = createClient()
+    const channel = supabase
+      .channel('reservations_all_changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'reservations' },
+        () => fetchData()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'payments' },
+        () => fetchData()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'reservation_tables' },
+        () => fetchData()
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [fetchData])
 
   // Subscribe to realtime changes
@@ -342,12 +377,12 @@ export function useCreateMutation<T>(tableName: string) {
 
     try {
       const supabase = createClient()
-      
+
       // Логируем для menu_items
       if (tableName === 'menu_items') {
         console.log(`[useCreateMutation] Creating ${tableName}:`, data)
       }
-      
+
       const { data: result, error: mutationError } = await supabase
         .from(tableName)
         .insert(data)
@@ -366,12 +401,12 @@ export function useCreateMutation<T>(tableName: string) {
         setError(mutationError.message || `Не удалось создать запись в ${tableName}`)
         throw mutationError
       }
-      
+
       // Логируем для menu_items
       if (tableName === 'menu_items') {
         console.log(`[useCreateMutation] Created ${tableName}:`, result)
       }
-      
+
       return result
     } catch (err: any) {
       const errorMessage = err?.message || err?.error?.message || `Не удалось создать запись в ${tableName}`
@@ -402,12 +437,12 @@ export function useUpdateMutation<T>(tableName: string) {
 
     try {
       const supabase = createClient()
-      
+
       // Логируем для menu_items
       if (tableName === 'menu_items') {
         console.log(`[useUpdateMutation] Updating ${tableName}:`, { id, data })
       }
-      
+
       const { data: result, error: mutationError } = await supabase
         .from(tableName)
         .update(data)
@@ -416,26 +451,20 @@ export function useUpdateMutation<T>(tableName: string) {
         .single()
 
       if (mutationError) {
-        console.error(`[useUpdateMutation] Error updating ${tableName}:`, {
-          code: mutationError.code,
-          message: mutationError.message,
-          details: mutationError.details,
-          hint: mutationError.hint,
-          id,
-          data
-        })
+        console.error(`[useUpdateMutation] Error updating ${tableName}:`, JSON.stringify(mutationError, null, 2))
         throw mutationError
       }
-      
+
       // Логируем для menu_items
       if (tableName === 'menu_items') {
         console.log(`[useUpdateMutation] Updated ${tableName}:`, result)
       }
-      
+
       return result
     } catch (err: any) {
-      setError(err.message)
-      console.error(`Error updating ${tableName}:`, err)
+      const msg = err?.message || err?.error?.message || 'Unknown error'
+      setError(msg)
+      console.error(`Error updating ${tableName}:`, err, JSON.stringify(err, null, 2))
       return null
     } finally {
       setLoading(false)
@@ -463,8 +492,15 @@ export function useDeleteMutation(tableName: string) {
       if (mutationError) throw mutationError
       return true
     } catch (err: any) {
-      setError(err.message)
-      console.error(`Error deleting ${tableName}:`, err)
+      const errorMessage = err?.message || err?.error?.message || `Не удалось удалить запись из ${tableName}`
+      setError(errorMessage)
+      console.error(`Error deleting ${tableName}:`, {
+        error: err,
+        message: err?.message,
+        code: err?.code,
+        details: err?.details,
+        hint: err?.hint
+      })
       return false
     } finally {
       setLoading(false)

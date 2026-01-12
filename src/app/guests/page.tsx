@@ -2,11 +2,11 @@
 
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { 
-  Plus, 
-  Search, 
-  Users, 
-  Phone, 
+import {
+  Plus,
+  Search,
+  Users,
+  Phone,
   Mail,
   Calendar,
   MessageSquare,
@@ -23,10 +23,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
   DialogTitle,
   DialogFooter,
   DialogDescription
@@ -52,7 +52,7 @@ export default function GuestsPage() {
   const [selectedGuest, setSelectedGuest] = useState<Guest | null>(null)
   const [isAddGuestOpen, setIsAddGuestOpen] = useState(false)
   const [isEditMode, setIsEditMode] = useState(false)
-  
+
   // Form state
   const [formData, setFormData] = useState({
     first_name: '',
@@ -67,18 +67,23 @@ export default function GuestsPage() {
   // Fetch data from Supabase
   const { data: guests, loading, error, refetch: refetchGuests } = useGuests()
   const { data: allReservations } = useReservations()
-  
+
   // Mutations
   const createGuest = useCreateMutation<Guest>('guests')
   const updateGuest = useUpdateMutation<Guest>('guests')
   const deleteGuest = useDeleteMutation('guests')
 
   const filteredGuests = guests.filter(guest => {
-    const matchesSearch = searchQuery === '' ||
-      guest.first_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      guest.last_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      guest.phone.includes(searchQuery)
-    
+    if (!searchQuery) return statusFilter === 'all' || guest.status === statusFilter
+
+    const terms = searchQuery.toLowerCase().split(/\s+/).filter(t => t.length > 0)
+    const matchesSearch = terms.every(term => {
+      const fullName = `${guest.last_name} ${guest.first_name} ${guest.middle_name || ''}`.toLowerCase()
+      const phone = guest.phone.toLowerCase()
+      const email = guest.email?.toLowerCase() || ''
+      return fullName.includes(term) || phone.includes(term) || email.includes(term)
+    })
+
     const matchesStatus = statusFilter === 'all' || guest.status === statusFilter
 
     return matchesSearch && matchesStatus
@@ -128,14 +133,40 @@ export default function GuestsPage() {
   }
 
   const handleSave = async () => {
-    if (isEditMode && selectedGuest) {
-      await updateGuest.mutate(selectedGuest.id, formData)
-      setSelectedGuest(null)
-    } else {
-      await createGuest.mutate(formData)
+    // Validate required fields
+    if (!formData.last_name || !formData.first_name || !formData.phone) {
+      alert('Заполните обязательные поля: Фамилия, Имя, Телефон')
+      return
     }
-    setIsAddGuestOpen(false)
-    resetForm()
+
+    // Check for duplicates
+    const checkPhone = formData.phone.trim()
+    const duplicate = guests.find(g => g.phone.trim() === checkPhone && g.id !== selectedGuest?.id)
+
+    if (duplicate) {
+      alert(`Гость с таким телефоном уже существует: ${duplicate.last_name} ${duplicate.first_name}`)
+      return
+    }
+
+    let success = false
+    if (isEditMode && selectedGuest) {
+      const result = await updateGuest.mutate(selectedGuest.id, formData)
+      if (result) {
+        success = true
+        setSelectedGuest(null)
+      }
+    } else {
+      const result = await createGuest.mutate(formData)
+      if (result) success = true
+    }
+
+    if (success) {
+      setIsAddGuestOpen(false)
+      resetForm()
+    } else {
+      // Error is logged to console by the hook
+      alert('Не удалось сохранить изменения. Проверьте консоль для деталей.')
+    }
   }
 
   const handleDelete = async (id: string) => {
@@ -182,9 +213,9 @@ export default function GuestsPage() {
               <h1 className="text-3xl font-bold text-stone-900">Гости</h1>
               <p className="mt-1 text-stone-500">База данных гостей ресторана</p>
             </div>
-            
-            <Button 
-              size="lg" 
+
+            <Button
+              size="lg"
               className="gap-2 shadow-lg shadow-amber-500/25"
               onClick={handleOpenAdd}
             >
@@ -214,10 +245,10 @@ export default function GuestsPage() {
               </div>
             </CardContent>
           </Card>
-          
+
           {(Object.entries(GUEST_STATUS_CONFIG) as [GuestStatus, typeof GUEST_STATUS_CONFIG[GuestStatus]][]).map(([status, config]) => (
             <motion.div key={status} whileHover={{ scale: 1.02 }}>
-              <Card 
+              <Card
                 className={cn(
                   "cursor-pointer transition-all",
                   statusFilter === status && "ring-2 ring-amber-500"
@@ -226,7 +257,7 @@ export default function GuestsPage() {
               >
                 <CardContent className="pt-6">
                   <div className="flex items-center gap-3">
-                    <div 
+                    <div
                       className="flex h-10 w-10 items-center justify-center rounded-xl"
                       style={{ backgroundColor: config.bgColor }}
                     >
@@ -240,8 +271,8 @@ export default function GuestsPage() {
                     </div>
                     <div>
                       <p className="text-2xl font-bold" style={{ color: config.color }}>
-                        {status === 'regular' ? stats.regular : 
-                         status === 'frequent' ? stats.frequent : stats.vip}
+                        {status === 'regular' ? stats.regular :
+                          status === 'frequent' ? stats.frequent : stats.vip}
                       </p>
                       <p className="text-sm text-stone-500">{config.label}</p>
                     </div>
@@ -261,7 +292,7 @@ export default function GuestsPage() {
         >
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400" />
-            <Input 
+            <Input
               placeholder="Поиск по имени или телефону..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -282,7 +313,7 @@ export default function GuestsPage() {
                 {filteredGuests.map((guest, index) => {
                   const statusConfig = GUEST_STATUS_CONFIG[guest.status]
                   const reservations = getGuestReservations(guest.id)
-                  
+
                   return (
                     <motion.div
                       key={guest.id}
@@ -299,20 +330,20 @@ export default function GuestsPage() {
                               {guest.first_name[0]}{guest.last_name[0]}
                             </AvatarFallback>
                           </Avatar>
-                          
+
                           <div>
                             <div className="flex items-center gap-2">
                               <h3 className="font-semibold text-stone-900">
                                 {guest.last_name} {guest.first_name} {guest.middle_name}
                               </h3>
-                              <Badge 
-                                variant={guest.status === 'vip' ? 'vip' : 
-                                        guest.status === 'frequent' ? 'frequent' : 'secondary'}
+                              <Badge
+                                variant={guest.status === 'vip' ? 'vip' :
+                                  guest.status === 'frequent' ? 'frequent' : 'secondary'}
                               >
                                 {statusConfig.label}
                               </Badge>
                             </div>
-                            
+
                             <div className="flex items-center gap-4 mt-1 text-sm text-stone-500">
                               <span className="flex items-center gap-1">
                                 <Phone className="h-3.5 w-3.5" />
@@ -327,7 +358,7 @@ export default function GuestsPage() {
                             </div>
                           </div>
                         </div>
-                        
+
                         <div className="text-right hidden sm:block">
                           <div className="flex items-center gap-4">
                             <div>
@@ -353,7 +384,7 @@ export default function GuestsPage() {
                           </div>
                         </div>
                       </div>
-                      
+
                       {guest.notes && (
                         <p className="mt-2 text-sm text-stone-500 italic pl-16">
                           {guest.notes}
@@ -382,11 +413,11 @@ export default function GuestsPage() {
                 <DialogHeader>
                   <div className="flex items-center gap-4">
                     <Avatar className="h-16 w-16 border-2" style={{ borderColor: GUEST_STATUS_CONFIG[selectedGuest.status].color }}>
-                      <AvatarFallback 
+                      <AvatarFallback
                         className="text-xl"
-                        style={{ 
-                          backgroundColor: GUEST_STATUS_CONFIG[selectedGuest.status].bgColor, 
-                          color: GUEST_STATUS_CONFIG[selectedGuest.status].color 
+                        style={{
+                          backgroundColor: GUEST_STATUS_CONFIG[selectedGuest.status].bgColor,
+                          color: GUEST_STATUS_CONFIG[selectedGuest.status].color
                         }}
                       >
                         {selectedGuest.first_name[0]}{selectedGuest.last_name[0]}
@@ -397,9 +428,9 @@ export default function GuestsPage() {
                         {selectedGuest.last_name} {selectedGuest.first_name} {selectedGuest.middle_name}
                       </DialogTitle>
                       <div className="flex items-center gap-2 mt-1">
-                        <Badge 
-                          variant={selectedGuest.status === 'vip' ? 'vip' : 
-                                  selectedGuest.status === 'frequent' ? 'frequent' : 'secondary'}
+                        <Badge
+                          variant={selectedGuest.status === 'vip' ? 'vip' :
+                            selectedGuest.status === 'frequent' ? 'frequent' : 'secondary'}
                         >
                           {GUEST_STATUS_CONFIG[selectedGuest.status].label}
                         </Badge>
@@ -470,12 +501,12 @@ export default function GuestsPage() {
                           getGuestReservations(selectedGuest.id).map((reservation) => {
                             const statusConfig = RESERVATION_STATUS_CONFIG[reservation.status]
                             return (
-                              <div 
+                              <div
                                 key={reservation.id}
                                 className="flex items-center justify-between p-3 rounded-xl border border-stone-200"
                               >
                                 <div className="flex items-center gap-3">
-                                  <div 
+                                  <div
                                     className="w-2 h-10 rounded-full"
                                     style={{ backgroundColor: statusConfig.borderColor }}
                                   />
@@ -492,10 +523,10 @@ export default function GuestsPage() {
                                   <p className="font-semibold text-stone-900">
                                     {formatCurrency(reservation.total_amount)}
                                   </p>
-                                  <Badge 
-                                    variant={reservation.status === 'new' ? 'new' : 
-                                            reservation.status === 'in_progress' ? 'inProgress' :
-                                            reservation.status === 'prepaid' ? 'prepaid' : 'paid'}
+                                  <Badge
+                                    variant={reservation.status === 'new' ? 'new' :
+                                      reservation.status === 'in_progress' ? 'inProgress' :
+                                        reservation.status === 'prepaid' ? 'prepaid' : 'paid'}
                                   >
                                     {statusConfig.label}
                                   </Badge>
@@ -510,8 +541,8 @@ export default function GuestsPage() {
                 </div>
 
                 <DialogFooter className="gap-2">
-                  <Button 
-                    variant="destructive" 
+                  <Button
+                    variant="destructive"
                     onClick={() => handleDelete(selectedGuest.id)}
                     disabled={deleteGuest.loading}
                   >
@@ -537,64 +568,69 @@ export default function GuestsPage() {
                 {isEditMode ? 'Измените информацию о госте' : 'Добавьте нового гостя в базу данных'}
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Фамилия *</Label>
-                  <Input 
-                    placeholder="Иванов" 
-                    className="mt-1" 
+                  <Input
+                    placeholder="Иванов"
+                    className="mt-1"
                     value={formData.last_name}
                     onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
                   />
                 </div>
                 <div>
                   <Label>Имя *</Label>
-                  <Input 
-                    placeholder="Иван" 
-                    className="mt-1" 
+                  <Input
+                    placeholder="Иван"
+                    className="mt-1"
                     value={formData.first_name}
                     onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
                   />
                 </div>
               </div>
-              
+
               <div>
                 <Label>Отчество</Label>
-                <Input 
-                  placeholder="Иванович" 
-                  className="mt-1" 
+                <Input
+                  placeholder="Иванович"
+                  className="mt-1"
                   value={formData.middle_name}
                   onChange={(e) => setFormData({ ...formData, middle_name: e.target.value })}
                 />
               </div>
-              
+
               <div>
                 <Label>Телефон *</Label>
-                <Input 
-                  placeholder="+7 (900) 123-45-67" 
-                  className="mt-1" 
+                <Input
+                  placeholder="+7 (900) 123-45-67"
+                  className="mt-1"
                   value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  onChange={(e) => {
+                    let val = e.target.value
+                    if (val === '9') val = '+79'
+                    if (val === '8') val = '+7'
+                    setFormData({ ...formData, phone: val })
+                  }}
                 />
               </div>
-              
+
               <div>
                 <Label>Email</Label>
-                <Input 
-                  type="email" 
-                  placeholder="email@example.com" 
-                  className="mt-1" 
+                <Input
+                  type="email"
+                  placeholder="email@example.com"
+                  className="mt-1"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 />
               </div>
-              
+
               <div>
                 <Label>Статус</Label>
-                <Select 
-                  value={formData.status} 
+                <Select
+                  value={formData.status}
                   onValueChange={(v: GuestStatus) => setFormData({ ...formData, status: v })}
                 >
                   <SelectTrigger className="mt-1">
@@ -609,23 +645,23 @@ export default function GuestsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              
+
               <div>
                 <Label>Заметки</Label>
-                <Textarea 
-                  placeholder="Особые предпочтения, аллергии..." 
-                  className="mt-1" 
+                <Textarea
+                  placeholder="Особые предпочтения, аллергии..."
+                  className="mt-1"
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 />
               </div>
             </div>
-            
+
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsAddGuestOpen(false)}>
                 Отмена
               </Button>
-              <Button 
+              <Button
                 onClick={handleSave}
                 disabled={createGuest.loading || updateGuest.loading || !formData.first_name || !formData.last_name || !formData.phone}
               >

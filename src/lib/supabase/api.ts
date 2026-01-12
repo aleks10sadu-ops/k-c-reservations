@@ -1,13 +1,13 @@
 "use server"
 
 import { createClient, createServiceRoleClient } from './server'
-import { 
-  Hall, 
-  Table, 
-  Menu, 
-  MenuItem, 
-  Guest, 
-  Reservation, 
+import {
+  Hall,
+  Table,
+  Menu,
+  MenuItem,
+  Guest,
+  Reservation,
   Payment,
   ReservationStatus,
   GuestStatus,
@@ -107,7 +107,7 @@ export async function deleteHall(id: string): Promise<boolean> {
 export async function getTables(hallId?: string): Promise<Table[]> {
   const supabase = await createClient()
   let query = supabase.from('tables').select('*')
-  
+
   if (hallId) {
     query = query.eq('hall_id', hallId)
   }
@@ -162,7 +162,7 @@ export async function getMenuById(id: string): Promise<Menu | null> {
   return data
 }
 
-export async function createMenu(menu: { 
+export async function createMenu(menu: {
   name: string
   price_per_person: number
   total_weight_per_person?: number
@@ -221,7 +221,7 @@ export async function deleteMenu(id: string): Promise<boolean> {
 export async function getMenuItems(menuId?: string): Promise<MenuItem[]> {
   const supabase = await createClient()
   let query = supabase.from('menu_items').select('*')
-  
+
   if (menuId) {
     query = query.eq('menu_id', menuId)
   }
@@ -282,7 +282,7 @@ export async function updateMenuItem(id: string, updates: Partial<MenuItem>): Pr
 export async function updateMenuItemsByType(menuId: string, oldType: string, newType: string): Promise<boolean> {
   try {
     const supabase = createServiceRoleClient()
-    
+
     const { error } = await supabase
       .from('menu_items')
       .update({ type: newType })
@@ -328,13 +328,13 @@ export async function deleteMenuItem(id: string): Promise<boolean> {
 export async function getMenuItemTypes(menuId?: string): Promise<CustomMenuItemType[]> {
   // Используем service role client для обхода RLS, как и при создании
   const supabase = createServiceRoleClient()
-  
+
   let query = supabase
     .from('menu_item_types')
     .select('*')
     .order('order_index')
     .order('name')
-  
+
   if (menuId) {
     query = query.eq('menu_id', menuId)
   }
@@ -381,23 +381,25 @@ export async function createMenuItemType(type: {
 }): Promise<CustomMenuItemType> {
   try {
     console.log('[createMenuItemType] Starting with type:', JSON.stringify(type))
-    
+
     // Используем service role client для обхода RLS в Server Actions
     const supabase = createServiceRoleClient()
     console.log('[createMenuItemType] Supabase service role client created')
-    
+
     const { data, error } = await supabase
       .from('menu_item_types')
       .insert(type)
       .select()
       .single()
 
-    console.log('[createMenuItemType] Query result:', { data: !!data, error: error ? {
-      code: error.code,
-      message: error.message,
-      details: error.details,
-      hint: error.hint
-    } : null })
+    console.log('[createMenuItemType] Query result:', {
+      data: !!data, error: error ? {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      } : null
+    })
 
     if (error) {
       // Логируем полную информацию об ошибке для отладки
@@ -408,7 +410,7 @@ export async function createMenuItemType(type: {
         errorHint: error.hint,
         type
       })
-      
+
       // Более детальные сообщения об ошибках для пользователя
       if (error.code === '42501' || error.message?.includes('row-level security') || error.message?.includes('RLS')) {
         const err = new Error('Ошибка доступа: недостаточно прав для создания типа блюда. Убедитесь, что вы вошли в систему.')
@@ -425,7 +427,7 @@ export async function createMenuItemType(type: {
         console.error('[createMenuItemType] Foreign key error:', err)
         throw err
       }
-      
+
       // Для других ошибок возвращаем понятное сообщение
       const errorMessage = error.message || 'Не удалось создать тип блюда'
       const err = new Error(errorMessage)
@@ -449,7 +451,7 @@ export async function createMenuItemType(type: {
       stack: error?.stack,
       name: error?.name
     })
-    
+
     if (error instanceof Error) {
       // Сохраняем оригинальное сообщение
       const err = new Error(error.message)
@@ -457,7 +459,7 @@ export async function createMenuItemType(type: {
       err.stack = error.stack
       throw err
     }
-    
+
     const err = new Error(error?.message || 'Неизвестная ошибка при создании типа блюда')
     console.error('[createMenuItemType] Unknown error:', err)
     throw err
@@ -468,7 +470,7 @@ export async function updateMenuItemType(id: string, updates: Partial<CustomMenu
   try {
     // Используем service role client для обхода RLS
     const supabase = createServiceRoleClient()
-    
+
     const { data, error } = await supabase
       .from('menu_item_types')
       .update(updates)
@@ -503,7 +505,7 @@ export async function deleteMenuItemType(id: string): Promise<boolean> {
   try {
     // Используем service role client для обхода RLS
     const supabase = createServiceRoleClient()
-    
+
     const { error } = await supabase
       .from('menu_item_types')
       .delete()
@@ -621,11 +623,11 @@ export async function updateGuest(id: string, updates: Partial<Guest>): Promise<
 
 export async function deleteGuest(id: string): Promise<boolean> {
   const supabase = await createClient()
-  
+
   // Сначала удаляем все связанные записи (платежи и бронирования)
   // Платежи удаляются автоматически через CASCADE при удалении бронирований
   // Но нужно удалить бронирования вручную, так как у них нет CASCADE для guest_id
-  
+
   // Получаем все бронирования гостя
   const { data: reservations, error: reservationsError } = await supabase
     .from('reservations')
@@ -640,7 +642,7 @@ export async function deleteGuest(id: string): Promise<boolean> {
   // Удаляем все бронирования гостя (платежи удалятся автоматически через CASCADE)
   if (reservations && reservations.length > 0) {
     const reservationIds = reservations.map(r => r.id)
-    
+
     // Удаляем платежи для этих бронирований (если CASCADE не настроен)
     const { error: paymentsError } = await supabase
       .from('payments')
@@ -684,7 +686,7 @@ export async function findOrCreateGuestByPhone(
   lastName?: string
 ): Promise<Guest | null> {
   const supabase = await createClient()
-  
+
   // Сначала ищем гостя по телефону
   const { data: existingGuest } = await supabase
     .from('guests')
@@ -715,6 +717,16 @@ export async function findOrCreateGuestByPhone(
   }
 
   return newGuest
+}
+
+export async function updateReservationServerAction(id: string, updates: Partial<Reservation>) {
+  try {
+    const result = await updateReservation(id, updates)
+    return { success: true, data: result }
+  } catch (error) {
+    console.error('Server action update error:', error)
+    return { success: false, error: error }
+  }
 }
 
 // ==================== RESERVATIONS ====================
@@ -828,10 +840,10 @@ export async function createReservation(reservation: {
 
 export async function updateReservation(id: string, updates: Partial<Reservation>): Promise<Reservation | null> {
   const supabase = await createClient()
-  
+
   // Remove nested objects that shouldn't be updated directly
-  const { hall, table, guest, menu, payments, selected_menu_items, ...updateData } = updates as any
-  
+  const { hall, table, guest, menu, payments, selected_menu_items, tables, table_ids, ...updateData } = updates as any
+
   const { data, error } = await supabase
     .from('reservations')
     .update(updateData)
@@ -845,6 +857,7 @@ export async function updateReservation(id: string, updates: Partial<Reservation
       payments (*)
     `)
     .single()
+
 
   if (error) {
     console.error('Error updating reservation:', error)
@@ -874,7 +887,7 @@ export async function deleteReservation(id: string): Promise<boolean> {
 export async function getPayments(reservationId?: string): Promise<Payment[]> {
   const supabase = await createClient()
   let query = supabase.from('payments').select('*')
-  
+
   if (reservationId) {
     query = query.eq('reservation_id', reservationId)
   }

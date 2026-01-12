@@ -82,15 +82,16 @@ export default function HallsPage() {
   const editorRef = useRef<HTMLDivElement | null>(null)
   const editorWrapperRef = useRef<HTMLDivElement | null>(null)
   const GRID = 10
-  
+
   // Состояние для показа броней стола
   const [selectedTableForInfo, setSelectedTableForInfo] = useState<Table | null>(null)
-  
+
   // Состояние для открытия ReservationModal
   const [reservationModalOpen, setReservationModalOpen] = useState(false)
   const [reservationToEdit, setReservationToEdit] = useState<Reservation | null>(null)
   const [preselectedTableId, setPreselectedTableId] = useState<string | null>(null)
   const [preselectedHallId, setPreselectedHallId] = useState<string | null>(null)
+  const [focusedReservationId, setFocusedReservationId] = useState<string | null>(null)
   const [isMobile, setIsMobile] = useState(false)
   // Фиксированные размеры канваса - одинаковые везде для консистентности
   const CANVAS_WIDTH = 800
@@ -98,17 +99,17 @@ export default function HallsPage() {
   const ROTATE_HANDLE_OFFSET = 24
   const [previewScale, setPreviewScale] = useState(1)
   const [baseEditorScale, setBaseEditorScale] = useState(1) // Scale to fit canvas in container
-  
+
   // Pan & Zoom state for editor (100% = fits container, 200% = 2x larger, etc.)
   const [editorZoom, setEditorZoom] = useState(1)
   const [editorPan, setEditorPan] = useState({ x: 0, y: 0 })
   const [isPanning, setIsPanning] = useState(false)
   const [panStart, setPanStart] = useState({ x: 0, y: 0 })
   const [lastPinchDistance, setLastPinchDistance] = useState<number | null>(null)
-  
+
   // Combined scale = base scale (to fit) * user zoom
   const editorScale = baseEditorScale * editorZoom
-  
+
   // Reset pan/zoom when opening editor
   const resetEditorView = () => {
     setEditorZoom(1)
@@ -165,7 +166,7 @@ export default function HallsPage() {
   const { data: halls, loading: hallsLoading } = useHalls()
   const { data: tables, refetch: refetchTables } = useTables(undefined, true) // loadAll = true для страницы залов
   const { data: layoutItems, refetch: refetchLayoutItems } = useLayoutItems(selectedHallId || undefined)
-  
+
   // Mutations
   const createHall = useCreateMutation<Hall>('halls')
   const updateHall = useUpdateMutation<Hall>('halls')
@@ -181,13 +182,13 @@ export default function HallsPage() {
   const { data: dateReservations, loading: reservationsLoading } = useReservations({ date: selectedDate })
 
   // Set first hall as selected if none
-  const selectedHall = selectedHallId 
-    ? halls.find(h => h.id === selectedHallId) 
+  const selectedHall = selectedHallId
+    ? halls.find(h => h.id === selectedHallId)
     : halls[0]
 
   // Get tables with their reservations
   const getTableReservation = (table: Table) => {
-    return dateReservations.find(r => 
+    return dateReservations.find(r =>
       r.table_id === table.id ||
       (r.table_ids && r.table_ids.includes(table.id))
     )
@@ -216,9 +217,9 @@ export default function HallsPage() {
               <h1 className="text-3xl font-bold text-stone-900">Залы</h1>
               <p className="mt-1 text-stone-500">Схема расположения столов и текущие брони</p>
             </div>
-            
+
             <div className="flex flex-wrap gap-3 items-center justify-end">
-              <Button 
+              <Button
                 variant="outline"
                 size="lg"
                 className="gap-2"
@@ -232,13 +233,13 @@ export default function HallsPage() {
                 Добавить зал
               </Button>
               {selectedHall && (
-                <Button 
-                size="lg"
+                <Button
+                  size="lg"
                   className="gap-2 shadow-lg shadow-amber-500/25"
-                onClick={() => {
-                  resetEditorView()
-                  setIsEditorOpen(true)
-                }}
+                  onClick={() => {
+                    resetEditorView()
+                    setIsEditorOpen(true)
+                  }}
                 >
                   Редактор схемы
                 </Button>
@@ -253,8 +254,8 @@ export default function HallsPage() {
             <p>Нет залов. Создайте первый зал.</p>
           </div>
         ) : (
-          <Tabs 
-            defaultValue={halls[0]?.id} 
+          <Tabs
+            defaultValue={halls[0]?.id}
             value={selectedHall?.id}
             onValueChange={(v) => setSelectedHallId(v)}
           >
@@ -269,7 +270,7 @@ export default function HallsPage() {
 
             {halls.map((hall) => {
               const hallTables = tables.filter(t => t.hall_id === hall.id)
-              
+
               return (
                 <TabsContent key={hall.id} value={hall.id}>
                   <motion.div
@@ -331,22 +332,22 @@ export default function HallsPage() {
                           <Users className="h-5 w-5" />
                           <span>Вместимость: до {hall.capacity} человек</span>
                         </div>
-                        
+
                         <p className="text-stone-500">{hall.description}</p>
-                        
+
                         <div className="pt-4 border-t border-stone-200">
                           <h4 className="font-medium text-stone-900 mb-2">Столы ({hallTables.length})</h4>
                           <div className="flex flex-wrap gap-2">
                             {hallTables.map((table) => {
                               const reservation = getTableReservation(table)
                               return (
-                                <Badge 
+                                <Badge
                                   key={table.id}
-                                  variant={reservation ? 
-                                    (reservation.status === 'paid' ? 'paid' : 
-                                     reservation.status === 'prepaid' ? 'prepaid' :
-                                     reservation.status === 'in_progress' ? 'inProgress' :
-                                     reservation.status === 'canceled' ? 'canceled' : 'new')
+                                  variant={reservation ?
+                                    (reservation.status === 'paid' ? 'paid' :
+                                      reservation.status === 'prepaid' ? 'prepaid' :
+                                        reservation.status === 'in_progress' ? 'inProgress' :
+                                          reservation.status === 'canceled' ? 'canceled' : 'new')
                                     : 'outline'
                                   }
                                   onClick={() => {
@@ -425,7 +426,7 @@ export default function HallsPage() {
                                       transform: `rotate(${item.rotation ?? 0}deg)`,
                                       color: item.color || '#1f2937',
                                       backgroundColor: item.bg_color || '#ffffff',
-                                    transformOrigin: 'top left',
+                                      transformOrigin: 'top left',
                                     }}
                                   >
                                     {item.text || 'Элемент'}
@@ -436,30 +437,58 @@ export default function HallsPage() {
                               {hallTables.map((table) => {
                                 const reservation = getTableReservation(table)
                                 const statusConfig = reservation ? RESERVATION_STATUS_CONFIG[reservation.status] : null
-                                
+
+                                // Determine visual state based on focus
+                                const isFocused = focusedReservationId !== null
+                                const isPartOfFocus = reservation?.id === focusedReservationId
+
+                                // Default styles
+                                // User requested: Table body = Status Color. Circle = Custom Color.
+                                let bgColor = statusConfig?.bgColor || 'white'
+                                let borderColor = statusConfig?.borderColor || '#D1D5DB'
+                                let textColor = statusConfig?.color || '#374151'
+                                let opacity = 1
+                                let scale = 1
+
+                                if (isFocused) {
+                                  if (isPartOfFocus) {
+                                    // Highlighted: Use status colors (already set above)
+                                    // We don't override with custom color here anymore
+                                    scale = 1.1 // Slightly larger
+                                  } else {
+                                    // Dimmed: Gray out
+                                    bgColor = '#f5f5f4' // stone-100
+                                    borderColor = '#e7e5e4' // stone-200
+                                    textColor = '#d6d3d1' // stone-300
+                                    opacity = 0.8
+                                  }
+                                }
+
                                 return (
                                   <motion.div
                                     key={table.id}
                                     initial={{ opacity: 0, scale: 0 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    whileHover={{ scale: 1.05 }}
-                                    whileTap={{ scale: 0.98 }}
+                                    animate={{ opacity, scale }}
+                                    whileHover={{ scale: isFocused ? scale : 1.05 }}
+                                    whileTap={{ scale: isFocused ? scale : 0.98 }}
                                     className={cn(
                                       "absolute transition-all border-2 flex flex-col items-center justify-center p-2 cursor-pointer",
                                       table.shape === 'round' && "rounded-full",
                                       table.shape === 'rectangle' && "rounded-xl",
                                       table.shape === 'square' && "rounded-lg",
-                                      reservation 
-                                        ? "shadow-lg hover:shadow-xl" 
-                                        : "bg-white border-stone-300 hover:border-amber-400 hover:shadow-md"
+                                      reservation && !isFocused
+                                        ? "shadow-lg hover:shadow-xl"
+                                        : isPartOfFocus
+                                          ? "shadow-xl ring-4 ring-white/50 z-10"
+                                          : "bg-white border-stone-300"
                                     )}
                                     style={{
                                       left: table.position_x,
                                       top: table.position_y,
                                       width: table.width,
                                       height: table.height,
-                                      backgroundColor: reservation?.color || statusConfig?.bgColor || 'white',
-                                      borderColor: reservation?.color || statusConfig?.borderColor || '#D1D5DB',
+                                      backgroundColor: bgColor,
+                                      borderColor: borderColor,
                                       transform: `rotate(${table.rotation ?? 0}deg)`,
                                       transformOrigin: 'top left',
                                     }}
@@ -474,7 +503,7 @@ export default function HallsPage() {
                                         style={{ backgroundColor: reservation.color || statusConfig?.borderColor || '#f59e0b' }}
                                       />
                                     )}
-                                    <span className="font-bold text-lg leading-tight" style={{ color: statusConfig?.color || '#374151' }}>
+                                    <span className="font-bold text-lg leading-tight" style={{ color: textColor }}>
                                       {table.number}
                                     </span>
                                     {table.capacity > 0 && (
@@ -501,7 +530,7 @@ export default function HallsPage() {
                           </div>
                           {Object.entries(RESERVATION_STATUS_CONFIG).map(([status, config]) => (
                             <div key={status} className="flex items-center gap-1.5 text-xs">
-                              <div 
+                              <div
                                 className="w-3 h-3 rounded-full border-2"
                                 style={{ backgroundColor: config.bgColor, borderColor: config.borderColor }}
                               />
@@ -521,11 +550,11 @@ export default function HallsPage() {
                     className="mt-6"
                   >
                     <Card>
-                  <CardHeader>
-                    <CardTitle>
-                      Бронирования на {format(new Date(selectedDate), 'd MMMM yyyy', { locale: ru })}
-                    </CardTitle>
-                  </CardHeader>
+                      <CardHeader>
+                        <CardTitle>
+                          Бронирования на {format(new Date(selectedDate), 'd MMMM yyyy', { locale: ru })}
+                        </CardTitle>
+                      </CardHeader>
                       <CardContent>
                         {reservationsLoading ? (
                           <div className="flex items-center justify-center py-8">
@@ -543,9 +572,18 @@ export default function HallsPage() {
                               .map((reservation) => {
                                 const statusConfig = RESERVATION_STATUS_CONFIG[reservation.status]
                                 return (
-                                  <div key={reservation.id} className="py-3 flex items-center justify-between">
+                                  <div
+                                    key={reservation.id}
+                                    className={cn(
+                                      "py-3 flex items-center justify-between cursor-pointer rounded-lg px-2 transition-all -mx-2 my-1",
+                                      focusedReservationId === reservation.id
+                                        ? "bg-amber-50 shadow-sm ring-1 ring-amber-200"
+                                        : "hover:bg-stone-50"
+                                    )}
+                                    onClick={() => setFocusedReservationId(focusedReservationId === reservation.id ? null : reservation.id)}
+                                  >
                                     <div className="flex items-center gap-4">
-                                      <div 
+                                      <div
                                         className="w-2 h-10 rounded-full"
                                         style={{ backgroundColor: statusConfig.borderColor }}
                                       />
@@ -558,12 +596,12 @@ export default function HallsPage() {
                                         </p>
                                       </div>
                                     </div>
-                                <Badge 
-                                  variant={reservation.status === 'new' ? 'new' : 
-                                          reservation.status === 'in_progress' ? 'inProgress' :
+                                    <Badge
+                                      variant={reservation.status === 'new' ? 'new' :
+                                        reservation.status === 'in_progress' ? 'inProgress' :
                                           reservation.status === 'prepaid' ? 'prepaid' :
-                                          reservation.status === 'paid' ? 'paid' : 'canceled'}
-                                >
+                                            reservation.status === 'paid' ? 'paid' : 'canceled'}
+                                    >
                                       {statusConfig.label}
                                     </Badge>
                                   </div>
@@ -582,8 +620,8 @@ export default function HallsPage() {
       </div>
 
       {/* Hall Dialog */}
-      <Dialog 
-        open={isHallDialogOpen} 
+      <Dialog
+        open={isHallDialogOpen}
         onOpenChange={(open) => {
           setIsHallDialogOpen(open)
           if (!open) {
@@ -602,7 +640,7 @@ export default function HallsPage() {
           <div className="space-y-3">
             <div>
               <Label>Название *</Label>
-              <Input 
+              <Input
                 value={hallForm.name}
                 onChange={(e) => setHallForm({ ...hallForm, name: e.target.value })}
                 className="mt-1"
@@ -610,7 +648,7 @@ export default function HallsPage() {
             </div>
             <div>
               <Label>Вместимость *</Label>
-              <Input 
+              <Input
                 type="number"
                 value={hallForm.capacity || ''}
                 onChange={(e) => setHallForm({ ...hallForm, capacity: parseInt(e.target.value) || 0 })}
@@ -619,7 +657,7 @@ export default function HallsPage() {
             </div>
             <div>
               <Label>Описание</Label>
-              <Textarea 
+              <Textarea
                 value={hallForm.description}
                 onChange={(e) => setHallForm({ ...hallForm, description: e.target.value })}
                 className="mt-1"
@@ -628,7 +666,7 @@ export default function HallsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsHallDialogOpen(false)}>Отмена</Button>
-            <Button 
+            <Button
               onClick={async () => {
                 const payload = {
                   name: hallForm.name.trim(),
@@ -764,7 +802,7 @@ export default function HallsPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Номер *</Label>
-                <Input 
+                <Input
                   type="number"
                   value={tableForm.number || ''}
                   onChange={(e) => setTableForm({ ...tableForm, number: parseInt(e.target.value) || 1 })}
@@ -773,7 +811,7 @@ export default function HallsPage() {
               </div>
               <div>
                 <Label>Вместимость *</Label>
-                <Input 
+                <Input
                   type="number"
                   value={tableForm.capacity || ''}
                   onChange={(e) => setTableForm({ ...tableForm, capacity: parseInt(e.target.value) || 0 })}
@@ -784,7 +822,7 @@ export default function HallsPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Ширина</Label>
-                <Input 
+                <Input
                   type="number"
                   value={tableForm.width || ''}
                   onChange={(e) => setTableForm({ ...tableForm, width: parseInt(e.target.value) || 0 })}
@@ -793,7 +831,7 @@ export default function HallsPage() {
               </div>
               <div>
                 <Label>Высота</Label>
-                <Input 
+                <Input
                   type="number"
                   value={tableForm.height || ''}
                   onChange={(e) => setTableForm({ ...tableForm, height: parseInt(e.target.value) || 0 })}
@@ -804,7 +842,7 @@ export default function HallsPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Позиция X</Label>
-                <Input 
+                <Input
                   type="number"
                   value={tableForm.position_x || ''}
                   onChange={(e) => setTableForm({ ...tableForm, position_x: parseInt(e.target.value) || 0 })}
@@ -813,7 +851,7 @@ export default function HallsPage() {
               </div>
               <div>
                 <Label>Позиция Y</Label>
-                <Input 
+                <Input
                   type="number"
                   value={tableForm.position_y || ''}
                   onChange={(e) => setTableForm({ ...tableForm, position_y: parseInt(e.target.value) || 0 })}
@@ -823,7 +861,7 @@ export default function HallsPage() {
             </div>
             <div>
               <Label>Форма</Label>
-              <Select 
+              <Select
                 value={tableForm.shape}
                 onValueChange={(v) => setTableForm({ ...tableForm, shape: v as Table['shape'] })}
               >
@@ -841,7 +879,7 @@ export default function HallsPage() {
           <DialogFooter className="justify-between">
             {editingTable ? (
               <div className="flex gap-2">
-                <Button 
+                <Button
                   variant="destructive"
                   onClick={async () => {
                     await deleteTable.mutate(editingTable.id)
@@ -857,7 +895,7 @@ export default function HallsPage() {
             ) : <div />}
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setIsTableDialogOpen(false)}>Отмена</Button>
-              <Button 
+              <Button
                 onClick={async () => {
                   if (editingTable) {
                     await updateTable.mutate(editingTable.id, tableForm)
@@ -1002,7 +1040,7 @@ export default function HallsPage() {
             <div
               ref={editorWrapperRef}
               className="flex items-center justify-center w-full overflow-hidden relative"
-              style={{ 
+              style={{
                 minHeight: isMobile ? 280 : Math.min(CANVAS_HEIGHT + 80, window.innerHeight * 0.55),
                 maxHeight: isMobile ? 'calc(100vh - 280px)' : 'calc(100vh - 300px)'
               }}
@@ -1034,9 +1072,9 @@ export default function HallsPage() {
                 } else if (e.touches.length === 1 && !dragging && !resizing) {
                   // Single finger pan
                   setIsPanning(true)
-                  setPanStart({ 
-                    x: e.touches[0].clientX - editorPan.x, 
-                    y: e.touches[0].clientY - editorPan.y 
+                  setPanStart({
+                    x: e.touches[0].clientX - editorPan.x,
+                    y: e.touches[0].clientY - editorPan.y
                   })
                 }
               }}
@@ -1087,525 +1125,525 @@ export default function HallsPage() {
                     backgroundSize: '16px 16px',
                     touchAction: 'none', // Prevent browser touch gestures while editing
                   }}
-                onTouchMove={(e) => {
-                  if (!editorRef.current || (!dragging && !resizing)) return
-                  e.preventDefault()
-                  const touch = e.touches[0]
-                  const rect = editorRef.current.getBoundingClientRect()
-                  const mouseX = (touch.clientX - rect.left) / (editorScale)
-                  const mouseY = (touch.clientY - rect.top) / (editorScale)
+                  onTouchMove={(e) => {
+                    if (!editorRef.current || (!dragging && !resizing)) return
+                    e.preventDefault()
+                    const touch = e.touches[0]
+                    const rect = editorRef.current.getBoundingClientRect()
+                    const mouseX = (touch.clientX - rect.left) / (editorScale)
+                    const mouseY = (touch.clientY - rect.top) / (editorScale)
 
-                  const clamp = (val: number, min: number, max: number) => Math.min(Math.max(val, min), max)
+                    const clamp = (val: number, min: number, max: number) => Math.min(Math.max(val, min), max)
 
-                  if (dragging) {
-                    const sourceTable = dragging.target === 'table' ? tables.find(t => t.id === dragging.id) : null
-                    const sourceLayout = dragging.target === 'layout' ? layoutItems.find(li => li.id === dragging.id) : null
-                    const size = previewSize[dragging.id] 
-                      ?? (dragging.target === 'table' 
-                        ? { w: sourceTable?.width ?? 100, h: sourceTable?.height ?? 100 }
-                        : { w: sourceLayout?.width ?? 120, h: sourceLayout?.height ?? 40 })
-                    const maxX = Math.max(0, CANVAS_WIDTH - size.w)
-                    const maxY = Math.max(0, CANVAS_HEIGHT - size.h)
-                    const x = dragging.startX + (mouseX - dragging.startMouseX)
-                    const y = dragging.startY + (mouseY - dragging.startMouseY)
-                    setPreviewPos((prev) => ({ ...prev, [dragging.id]: { x: clamp(x, 0, maxX), y: clamp(y, 0, maxY) } }))
-                  }
+                    if (dragging) {
+                      const sourceTable = dragging.target === 'table' ? tables.find(t => t.id === dragging.id) : null
+                      const sourceLayout = dragging.target === 'layout' ? layoutItems.find(li => li.id === dragging.id) : null
+                      const size = previewSize[dragging.id]
+                        ?? (dragging.target === 'table'
+                          ? { w: sourceTable?.width ?? 100, h: sourceTable?.height ?? 100 }
+                          : { w: sourceLayout?.width ?? 120, h: sourceLayout?.height ?? 40 })
+                      const maxX = Math.max(0, CANVAS_WIDTH - size.w)
+                      const maxY = Math.max(0, CANVAS_HEIGHT - size.h)
+                      const x = dragging.startX + (mouseX - dragging.startMouseX)
+                      const y = dragging.startY + (mouseY - dragging.startMouseY)
+                      setPreviewPos((prev) => ({ ...prev, [dragging.id]: { x: clamp(x, 0, maxX), y: clamp(y, 0, maxY) } }))
+                    }
 
-                  if (resizing) {
-                    const sourceTable = resizing.target === 'table' ? tables.find(t => t.id === resizing.id) : null
-                    const sourceLayout = resizing.target === 'layout' ? layoutItems.find(li => li.id === resizing.id) : null
-                    const baseW = sourceTable?.width ?? sourceLayout?.width ?? 100
-                    const baseH = sourceTable?.height ?? sourceLayout?.height ?? 100
-                    const { startMouseX, startMouseY, startW, startH, startX, startY, id, corner } = resizing
-                    const deltaX = mouseX - startMouseX
-                    const deltaY = mouseY - startMouseY
-                    const currentRot = previewRotation[id] ?? (resizing.target === 'table'
-                      ? tables.find(t => t.id === id)?.rotation ?? 0
-                      : layoutItems.find(li => li.id === id)?.rotation ?? 0)
-                    const rad = (currentRot * Math.PI) / 180
-                    const cos = Math.cos(rad)
-                    const sin = Math.sin(rad)
-                    const localX = deltaX * cos + deltaY * sin
-                    const localY = -deltaX * sin + deltaY * cos
+                    if (resizing) {
+                      const sourceTable = resizing.target === 'table' ? tables.find(t => t.id === resizing.id) : null
+                      const sourceLayout = resizing.target === 'layout' ? layoutItems.find(li => li.id === resizing.id) : null
+                      const baseW = sourceTable?.width ?? sourceLayout?.width ?? 100
+                      const baseH = sourceTable?.height ?? sourceLayout?.height ?? 100
+                      const { startMouseX, startMouseY, startW, startH, startX, startY, id, corner } = resizing
+                      const deltaX = mouseX - startMouseX
+                      const deltaY = mouseY - startMouseY
+                      const currentRot = previewRotation[id] ?? (resizing.target === 'table'
+                        ? tables.find(t => t.id === id)?.rotation ?? 0
+                        : layoutItems.find(li => li.id === id)?.rotation ?? 0)
+                      const rad = (currentRot * Math.PI) / 180
+                      const cos = Math.cos(rad)
+                      const sin = Math.sin(rad)
+                      const localX = deltaX * cos + deltaY * sin
+                      const localY = -deltaX * sin + deltaY * cos
 
-                    let newW = startW || baseW
-                    let newH = startH || baseH
-                    let newX = startX
-                    let newY = startY
+                      let newW = startW || baseW
+                      let newH = startH || baseH
+                      let newX = startX
+                      let newY = startY
 
-                    if (corner === 'right') newW = startW + localX
-                    else if (corner === 'left') { newW = startW - localX; newX = startX + localX * cos; newY = startY + localX * -sin }
-                    else if (corner === 'bottom') newH = startH + localY
-                    else if (corner === 'top') { newH = startH - localY; newX = startX + localY * sin; newY = startY + localY * cos }
-                    else if (corner === 'br') { newW = startW + localX; newH = startH + localY }
-                    else if (corner === 'tr') { newW = startW + localX; newH = startH - localY; newX = startX + localY * sin; newY = startY + localY * cos }
-                    else if (corner === 'bl') { newW = startW - localX; newH = startH + localY; newX = startX + localX * cos; newY = startY + localX * -sin }
-                    else if (corner === 'tl') { newW = startW - localX; newH = startH - localY; newX = startX + localX * cos + localY * sin; newY = startY - localX * sin + localY * cos }
+                      if (corner === 'right') newW = startW + localX
+                      else if (corner === 'left') { newW = startW - localX; newX = startX + localX * cos; newY = startY + localX * -sin }
+                      else if (corner === 'bottom') newH = startH + localY
+                      else if (corner === 'top') { newH = startH - localY; newX = startX + localY * sin; newY = startY + localY * cos }
+                      else if (corner === 'br') { newW = startW + localX; newH = startH + localY }
+                      else if (corner === 'tr') { newW = startW + localX; newH = startH - localY; newX = startX + localY * sin; newY = startY + localY * cos }
+                      else if (corner === 'bl') { newW = startW - localX; newH = startH + localY; newX = startX + localX * cos; newY = startY + localX * -sin }
+                      else if (corner === 'tl') { newW = startW - localX; newH = startH - localY; newX = startX + localX * cos + localY * sin; newY = startY - localX * sin + localY * cos }
 
-                    newW = Math.max(40, newW)
-                    newH = Math.max(40, newH)
-                    const maxX = Math.max(0, CANVAS_WIDTH - newW)
-                    const maxY = Math.max(0, CANVAS_HEIGHT - newY)
-                    newX = clamp(newX, 0, maxX)
-                    newY = clamp(newY, 0, maxY)
-                    newW = clamp(newW, 40, CANVAS_WIDTH - newX)
-                    newH = clamp(newH, 40, CANVAS_HEIGHT - newY)
+                      newW = Math.max(40, newW)
+                      newH = Math.max(40, newH)
+                      const maxX = Math.max(0, CANVAS_WIDTH - newW)
+                      const maxY = Math.max(0, CANVAS_HEIGHT - newY)
+                      newX = clamp(newX, 0, maxX)
+                      newY = clamp(newY, 0, maxY)
+                      newW = clamp(newW, 40, CANVAS_WIDTH - newX)
+                      newH = clamp(newH, 40, CANVAS_HEIGHT - newY)
 
-                    setPreviewPos((prev) => ({ ...prev, [id]: { x: newX, y: newY } }))
-                    setPreviewSize((prev) => ({ ...prev, [id]: { w: newW, h: newH } }))
-                  }
-                }}
-                onTouchEnd={() => {
-                  if (dragging) {
-                    const pos = previewPos[dragging.id]
-                    if (pos) {
-                      const snapX = Math.round(pos.x / GRID) * GRID
-                      const snapY = Math.round(pos.y / GRID) * GRID
-                      if (dragging.target === 'table') {
-                        updateTable.mutate(dragging.id, { position_x: snapX, position_y: snapY })
-                      } else {
-                        updateLayoutItem.mutate(dragging.id, { position_x: snapX, position_y: snapY })
+                      setPreviewPos((prev) => ({ ...prev, [id]: { x: newX, y: newY } }))
+                      setPreviewSize((prev) => ({ ...prev, [id]: { w: newW, h: newH } }))
+                    }
+                  }}
+                  onTouchEnd={() => {
+                    if (dragging) {
+                      const pos = previewPos[dragging.id]
+                      if (pos) {
+                        const snapX = Math.round(pos.x / GRID) * GRID
+                        const snapY = Math.round(pos.y / GRID) * GRID
+                        if (dragging.target === 'table') {
+                          updateTable.mutate(dragging.id, { position_x: snapX, position_y: snapY })
+                        } else {
+                          updateLayoutItem.mutate(dragging.id, { position_x: snapX, position_y: snapY })
+                        }
+                        setPreviewPos((prev) => ({ ...prev, [dragging.id]: { x: snapX, y: snapY } }))
                       }
-                      setPreviewPos((prev) => ({ ...prev, [dragging.id]: { x: snapX, y: snapY } }))
+                      setDragging(null)
                     }
-                    setDragging(null)
-                  }
-                  if (resizing) {
-                    const pos = previewPos[resizing.id]
-                    const size = previewSize[resizing.id]
-                    if (pos && size) {
-                      const snapX = Math.round(pos.x / GRID) * GRID
-                      const snapY = Math.round(pos.y / GRID) * GRID
-                      const snapW = Math.round(size.w / GRID) * GRID
-                      const snapH = Math.round(size.h / GRID) * GRID
-                      if (resizing.target === 'table') {
-                        updateTable.mutate(resizing.id, { position_x: snapX, position_y: snapY, width: snapW, height: snapH })
-                      } else {
-                        updateLayoutItem.mutate(resizing.id, { position_x: snapX, position_y: snapY, width: snapW, height: snapH })
+                    if (resizing) {
+                      const pos = previewPos[resizing.id]
+                      const size = previewSize[resizing.id]
+                      if (pos && size) {
+                        const snapX = Math.round(pos.x / GRID) * GRID
+                        const snapY = Math.round(pos.y / GRID) * GRID
+                        const snapW = Math.round(size.w / GRID) * GRID
+                        const snapH = Math.round(size.h / GRID) * GRID
+                        if (resizing.target === 'table') {
+                          updateTable.mutate(resizing.id, { position_x: snapX, position_y: snapY, width: snapW, height: snapH })
+                        } else {
+                          updateLayoutItem.mutate(resizing.id, { position_x: snapX, position_y: snapY, width: snapW, height: snapH })
+                        }
+                        setPreviewPos((prev) => ({ ...prev, [resizing.id]: { x: snapX, y: snapY } }))
+                        setPreviewSize((prev) => ({ ...prev, [resizing.id]: { w: snapW, h: snapH } }))
                       }
-                      setPreviewPos((prev) => ({ ...prev, [resizing.id]: { x: snapX, y: snapY } }))
-                      setPreviewSize((prev) => ({ ...prev, [resizing.id]: { w: snapW, h: snapH } }))
+                      setResizing(null)
                     }
-                    setResizing(null)
-                  }
-                }}
-                onMouseMove={(e) => {
-                if (!editorRef.current) return
-                const rect = editorRef.current.getBoundingClientRect()
-                // ВАЖНО: делим на editorScale для правильного пересчёта координат
-                const mouseX = (e.clientX - rect.left) / editorScale
-                const mouseY = (e.clientY - rect.top) / editorScale
+                  }}
+                  onMouseMove={(e) => {
+                    if (!editorRef.current) return
+                    const rect = editorRef.current.getBoundingClientRect()
+                    // ВАЖНО: делим на editorScale для правильного пересчёта координат
+                    const mouseX = (e.clientX - rect.left) / editorScale
+                    const mouseY = (e.clientY - rect.top) / editorScale
 
-                const clamp = (val: number, min: number, max: number) => Math.min(Math.max(val, min), max)
+                    const clamp = (val: number, min: number, max: number) => Math.min(Math.max(val, min), max)
 
-                if (dragging) {
-                  const sourceTable = dragging.target === 'table' ? tables.find(t => t.id === dragging.id) : null
-                  const sourceLayout = dragging.target === 'layout' ? layoutItems.find(li => li.id === dragging.id) : null
-                  const size = previewSize[dragging.id] 
-                    ?? (dragging.target === 'table' 
-                      ? { w: sourceTable?.width ?? 100, h: sourceTable?.height ?? 100 }
-                      : { w: sourceLayout?.width ?? 120, h: sourceLayout?.height ?? 40 })
-                  // Используем CANVAS размеры, а не rect
-                  const maxX = Math.max(0, CANVAS_WIDTH - size.w)
-                  const maxY = Math.max(0, CANVAS_HEIGHT - size.h)
-                  const x = dragging.startX + (mouseX - dragging.startMouseX)
-                  const y = dragging.startY + (mouseY - dragging.startMouseY)
-                  const clampedX = clamp(x, 0, maxX)
-                  const clampedY = clamp(y, 0, maxY)
-                  setPreviewPos((prev) => ({ ...prev, [dragging.id]: { x: clampedX, y: clampedY } }))
-                }
-
-                if (resizing) {
-                  const sourceTable = resizing.target === 'table' ? tables.find(t => t.id === resizing.id) : null
-                  const sourceLayout = resizing.target === 'layout' ? layoutItems.find(li => li.id === resizing.id) : null
-                  const baseW = sourceTable?.width ?? sourceLayout?.width ?? 100
-                  const baseH = sourceTable?.height ?? sourceLayout?.height ?? 100
-                  const { startMouseX, startMouseY, startW, startH, startX, startY, id, corner } = resizing
-                  const deltaX = mouseX - startMouseX
-                  const deltaY = mouseY - startMouseY
-                  const currentRot = previewRotation[id] ?? (resizing.target === 'table'
-                    ? tables.find(t => t.id === id)?.rotation ?? 0
-                    : layoutItems.find(li => li.id === id)?.rotation ?? 0)
-                  const rad = (currentRot * Math.PI) / 180
-                  const cos = Math.cos(rad)
-                  const sin = Math.sin(rad)
-                  // Проекция смещения на локальные оси элемента
-                  const localX = deltaX * cos + deltaY * sin
-                  const localY = -deltaX * sin + deltaY * cos
-
-                  let newW = startW || baseW
-                  let newH = startH || baseH
-                  let newX = startX
-                  let newY = startY
-
-                  if (corner === 'right') {
-                    newW = startW + localX
-                  } else if (corner === 'left') {
-                    newW = startW - localX
-                    // сдвиг в мировых координатах вдоль локальной оси X
-                    newX = startX + localX * cos
-                    newY = startY + localX * -sin
-                  } else if (corner === 'bottom') {
-                    newH = startH + localY
-                  } else if (corner === 'top') {
-                    newH = startH - localY
-                    newX = startX + localY * sin
-                    newY = startY + localY * cos
-                  } else if (corner === 'br') {
-                    newW = startW + localX
-                    newH = startH + localY
-                  } else if (corner === 'tr') {
-                    newW = startW + localX
-                    newH = startH - localY
-                    newX = startX + localY * sin
-                    newY = startY + localY * cos
-                  } else if (corner === 'bl') {
-                    newW = startW - localX
-                    newH = startH + localY
-                    newX = startX + localX * cos
-                    newY = startY + localX * -sin
-                  } else if (corner === 'tl') {
-                    newW = startW - localX
-                    newH = startH - localY
-                    newX = startX + localX * cos + localY * sin
-                    newY = startY - localX * sin + localY * cos
-                  }
-
-                  newW = Math.max(40, newW)
-                  newH = Math.max(40, newH)
-
-                  // Используем CANVAS размеры, а не rect
-                  const maxX = Math.max(0, CANVAS_WIDTH - newW)
-                  const maxY = Math.max(0, CANVAS_HEIGHT - newH)
-
-                  newX = clamp(newX, 0, maxX)
-                  newY = clamp(newY, 0, maxY)
-                  newW = clamp(newW, 40, CANVAS_WIDTH - newX)
-                  newH = clamp(newH, 40, CANVAS_HEIGHT - newY)
-
-                  setPreviewPos((prev) => ({ ...prev, [id]: { x: newX, y: newY } }))
-                  setPreviewSize((prev) => ({ ...prev, [id]: { w: newW, h: newH } }))
-                }
-
-              }}
-                onMouseUp={() => {
-                if (dragging) {
-                  const pos = previewPos[dragging.id]
-                  if (pos) {
-                    const snapX = Math.round(pos.x / GRID) * GRID
-                    const snapY = Math.round(pos.y / GRID) * GRID
-                    if (dragging.target === 'table') {
-                      updateTable.mutate(dragging.id, {
-                        position_x: snapX,
-                        position_y: snapY,
-                      })
-                    } else {
-                      updateLayoutItem.mutate(dragging.id, {
-                        position_x: snapX,
-                        position_y: snapY,
-                      })
+                    if (dragging) {
+                      const sourceTable = dragging.target === 'table' ? tables.find(t => t.id === dragging.id) : null
+                      const sourceLayout = dragging.target === 'layout' ? layoutItems.find(li => li.id === dragging.id) : null
+                      const size = previewSize[dragging.id]
+                        ?? (dragging.target === 'table'
+                          ? { w: sourceTable?.width ?? 100, h: sourceTable?.height ?? 100 }
+                          : { w: sourceLayout?.width ?? 120, h: sourceLayout?.height ?? 40 })
+                      // Используем CANVAS размеры, а не rect
+                      const maxX = Math.max(0, CANVAS_WIDTH - size.w)
+                      const maxY = Math.max(0, CANVAS_HEIGHT - size.h)
+                      const x = dragging.startX + (mouseX - dragging.startMouseX)
+                      const y = dragging.startY + (mouseY - dragging.startMouseY)
+                      const clampedX = clamp(x, 0, maxX)
+                      const clampedY = clamp(y, 0, maxY)
+                      setPreviewPos((prev) => ({ ...prev, [dragging.id]: { x: clampedX, y: clampedY } }))
                     }
-                    setPreviewPos((prev) => ({ ...prev, [dragging.id]: { x: snapX, y: snapY } }))
-                  }
-                  setDragging(null)
-                }
-                if (resizing) {
-                  const pos = previewPos[resizing.id]
-                  const size = previewSize[resizing.id]
-                  if (pos && size) {
-                    const snapX = Math.round(pos.x / GRID) * GRID
-                    const snapY = Math.round(pos.y / GRID) * GRID
-                    const snapW = Math.round(size.w / GRID) * GRID
-                    const snapH = Math.round(size.h / GRID) * GRID
-                    if (resizing.target === 'table') {
-                      updateTable.mutate(resizing.id, {
-                        position_x: snapX,
-                        position_y: snapY,
-                        width: snapW,
-                        height: snapH,
-                      })
-                    } else {
-                      updateLayoutItem.mutate(resizing.id, {
-                        position_x: snapX,
-                        position_y: snapY,
-                        width: snapW,
-                        height: snapH,
-                      })
+
+                    if (resizing) {
+                      const sourceTable = resizing.target === 'table' ? tables.find(t => t.id === resizing.id) : null
+                      const sourceLayout = resizing.target === 'layout' ? layoutItems.find(li => li.id === resizing.id) : null
+                      const baseW = sourceTable?.width ?? sourceLayout?.width ?? 100
+                      const baseH = sourceTable?.height ?? sourceLayout?.height ?? 100
+                      const { startMouseX, startMouseY, startW, startH, startX, startY, id, corner } = resizing
+                      const deltaX = mouseX - startMouseX
+                      const deltaY = mouseY - startMouseY
+                      const currentRot = previewRotation[id] ?? (resizing.target === 'table'
+                        ? tables.find(t => t.id === id)?.rotation ?? 0
+                        : layoutItems.find(li => li.id === id)?.rotation ?? 0)
+                      const rad = (currentRot * Math.PI) / 180
+                      const cos = Math.cos(rad)
+                      const sin = Math.sin(rad)
+                      // Проекция смещения на локальные оси элемента
+                      const localX = deltaX * cos + deltaY * sin
+                      const localY = -deltaX * sin + deltaY * cos
+
+                      let newW = startW || baseW
+                      let newH = startH || baseH
+                      let newX = startX
+                      let newY = startY
+
+                      if (corner === 'right') {
+                        newW = startW + localX
+                      } else if (corner === 'left') {
+                        newW = startW - localX
+                        // сдвиг в мировых координатах вдоль локальной оси X
+                        newX = startX + localX * cos
+                        newY = startY + localX * -sin
+                      } else if (corner === 'bottom') {
+                        newH = startH + localY
+                      } else if (corner === 'top') {
+                        newH = startH - localY
+                        newX = startX + localY * sin
+                        newY = startY + localY * cos
+                      } else if (corner === 'br') {
+                        newW = startW + localX
+                        newH = startH + localY
+                      } else if (corner === 'tr') {
+                        newW = startW + localX
+                        newH = startH - localY
+                        newX = startX + localY * sin
+                        newY = startY + localY * cos
+                      } else if (corner === 'bl') {
+                        newW = startW - localX
+                        newH = startH + localY
+                        newX = startX + localX * cos
+                        newY = startY + localX * -sin
+                      } else if (corner === 'tl') {
+                        newW = startW - localX
+                        newH = startH - localY
+                        newX = startX + localX * cos + localY * sin
+                        newY = startY - localX * sin + localY * cos
+                      }
+
+                      newW = Math.max(40, newW)
+                      newH = Math.max(40, newH)
+
+                      // Используем CANVAS размеры, а не rect
+                      const maxX = Math.max(0, CANVAS_WIDTH - newW)
+                      const maxY = Math.max(0, CANVAS_HEIGHT - newH)
+
+                      newX = clamp(newX, 0, maxX)
+                      newY = clamp(newY, 0, maxY)
+                      newW = clamp(newW, 40, CANVAS_WIDTH - newX)
+                      newH = clamp(newH, 40, CANVAS_HEIGHT - newY)
+
+                      setPreviewPos((prev) => ({ ...prev, [id]: { x: newX, y: newY } }))
+                      setPreviewSize((prev) => ({ ...prev, [id]: { w: newW, h: newH } }))
                     }
-                    setPreviewPos((prev) => ({ ...prev, [resizing.id]: { x: snapX, y: snapY } }))
-                    setPreviewSize((prev) => ({ ...prev, [resizing.id]: { w: snapW, h: snapH } }))
-                  }
-                  setResizing(null)
-                }
-              }}
-                onMouseLeave={() => {
-                if (dragging) setDragging(null)
-                if (resizing) setResizing(null)
-              }}
-            >
-              {/* Layout items */}
-              {selectedHall && layoutItems.filter(li => li.hall_id === selectedHall.id).map((item) => {
-                const pos = previewPos[item.id] ?? { x: item.position_x, y: item.position_y }
-                const size = previewSize[item.id] ?? { w: item.width, h: item.height }
-                const rot = previewRotation[item.id] ?? item.rotation ?? 0
-                return (
-                  <div
-                    key={item.id}
-                    className="absolute bg-white border border-stone-300 rounded-lg shadow-sm p-2 group cursor-move select-none"
-                    style={{
-                      left: pos.x,
-                      top: pos.y,
-                      width: size.w,
-                      height: size.h,
-                      transform: `rotate(${rot}deg)`,
-                      transformOrigin: 'top left',
-                    }}
-                    onMouseDown={(e) => {
-                      e.stopPropagation()
-                      const rect = editorRef.current?.getBoundingClientRect()
-                      if (!rect) return
-                      setDragging({
-                        id: item.id,
-                        target: 'layout',
-                        startMouseX: (e.clientX - rect.left) / (editorScale),
-                        startMouseY: (e.clientY - rect.top) / (editorScale),
-                        startX: pos.x,
-                        startY: pos.y,
-                      })
-                    }}
-                    onTouchStart={(e) => {
-                      e.stopPropagation()
-                      const rect = editorRef.current?.getBoundingClientRect()
-                      if (!rect) return
-                      const touch = e.touches[0]
-                      setDragging({
-                        id: item.id,
-                        target: 'layout',
-                        startMouseX: (touch.clientX - rect.left) / (editorScale),
-                        startMouseY: (touch.clientY - rect.top) / (editorScale),
-                        startX: pos.x,
-                        startY: pos.y,
-                      })
-                    }}
-                    onDoubleClick={() => {
-                      setEditingLayoutItem(item)
-                      setLayoutForm({
-                        hall_id: item.hall_id,
-                        type: item.type,
-                        text: item.text || '',
-                        position_x: pos.x,
-                        position_y: pos.y,
-                        width: size.w,
-                        height: size.h,
-                        rotation: rot,
-                        color: item.color || '#1f2937',
-                        bg_color: item.bg_color || '#ffffff',
-                      })
-                      setIsLayoutDialogOpen(true)
-                    }}
-                  >
-                    <div
-                      className="w-full h-full flex items-center justify-center text-sm text-stone-800"
-                      style={{
-                        color: item.color || '#1f2937',
-                        backgroundColor: item.bg_color || '#ffffff',
-                      }}
-                    >
-                      {item.text || 'Элемент'}
-                    </div>
 
-                    {/* Resize & rotate handles */}
-                    <div className="absolute inset-0 pointer-events-none">
-                      {[
-                        { corner: 'left', className: 'absolute left-0 top-0 h-full w-3 cursor-ew-resize' },
-                        { corner: 'right', className: 'absolute right-0 top-0 h-full w-3 cursor-ew-resize' },
-                        { corner: 'top', className: 'absolute top-0 left-0 w-full h-3 cursor-ns-resize' },
-                        { corner: 'bottom', className: 'absolute bottom-0 left-0 w-full h-3 cursor-ns-resize' },
-                      ].map((h) => (
-                        <div
-                          key={h.corner}
-                          className={`${h.className} pointer-events-auto`}
-                          onMouseDown={(e) => {
-                            e.stopPropagation()
-                            const rect = editorRef.current?.getBoundingClientRect()
-                            if (!rect) return
-                            setResizing({
-                              id: item.id,
-                              target: 'layout',
-                              corner: h.corner as 'left' | 'right' | 'top' | 'bottom',
-                              startMouseX: e.clientX - rect.left,
-                              startMouseY: e.clientY - rect.top,
-                              startW: size.w,
-                              startH: size.h,
-                              startX: pos.x,
-                              startY: pos.y,
-                            })
-                          }}
-                        />
-                      ))}
-
+                  }}
+                  onMouseUp={() => {
+                    if (dragging) {
+                      const pos = previewPos[dragging.id]
+                      if (pos) {
+                        const snapX = Math.round(pos.x / GRID) * GRID
+                        const snapY = Math.round(pos.y / GRID) * GRID
+                        if (dragging.target === 'table') {
+                          updateTable.mutate(dragging.id, {
+                            position_x: snapX,
+                            position_y: snapY,
+                          })
+                        } else {
+                          updateLayoutItem.mutate(dragging.id, {
+                            position_x: snapX,
+                            position_y: snapY,
+                          })
+                        }
+                        setPreviewPos((prev) => ({ ...prev, [dragging.id]: { x: snapX, y: snapY } }))
+                      }
+                      setDragging(null)
+                    }
+                    if (resizing) {
+                      const pos = previewPos[resizing.id]
+                      const size = previewSize[resizing.id]
+                      if (pos && size) {
+                        const snapX = Math.round(pos.x / GRID) * GRID
+                        const snapY = Math.round(pos.y / GRID) * GRID
+                        const snapW = Math.round(size.w / GRID) * GRID
+                        const snapH = Math.round(size.h / GRID) * GRID
+                        if (resizing.target === 'table') {
+                          updateTable.mutate(resizing.id, {
+                            position_x: snapX,
+                            position_y: snapY,
+                            width: snapW,
+                            height: snapH,
+                          })
+                        } else {
+                          updateLayoutItem.mutate(resizing.id, {
+                            position_x: snapX,
+                            position_y: snapY,
+                            width: snapW,
+                            height: snapH,
+                          })
+                        }
+                        setPreviewPos((prev) => ({ ...prev, [resizing.id]: { x: snapX, y: snapY } }))
+                        setPreviewSize((prev) => ({ ...prev, [resizing.id]: { w: snapW, h: snapH } }))
+                      }
+                      setResizing(null)
+                    }
+                  }}
+                  onMouseLeave={() => {
+                    if (dragging) setDragging(null)
+                    if (resizing) setResizing(null)
+                  }}
+                >
+                  {/* Layout items */}
+                  {selectedHall && layoutItems.filter(li => li.hall_id === selectedHall.id).map((item) => {
+                    const pos = previewPos[item.id] ?? { x: item.position_x, y: item.position_y }
+                    const size = previewSize[item.id] ?? { w: item.width, h: item.height }
+                    const rot = previewRotation[item.id] ?? item.rotation ?? 0
+                    return (
                       <div
-                        className="absolute left-1/2 pointer-events-none"
-                        style={{ top: 0, transform: `translate(-50%, -${ROTATE_HANDLE_OFFSET}px)` }}
+                        key={item.id}
+                        className="absolute bg-white border border-stone-300 rounded-lg shadow-sm p-2 group cursor-move select-none"
+                        style={{
+                          left: pos.x,
+                          top: pos.y,
+                          width: size.w,
+                          height: size.h,
+                          transform: `rotate(${rot}deg)`,
+                          transformOrigin: 'top left',
+                        }}
+                        onMouseDown={(e) => {
+                          e.stopPropagation()
+                          const rect = editorRef.current?.getBoundingClientRect()
+                          if (!rect) return
+                          setDragging({
+                            id: item.id,
+                            target: 'layout',
+                            startMouseX: (e.clientX - rect.left) / (editorScale),
+                            startMouseY: (e.clientY - rect.top) / (editorScale),
+                            startX: pos.x,
+                            startY: pos.y,
+                          })
+                        }}
+                        onTouchStart={(e) => {
+                          e.stopPropagation()
+                          const rect = editorRef.current?.getBoundingClientRect()
+                          if (!rect) return
+                          const touch = e.touches[0]
+                          setDragging({
+                            id: item.id,
+                            target: 'layout',
+                            startMouseX: (touch.clientX - rect.left) / (editorScale),
+                            startMouseY: (touch.clientY - rect.top) / (editorScale),
+                            startX: pos.x,
+                            startY: pos.y,
+                          })
+                        }}
+                        onDoubleClick={() => {
+                          setEditingLayoutItem(item)
+                          setLayoutForm({
+                            hall_id: item.hall_id,
+                            type: item.type,
+                            text: item.text || '',
+                            position_x: pos.x,
+                            position_y: pos.y,
+                            width: size.w,
+                            height: size.h,
+                            rotation: rot,
+                            color: item.color || '#1f2937',
+                            bg_color: item.bg_color || '#ffffff',
+                          })
+                          setIsLayoutDialogOpen(true)
+                        }}
                       >
                         <div
-                          className="w-7 h-7 bg-white border border-amber-500 rounded-full pointer-events-auto cursor-pointer flex items-center justify-center shadow-sm"
-                          style={{ transform: `rotate(${-rot}deg)` }}
-                          onClick={async (e) => {
-                            e.stopPropagation()
-                            const next = ((rot ?? 0) + 90) % 360
-                            setPreviewRotation((prev) => ({ ...prev, [item.id]: next }))
-                            await updateLayoutItem.mutate(item.id, { rotation: next })
+                          className="w-full h-full flex items-center justify-center text-sm text-stone-800"
+                          style={{
+                            color: item.color || '#1f2937',
+                            backgroundColor: item.bg_color || '#ffffff',
                           }}
-                          title="Повернуть вправо"
                         >
-                          <RotateCw className="h-4 w-4" />
+                          {item.text || 'Элемент'}
+                        </div>
+
+                        {/* Resize & rotate handles */}
+                        <div className="absolute inset-0 pointer-events-none">
+                          {[
+                            { corner: 'left', className: 'absolute left-0 top-0 h-full w-3 cursor-ew-resize' },
+                            { corner: 'right', className: 'absolute right-0 top-0 h-full w-3 cursor-ew-resize' },
+                            { corner: 'top', className: 'absolute top-0 left-0 w-full h-3 cursor-ns-resize' },
+                            { corner: 'bottom', className: 'absolute bottom-0 left-0 w-full h-3 cursor-ns-resize' },
+                          ].map((h) => (
+                            <div
+                              key={h.corner}
+                              className={`${h.className} pointer-events-auto`}
+                              onMouseDown={(e) => {
+                                e.stopPropagation()
+                                const rect = editorRef.current?.getBoundingClientRect()
+                                if (!rect) return
+                                setResizing({
+                                  id: item.id,
+                                  target: 'layout',
+                                  corner: h.corner as 'left' | 'right' | 'top' | 'bottom',
+                                  startMouseX: e.clientX - rect.left,
+                                  startMouseY: e.clientY - rect.top,
+                                  startW: size.w,
+                                  startH: size.h,
+                                  startX: pos.x,
+                                  startY: pos.y,
+                                })
+                              }}
+                            />
+                          ))}
+
+                          <div
+                            className="absolute left-1/2 pointer-events-none"
+                            style={{ top: 0, transform: `translate(-50%, -${ROTATE_HANDLE_OFFSET}px)` }}
+                          >
+                            <div
+                              className="w-7 h-7 bg-white border border-amber-500 rounded-full pointer-events-auto cursor-pointer flex items-center justify-center shadow-sm"
+                              style={{ transform: `rotate(${-rot}deg)` }}
+                              onClick={async (e) => {
+                                e.stopPropagation()
+                                const next = ((rot ?? 0) + 90) % 360
+                                setPreviewRotation((prev) => ({ ...prev, [item.id]: next }))
+                                await updateLayoutItem.mutate(item.id, { rotation: next })
+                              }}
+                              title="Повернуть вправо"
+                            >
+                              <RotateCw className="h-4 w-4" />
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </div>
-                )
-              })}
+                    )
+                  })}
 
-              {/* Tables */}
-              {selectedHall && tables.filter(t => t.hall_id === selectedHall.id).map((table) => {
-                const reservation = getTableReservation(table)
-                const statusConfig = reservation ? RESERVATION_STATUS_CONFIG[reservation.status] : null
-                const pos = previewPos[table.id] ?? { x: table.position_x, y: table.position_y }
-                const size = previewSize[table.id] ?? { w: table.width, h: table.height }
-                const rot = previewRotation[table.id] ?? table.rotation ?? 0
-                return (
-                  <div
-                    key={table.id}
-                    className={cn(
-                      "absolute transition-all border-2 flex flex-col items-center justify-center p-2 group bg-white select-none",
-                      table.shape === 'round' && "rounded-full",
-                      table.shape === 'rectangle' && "rounded-xl",
-                      table.shape === 'square' && "rounded-lg",
-                      reservation 
-                        ? "shadow-lg" 
-                        : "border-stone-300"
-                    )}
-                    style={{
-                      left: pos.x,
-                      top: pos.y,
-                      width: size.w,
-                      height: size.h,
-                      backgroundColor: reservation?.color || statusConfig?.bgColor || 'white',
-                      borderColor: reservation?.color || statusConfig?.borderColor || '#D1D5DB',
-                      transform: `rotate(${rot}deg)`,
-                      transformOrigin: 'top left',
-                    }}
-                    onMouseDown={(e) => {
-                      e.stopPropagation()
-                      const rect = editorRef.current?.getBoundingClientRect()
-                      if (!rect) return
-                      setDragging({
-                        id: table.id,
-                        target: 'table',
-                        startMouseX: (e.clientX - rect.left) / (editorScale),
-                        startMouseY: (e.clientY - rect.top) / (editorScale),
-                        startX: pos.x,
-                        startY: pos.y,
-                      })
-                    }}
-                    onTouchStart={(e) => {
-                      e.stopPropagation()
-                      const rect = editorRef.current?.getBoundingClientRect()
-                      if (!rect) return
-                      const touch = e.touches[0]
-                      setDragging({
-                        id: table.id,
-                        target: 'table',
-                        startMouseX: (touch.clientX - rect.left) / (editorScale),
-                        startMouseY: (touch.clientY - rect.top) / (editorScale),
-                        startX: pos.x,
-                        startY: pos.y,
-                      })
-                    }}
-                    onDoubleClick={() => {
-                      setEditingTable(table)
-                      setTableForm({
-                        hall_id: selectedHall.id,
-                        number: table.number,
-                        capacity: table.capacity,
-                        position_x: pos.x,
-                        position_y: pos.y,
-                        width: size.w,
-                        height: size.h,
-                        shape: table.shape,
-                      })
-                      setIsTableDialogOpen(true)
-                    }}
-                  >
-                    {reservation && (
-                      <span
-                        className="absolute -top-2 -right-2 h-3.5 w-3.5 rounded-full border border-white shadow"
-                        style={{ backgroundColor: reservation.color || statusConfig?.borderColor || '#f59e0b' }}
-                      />
-                    )}
-                    <span className="font-bold text-lg leading-tight" style={{ color: statusConfig?.color || '#374151' }}>
-                      {table.number}
-                    </span>
-                    {table.capacity > 0 && (
-                      <span className="text-[10px] text-stone-500 leading-tight">
-                        {table.capacity} чел
-                      </span>
-                    )}
-                    <div
-                      className="absolute inset-0 pointer-events-none"
-                    >
-                      {[
-                        { corner: 'left', className: 'absolute left-0 top-0 h-full w-3 cursor-ew-resize' },
-                        { corner: 'right', className: 'absolute right-0 top-0 h-full w-3 cursor-ew-resize' },
-                        { corner: 'top', className: 'absolute top-0 left-0 w-full h-3 cursor-ns-resize' },
-                        { corner: 'bottom', className: 'absolute bottom-0 left-0 w-full h-3 cursor-ns-resize' },
-                      ].map((h) => (
-                        <div
-                          key={h.corner}
-                          className={`${h.className} pointer-events-auto`}
-                          onMouseDown={(e) => {
-                            e.stopPropagation()
-                            const rect = editorRef.current?.getBoundingClientRect()
-                            if (!rect) return
-                            setResizing({
-                              id: table.id,
-                              target: 'table',
-                              corner: h.corner as 'left' | 'right' | 'top' | 'bottom',
-                              startMouseX: e.clientX - rect.left,
-                              startMouseY: e.clientY - rect.top,
-                              startW: size.w,
-                              startH: size.h,
-                              startX: pos.x,
-                              startY: pos.y,
-                            })
-                          }}
-                        />
-                      ))}
-
+                  {/* Tables */}
+                  {selectedHall && tables.filter(t => t.hall_id === selectedHall.id).map((table) => {
+                    const reservation = getTableReservation(table)
+                    const statusConfig = reservation ? RESERVATION_STATUS_CONFIG[reservation.status] : null
+                    const pos = previewPos[table.id] ?? { x: table.position_x, y: table.position_y }
+                    const size = previewSize[table.id] ?? { w: table.width, h: table.height }
+                    const rot = previewRotation[table.id] ?? table.rotation ?? 0
+                    return (
                       <div
-                        className="absolute left-1/2 pointer-events-none"
-                        style={{ top: 0, transform: `translate(-50%, -${ROTATE_HANDLE_OFFSET}px)` }}
+                        key={table.id}
+                        className={cn(
+                          "absolute transition-all border-2 flex flex-col items-center justify-center p-2 group bg-white select-none",
+                          table.shape === 'round' && "rounded-full",
+                          table.shape === 'rectangle' && "rounded-xl",
+                          table.shape === 'square' && "rounded-lg",
+                          reservation
+                            ? "shadow-lg"
+                            : "border-stone-300"
+                        )}
+                        style={{
+                          left: pos.x,
+                          top: pos.y,
+                          width: size.w,
+                          height: size.h,
+                          backgroundColor: reservation?.color || statusConfig?.bgColor || 'white',
+                          borderColor: reservation?.color || statusConfig?.borderColor || '#D1D5DB',
+                          transform: `rotate(${rot}deg)`,
+                          transformOrigin: 'top left',
+                        }}
+                        onMouseDown={(e) => {
+                          e.stopPropagation()
+                          const rect = editorRef.current?.getBoundingClientRect()
+                          if (!rect) return
+                          setDragging({
+                            id: table.id,
+                            target: 'table',
+                            startMouseX: (e.clientX - rect.left) / (editorScale),
+                            startMouseY: (e.clientY - rect.top) / (editorScale),
+                            startX: pos.x,
+                            startY: pos.y,
+                          })
+                        }}
+                        onTouchStart={(e) => {
+                          e.stopPropagation()
+                          const rect = editorRef.current?.getBoundingClientRect()
+                          if (!rect) return
+                          const touch = e.touches[0]
+                          setDragging({
+                            id: table.id,
+                            target: 'table',
+                            startMouseX: (touch.clientX - rect.left) / (editorScale),
+                            startMouseY: (touch.clientY - rect.top) / (editorScale),
+                            startX: pos.x,
+                            startY: pos.y,
+                          })
+                        }}
+                        onDoubleClick={() => {
+                          setEditingTable(table)
+                          setTableForm({
+                            hall_id: selectedHall.id,
+                            number: table.number,
+                            capacity: table.capacity,
+                            position_x: pos.x,
+                            position_y: pos.y,
+                            width: size.w,
+                            height: size.h,
+                            shape: table.shape,
+                          })
+                          setIsTableDialogOpen(true)
+                        }}
                       >
+                        {reservation && (
+                          <span
+                            className="absolute -top-2 -right-2 h-3.5 w-3.5 rounded-full border border-white shadow"
+                            style={{ backgroundColor: reservation.color || statusConfig?.borderColor || '#f59e0b' }}
+                          />
+                        )}
+                        <span className="font-bold text-lg leading-tight" style={{ color: statusConfig?.color || '#374151' }}>
+                          {table.number}
+                        </span>
+                        {table.capacity > 0 && (
+                          <span className="text-[10px] text-stone-500 leading-tight">
+                            {table.capacity} чел
+                          </span>
+                        )}
                         <div
-                          className="w-7 h-7 bg-white border border-amber-500 rounded-full pointer-events-auto cursor-pointer flex items-center justify-center shadow-sm"
-                          style={{ transform: `rotate(${-rot}deg)` }}
-                          onClick={async (e) => {
-                            e.stopPropagation()
-                            const next = ((rot ?? 0) + 90) % 360
-                            setPreviewRotation((prev) => ({ ...prev, [table.id]: next }))
-                            await updateTable.mutate(table.id, { rotation: next })
-                          }}
-                          title="Повернуть вправо"
+                          className="absolute inset-0 pointer-events-none"
                         >
-                          <RotateCw className="h-4 w-4" />
+                          {[
+                            { corner: 'left', className: 'absolute left-0 top-0 h-full w-3 cursor-ew-resize' },
+                            { corner: 'right', className: 'absolute right-0 top-0 h-full w-3 cursor-ew-resize' },
+                            { corner: 'top', className: 'absolute top-0 left-0 w-full h-3 cursor-ns-resize' },
+                            { corner: 'bottom', className: 'absolute bottom-0 left-0 w-full h-3 cursor-ns-resize' },
+                          ].map((h) => (
+                            <div
+                              key={h.corner}
+                              className={`${h.className} pointer-events-auto`}
+                              onMouseDown={(e) => {
+                                e.stopPropagation()
+                                const rect = editorRef.current?.getBoundingClientRect()
+                                if (!rect) return
+                                setResizing({
+                                  id: table.id,
+                                  target: 'table',
+                                  corner: h.corner as 'left' | 'right' | 'top' | 'bottom',
+                                  startMouseX: e.clientX - rect.left,
+                                  startMouseY: e.clientY - rect.top,
+                                  startW: size.w,
+                                  startH: size.h,
+                                  startX: pos.x,
+                                  startY: pos.y,
+                                })
+                              }}
+                            />
+                          ))}
+
+                          <div
+                            className="absolute left-1/2 pointer-events-none"
+                            style={{ top: 0, transform: `translate(-50%, -${ROTATE_HANDLE_OFFSET}px)` }}
+                          >
+                            <div
+                              className="w-7 h-7 bg-white border border-amber-500 rounded-full pointer-events-auto cursor-pointer flex items-center justify-center shadow-sm"
+                              style={{ transform: `rotate(${-rot}deg)` }}
+                              onClick={async (e) => {
+                                e.stopPropagation()
+                                const next = ((rot ?? 0) + 90) % 360
+                                setPreviewRotation((prev) => ({ ...prev, [table.id]: next }))
+                                await updateTable.mutate(table.id, { rotation: next })
+                              }}
+                              title="Повернуть вправо"
+                            >
+                              <RotateCw className="h-4 w-4" />
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </div>
-                )
-              })}
-              </div>
+                    )
+                  })}
+                </div>
               </div>
             </div>
           </div>
@@ -1633,17 +1671,17 @@ export default function HallsPage() {
               </div>
             </DialogTitle>
           </DialogHeader>
-          
+
           {/* Брони за этим столом на выбранную дату */}
           <div className="space-y-3 mt-4">
             <h4 className="text-sm font-medium text-stone-700">
               Бронирования на {format(new Date(selectedDate), 'dd.MM.yyyy')}
             </h4>
             {(() => {
-              const tableReservations = dateReservations.filter(r => 
+              const tableReservations = dateReservations.filter(r =>
                 (r.table_ids?.includes(selectedTableForInfo?.id || '') || r.table_id === selectedTableForInfo?.id)
               )
-              
+
               if (tableReservations.length === 0) {
                 return (
                   <div className="text-center py-6 text-stone-400">
@@ -1652,7 +1690,7 @@ export default function HallsPage() {
                   </div>
                 )
               }
-              
+
               return tableReservations.map(reservation => {
                 const statusConfig = RESERVATION_STATUS_CONFIG[reservation.status]
                 return (
@@ -1706,22 +1744,22 @@ export default function HallsPage() {
               })
             })()}
           </div>
-          
+
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" onClick={() => setSelectedTableForInfo(null)}>
               Закрыть
             </Button>
             {(() => {
-              const tableReservations = dateReservations.filter(r => 
+              const tableReservations = dateReservations.filter(r =>
                 (r.table_ids?.includes(selectedTableForInfo?.id || '') || r.table_id === selectedTableForInfo?.id)
               )
-              
+
               if (tableReservations.length === 0) {
                 // Стол свободен - кнопка создания брони
                 return (
                   <Button onClick={() => {
                     // Находим зал для этого стола
-                    const tableHall = halls.find(h => 
+                    const tableHall = halls.find(h =>
                       tables.some(t => t.id === selectedTableForInfo?.id && t.hall_id === h.id)
                     )
                     setPreselectedTableId(selectedTableForInfo?.id || null)
@@ -1735,7 +1773,7 @@ export default function HallsPage() {
                   </Button>
                 )
               }
-              
+
               // Есть брони - можно кликнуть на конкретную бронь выше
               return null
             })()}

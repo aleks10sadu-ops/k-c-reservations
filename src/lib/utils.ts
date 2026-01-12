@@ -32,9 +32,9 @@ export function formatTime(time: string | Date | undefined): string {
     return time
   }
 
-  // Если время в формате HH:mm:ss, обрезаем секунды
+  // Если время в формате HH:mm:ss, убираем секунды
   if (typeof time === 'string' && time.match(/^\d{2}:\d{2}:\d{2}$/)) {
-    return time.substring(0, 5)
+    return time.substring(0, 5) // Возвращаем только HH:mm
   }
 
   // Если время в формате с датой или timestamp, извлекаем время

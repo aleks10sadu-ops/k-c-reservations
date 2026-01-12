@@ -6,6 +6,7 @@ import { Button } from './button'
 import { Input } from './input'
 import { Popover, PopoverContent, PopoverTrigger } from './popover'
 import { cn } from '@/lib/utils'
+import { format } from 'date-fns'
 
 const isMobile = () => {
   if (typeof window === 'undefined') return false
@@ -57,7 +58,7 @@ export function DateTimePicker({
   const itemHeight = 32
   const hoursRef = useRef<HTMLDivElement>(null)
   const minutesRef = useRef<HTMLDivElement>(null)
-  
+
   // Флаг для блокировки обработки скролла во время инициализации (для мобильного wheel picker)
   const isInitializingRef = useRef(false)
 
@@ -167,21 +168,22 @@ export function DateTimePicker({
 
   const handleDateSelect = (date: Date) => {
     setSelectedDate(date)
-    handleConfirm()
+    handleConfirm(date)
   }
 
   const handleTimeChange = (time: string) => {
     setSelectedTime(time)
   }
 
-  const handleConfirm = () => {
-    if (dateOnly && selectedDate) {
-      const dateStr = selectedDate.toISOString().split('T')[0]
+  const handleConfirm = (dateOverride?: Date | any) => {
+    const dateToUse = (dateOverride instanceof Date) ? dateOverride : selectedDate
+    if (dateOnly && dateToUse) {
+      const dateStr = format(dateToUse, 'yyyy-MM-dd')
       onChange?.(dateStr)
     } else if (timeOnly && selectedTime) {
       onChange?.('', selectedTime)
-    } else if (selectedDate && selectedTime) {
-      const dateStr = selectedDate.toISOString().split('T')[0]
+    } else if (dateToUse && selectedTime) {
+      const dateStr = format(dateToUse, 'yyyy-MM-dd')
       onChange?.(dateStr, selectedTime)
     }
     setIsOpen(false)
@@ -302,8 +304,8 @@ export function DateTimePicker({
               <span>{selectedTime || '18:00'}</span>
             </Button>
           </PopoverTrigger>
-          <PopoverContent 
-            className="w-[280px] p-0 overflow-hidden" 
+          <PopoverContent
+            className="w-[280px] p-0 overflow-hidden"
             align="center"
             sideOffset={8}
           >
@@ -319,17 +321,17 @@ export function DateTimePicker({
                     onScroll={() => {
                       if (isInitializingRef.current) return
                       clearTimeout((window as any).hourScrollTimeout)
-                      ;(window as any).hourScrollTimeout = setTimeout(() => {
-                        if (!hoursRef.current || isInitializingRef.current) return
-                        const scrollTop = hoursRef.current.scrollTop
-                        const index = Math.round(scrollTop / mobileItemHeight)
-                        const clampedIndex = Math.max(0, Math.min(23, index))
-                        hoursRef.current.scrollTo({
-                          top: clampedIndex * mobileItemHeight,
-                          behavior: 'smooth'
-                        })
-                        handleHourChange(clampedIndex)
-                      }, 100)
+                        ; (window as any).hourScrollTimeout = setTimeout(() => {
+                          if (!hoursRef.current || isInitializingRef.current) return
+                          const scrollTop = hoursRef.current.scrollTop
+                          const index = Math.round(scrollTop / mobileItemHeight)
+                          const clampedIndex = Math.max(0, Math.min(23, index))
+                          hoursRef.current.scrollTo({
+                            top: clampedIndex * mobileItemHeight,
+                            behavior: 'smooth'
+                          })
+                          handleHourChange(clampedIndex)
+                        }, 100)
                     }}
                     style={{
                       WebkitOverflowScrolling: 'touch',
@@ -346,8 +348,8 @@ export function DateTimePicker({
                         key={i}
                         className={cn(
                           "flex items-center justify-center text-lg font-semibold cursor-pointer transition-all",
-                          i === wheelHours 
-                            ? "text-amber-600 scale-110" 
+                          i === wheelHours
+                            ? "text-amber-600 scale-110"
                             : "text-stone-400 hover:text-stone-600"
                         )}
                         style={{
@@ -377,17 +379,17 @@ export function DateTimePicker({
                     onScroll={() => {
                       if (isInitializingRef.current) return
                       clearTimeout((window as any).minuteScrollTimeout)
-                      ;(window as any).minuteScrollTimeout = setTimeout(() => {
-                        if (!minutesRef.current || isInitializingRef.current) return
-                        const scrollTop = minutesRef.current.scrollTop
-                        const index = Math.round(scrollTop / mobileItemHeight)
-                        const clampedIndex = Math.max(0, Math.min(59, index))
-                        minutesRef.current.scrollTo({
-                          top: clampedIndex * mobileItemHeight,
-                          behavior: 'smooth'
-                        })
-                        handleMinuteChange(clampedIndex)
-                      }, 100)
+                        ; (window as any).minuteScrollTimeout = setTimeout(() => {
+                          if (!minutesRef.current || isInitializingRef.current) return
+                          const scrollTop = minutesRef.current.scrollTop
+                          const index = Math.round(scrollTop / mobileItemHeight)
+                          const clampedIndex = Math.max(0, Math.min(59, index))
+                          minutesRef.current.scrollTo({
+                            top: clampedIndex * mobileItemHeight,
+                            behavior: 'smooth'
+                          })
+                          handleMinuteChange(clampedIndex)
+                        }, 100)
                     }}
                     style={{
                       WebkitOverflowScrolling: 'touch',
@@ -401,8 +403,8 @@ export function DateTimePicker({
                         key={i}
                         className={cn(
                           "flex items-center justify-center text-lg font-semibold cursor-pointer transition-all",
-                          i === wheelMinutes 
-                            ? "text-amber-600 scale-110" 
+                          i === wheelMinutes
+                            ? "text-amber-600 scale-110"
                             : "text-stone-400 hover:text-stone-600"
                         )}
                         style={{
@@ -423,7 +425,7 @@ export function DateTimePicker({
 
             {/* Footer */}
             <div className="flex justify-end p-3 bg-white border-t border-stone-100">
-              <Button 
+              <Button
                 onClick={() => setIsOpen(false)}
                 className="bg-amber-500 hover:bg-amber-600 text-white px-6"
               >

@@ -2,10 +2,10 @@
 
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { 
-  Plus, 
-  Search, 
-  CreditCard, 
+import {
+  Plus,
+  Search,
+  CreditCard,
   Banknote,
   ArrowRightLeft,
   Calendar,
@@ -13,17 +13,18 @@ import {
   CheckCircle,
   Clock,
   Loader2,
-  Trash2
+  Trash2,
+  X
 } from 'lucide-react'
 import { PageTransition } from '@/components/layout/PageTransition'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
   DialogTitle,
   DialogFooter,
   DialogDescription
@@ -42,29 +43,23 @@ import { useReservations, useCreateMutation, useDeleteMutation, useUpdateMutatio
 import { formatCurrency, formatDate, formatTime, cn } from '@/lib/utils'
 import { RESERVATION_STATUS_CONFIG, Payment, Reservation } from '@/types'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { createClient } from '@/lib/supabase/client'
+import { AddPaymentDialog } from '@/components/payments/AddPaymentDialog'
 
 export default function PaymentsPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false)
   const [selectedReservationId, setSelectedReservationId] = useState('')
   const [selectedDate, setSelectedDate] = useState<string>('')
-  const [paymentForm, setPaymentForm] = useState({
-    amount: 0,
-    payment_method: 'card' as 'cash' | 'card' | 'transfer',
-    notes: ''
-  })
 
   // Fetch data
   const { data: allReservations, loading, refetch } = useReservations()
-  
+
   // Filter reservations by date if selected
   const reservations = selectedDate
     ? allReservations.filter(r => r.date === selectedDate)
     : allReservations
-  
+
   // Mutations
-  const createPayment = useCreateMutation<Payment>('payments')
   const deletePayment = useDeleteMutation('payments')
   const updateReservation = useUpdateMutation<Reservation>('reservations')
 
@@ -72,7 +67,7 @@ export default function PaymentsPage() {
   const totalRevenue = reservations.reduce((sum, r) => sum + (r.prepaid_amount || 0), 0)
   const totalExpected = reservations.reduce((sum, r) => sum + r.total_amount, 0)
   const totalRemaining = totalExpected - totalRevenue
-  
+
   const paidReservations = reservations.filter(r => r.status === 'paid')
   // Показываем все бронирования, которые не полностью оплачены (не только с pending статусом)
   const pendingPayments = reservations.filter(r =>
@@ -87,7 +82,7 @@ export default function PaymentsPage() {
   )
 
   // Get all payments with reservation info
-  const allPayments = reservations.flatMap(reservation => 
+  const allPayments = reservations.flatMap(reservation =>
     (reservation.payments || []).map(payment => ({
       ...payment,
       reservation
@@ -121,50 +116,6 @@ export default function PaymentsPage() {
     }
   }
 
-  const handleAddPayment = async () => {
-    if (!selectedReservationId || !paymentForm.amount) return
-
-    const reservation = reservations.find(r => r.id === selectedReservationId)
-    if (!reservation) return
-
-    const result = await createPayment.mutate({
-      reservation_id: selectedReservationId,
-      amount: paymentForm.amount,
-      payment_method: paymentForm.payment_method,
-      notes: paymentForm.notes || undefined
-    })
-
-    if (result) {
-      // Проверяем, был ли это первый платеж (prepaid_amount было 0)
-      const supabase = createClient()
-      const { data: updatedReservation } = await supabase
-        .from('reservations')
-        .select('prepaid_amount, total_amount, status')
-        .eq('id', selectedReservationId)
-        .single()
-
-      if (updatedReservation) {
-        // Если это первый платеж (было 0, теперь больше 0), обновляем статус на prepaid
-        if (reservation.prepaid_amount === 0 && updatedReservation.prepaid_amount > 0) {
-          await updateReservation.mutate(selectedReservationId, {
-            status: 'prepaid' as const
-          })
-        }
-        // Если оплачено полностью, обновляем статус на paid
-        if (updatedReservation.prepaid_amount >= updatedReservation.total_amount && reservation.status !== 'paid') {
-          await updateReservation.mutate(selectedReservationId, {
-            status: 'paid' as const
-          })
-        }
-      }
-
-      setIsAddPaymentOpen(false)
-      setPaymentForm({ amount: 0, payment_method: 'card', notes: '' })
-      setSelectedReservationId('')
-      refetch()
-    }
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -188,9 +139,9 @@ export default function PaymentsPage() {
                 <h1 className="text-3xl font-bold text-stone-900">Оплаты</h1>
                 <p className="mt-1 text-stone-500">Отслеживание предоплат и платежей</p>
               </div>
-              
-              <Button 
-                size="lg" 
+
+              <Button
+                size="lg"
                 className="gap-2 shadow-lg shadow-amber-500/25"
                 onClick={() => setIsAddPaymentOpen(true)}
               >
@@ -342,7 +293,7 @@ export default function PaymentsPage() {
                           >
                             <div className="flex items-center justify-between gap-4 mb-3">
                               <div className="flex items-center gap-3">
-                                <div 
+                                <div
                                   className="w-2 h-12 rounded-full"
                                   style={{ backgroundColor: statusConfig.borderColor }}
                                 />
@@ -355,15 +306,15 @@ export default function PaymentsPage() {
                                   </p>
                                 </div>
                               </div>
-                              
+
                               <div className="text-right">
                                 <p className="font-semibold text-stone-900">
                                   {formatCurrency(reservation.total_amount)}
                                 </p>
-                                <Badge 
-                                  variant={reservation.status === 'new' ? 'new' : 
-                                          reservation.status === 'in_progress' ? 'inProgress' : 
-                                          reservation.status === 'prepaid' ? 'prepaid' : 'canceled'}
+                                <Badge
+                                  variant={reservation.status === 'new' ? 'new' :
+                                    reservation.status === 'in_progress' ? 'inProgress' :
+                                      reservation.status === 'prepaid' ? 'prepaid' : 'canceled'}
                                 >
                                   {statusConfig.label}
                                 </Badge>
@@ -381,7 +332,7 @@ export default function PaymentsPage() {
                                 </span>
                               </div>
                               <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
-                                <motion.div 
+                                <motion.div
                                   className="h-full bg-gradient-to-r from-green-500 to-emerald-500 rounded-full"
                                   initial={{ width: 0 }}
                                   animate={{ width: `${progress}%` }}
@@ -391,8 +342,8 @@ export default function PaymentsPage() {
                             </div>
 
                             <div className="flex justify-end">
-                              <Button 
-                                size="sm" 
+                              <Button
+                                size="sm"
                                 className="gap-2"
                                 onClick={() => {
                                   setSelectedReservationId(reservation.id)
@@ -456,7 +407,7 @@ export default function PaymentsPage() {
                                   </p>
                                 </div>
                               </div>
-                              
+
                               <div className="text-right">
                                 <p className="text-xl font-bold text-rose-600">
                                   {formatCurrency(reservation.total_amount)}
@@ -512,11 +463,18 @@ export default function PaymentsPage() {
                               </p>
                             </div>
                           </div>
-                          
+
                           <div className="text-right">
                             <p className="text-xl font-bold text-green-600">
                               {formatCurrency(reservation.total_amount)}
                             </p>
+                            {(() => {
+                              const diff = (reservation.prepaid_amount || 0) - reservation.total_amount
+                              if (diff > 0) {
+                                return <p className="text-xs text-emerald-600 font-medium">Переплата: {formatCurrency(diff)}</p>
+                              }
+                              return null
+                            })()}
                             <Badge variant="paid">Оплачено</Badge>
                           </div>
                         </motion.div>
@@ -540,73 +498,101 @@ export default function PaymentsPage() {
                     <CardTitle>История платежей</CardTitle>
                     <div className="relative w-64">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400" />
-                      <Input 
+                      <Input
                         placeholder="Поиск..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-10"
+                        className="pl-10 pr-8"
                       />
+                      {searchQuery && (
+                        <button
+                          onClick={() => setSearchQuery('')}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  {allPayments.length === 0 ? (
+                  {allPayments.filter(payment => {
+                    if (!searchQuery) return true
+                    const terms = searchQuery.toLowerCase().split(/\s+/).filter(t => t.length > 0)
+                    return terms.every(term => {
+                      const guestName = `${payment.reservation.guest?.last_name || ''} ${payment.reservation.guest?.first_name || ''}`.toLowerCase()
+                      const phone = payment.reservation.guest?.phone?.toLowerCase() || ''
+                      const notes = payment.notes?.toLowerCase() || ''
+                      return guestName.includes(term) || phone.includes(term) || notes.includes(term)
+                    })
+                  }).length === 0 ? (
                     <div className="text-center py-12 text-stone-500">
                       <CreditCard className="h-12 w-12 mx-auto mb-3 text-stone-300" />
                       <p>Нет платежей</p>
                     </div>
                   ) : (
                     <div className="divide-y divide-stone-100">
-                      {allPayments.map((payment, index) => (
-                        <motion.div
-                          key={payment.id}
-                          initial={{ opacity: 0, x: -20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: index * 0.05 }}
-                          className="py-4 first:pt-0 last:pb-0 flex items-center justify-between gap-4"
-                        >
-                          <div className="flex items-center gap-4">
-                            <div className={cn(
-                              "flex h-10 w-10 items-center justify-center rounded-xl",
-                              payment.payment_method === 'cash' && "bg-green-100 text-green-600",
-                              payment.payment_method === 'card' && "bg-blue-100 text-blue-600",
-                              payment.payment_method === 'transfer' && "bg-purple-100 text-purple-600"
-                            )}>
-                              {getPaymentMethodIcon(payment.payment_method)}
+                      {allPayments
+                        .filter(payment => {
+                          if (!searchQuery) return true
+                          const terms = searchQuery.toLowerCase().split(/\s+/).filter(t => t.length > 0)
+                          return terms.every(term => {
+                            const guestName = `${payment.reservation.guest?.last_name || ''} ${payment.reservation.guest?.first_name || ''}`.toLowerCase()
+                            const phone = payment.reservation.guest?.phone?.toLowerCase() || ''
+                            const notes = payment.notes?.toLowerCase() || ''
+                            return guestName.includes(term) || phone.includes(term) || notes.includes(term)
+                          })
+                        })
+                        .map((payment, index) => (
+                          <motion.div
+                            key={payment.id}
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: index * 0.05 }}
+                            className="py-4 first:pt-0 last:pb-0 flex items-center justify-between gap-4"
+                          >
+                            <div className="flex items-center gap-4">
+                              <div className={cn(
+                                "flex h-10 w-10 items-center justify-center rounded-xl",
+                                payment.payment_method === 'cash' && "bg-green-100 text-green-600",
+                                payment.payment_method === 'card' && "bg-blue-100 text-blue-600",
+                                payment.payment_method === 'transfer' && "bg-purple-100 text-purple-600"
+                              )}>
+                                {getPaymentMethodIcon(payment.payment_method)}
+                              </div>
+                              <div>
+                                <h3 className="font-semibold text-stone-900">
+                                  {payment.reservation.guest?.last_name} {payment.reservation.guest?.first_name}
+                                </h3>
+                                <p className="text-sm text-stone-500">
+                                  {formatDate(payment.payment_date)} • {getPaymentMethodLabel(payment.payment_method)}
+                                </p>
+                                {payment.notes && (
+                                  <p className="text-sm text-stone-400 italic">{payment.notes}</p>
+                                )}
+                              </div>
                             </div>
-                            <div>
-                              <h3 className="font-semibold text-stone-900">
-                                {payment.reservation.guest?.last_name} {payment.reservation.guest?.first_name}
-                              </h3>
-                              <p className="text-sm text-stone-500">
-                                {formatDate(payment.payment_date)} • {getPaymentMethodLabel(payment.payment_method)}
-                              </p>
-                              {payment.notes && (
-                                <p className="text-sm text-stone-400 italic">{payment.notes}</p>
-                              )}
+
+                            <div className="flex items-center gap-4">
+                              <div className="text-right">
+                                <p className="text-xl font-bold text-green-600">
+                                  +{formatCurrency(payment.amount)}
+                                </p>
+                                <p className="text-sm text-stone-500">
+                                  Бронь на {formatDate(payment.reservation.date)}
+                                </p>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-stone-400 hover:text-rose-600"
+                                onClick={() => handleDeletePayment(payment.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
                             </div>
-                          </div>
-                          
-                          <div className="flex items-center gap-4">
-                            <div className="text-right">
-                              <p className="text-xl font-bold text-green-600">
-                                +{formatCurrency(payment.amount)}
-                              </p>
-                              <p className="text-sm text-stone-500">
-                                Бронь на {formatDate(payment.reservation.date)}
-                              </p>
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-stone-400 hover:text-rose-600"
-                              onClick={() => handleDeletePayment(payment.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </motion.div>
-                      ))}
+                          </motion.div>
+                        ))}
                     </div>
                   )}
                 </CardContent>
@@ -616,103 +602,16 @@ export default function PaymentsPage() {
         </Tabs>
 
         {/* Add Payment Dialog */}
-        <Dialog open={isAddPaymentOpen} onOpenChange={setIsAddPaymentOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Добавить оплату</DialogTitle>
-              <DialogDescription>
-                Зафиксируйте новый платёж по бронированию
-              </DialogDescription>
-            </DialogHeader>
-            
-            <div className="space-y-4">
-              <div>
-                <Label>Бронирование</Label>
-                <Select 
-                  value={selectedReservationId}
-                  onValueChange={setSelectedReservationId}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Выберите бронирование" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableForPayment.map(reservation => (
-                      <SelectItem key={reservation.id} value={reservation.id}>
-                        {reservation.guest?.last_name} {reservation.guest?.first_name} - {formatDate(reservation.date)} • {RESERVATION_STATUS_CONFIG[reservation.status].label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div>
-                <Label>Сумма (₽)</Label>
-                <Input 
-                  type="number" 
-                  placeholder="10000" 
-                  className="mt-1" 
-                  value={paymentForm.amount || ''}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, amount: parseFloat(e.target.value) || 0 })}
-                />
-              </div>
-              
-              <div>
-                <Label>Способ оплаты</Label>
-                <Select 
-                  value={paymentForm.payment_method}
-                  onValueChange={(v: 'cash' | 'card' | 'transfer') => setPaymentForm({ ...paymentForm, payment_method: v })}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="cash">
-                      <div className="flex items-center gap-2">
-                        <Banknote className="h-4 w-4" />
-                        Наличные
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="card">
-                      <div className="flex items-center gap-2">
-                        <CreditCard className="h-4 w-4" />
-                        Картой
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="transfer">
-                      <div className="flex items-center gap-2">
-                        <ArrowRightLeft className="h-4 w-4" />
-                        Перевод
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div>
-                <Label>Комментарий</Label>
-                <Textarea 
-                  placeholder="Например: Первый взнос" 
-                  className="mt-1" 
-                  value={paymentForm.notes}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })}
-                />
-              </div>
-            </div>
-            
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsAddPaymentOpen(false)}>
-                Отмена
-              </Button>
-              <Button 
-                onClick={handleAddPayment}
-                disabled={createPayment.loading || !selectedReservationId || !paymentForm.amount}
-              >
-                {createPayment.loading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                Добавить
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <AddPaymentDialog
+          open={isAddPaymentOpen}
+          onOpenChange={setIsAddPaymentOpen}
+          reservationId={selectedReservationId}
+          availableReservations={availableForPayment}
+          onSuccess={() => {
+            setSelectedReservationId('')
+            refetch()
+          }}
+        />
       </div>
     </PageTransition>
   )
