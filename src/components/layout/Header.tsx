@@ -61,7 +61,7 @@ export function Header() {
       case 'admin': return 'Администратор'
       case 'waiter': return 'Официант'
       case 'guest': return 'Гость'
-      default: return 'Пользователь'
+      default: return role ? 'Пользователь' : 'Загрузка...'
     }
   }
 

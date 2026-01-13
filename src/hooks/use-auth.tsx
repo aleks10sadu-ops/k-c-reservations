@@ -34,16 +34,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         console.log('[Auth] Initializing AuthProvider...')
 
-        // Safety timeout to prevent infinite loading state
         const timeout = setTimeout(() => {
             setIsLoading(prev => {
                 if (prev) {
-                    console.warn('[Auth] Initialization timed out (8s). Forcing loading to false.')
+                    console.warn('[Auth] Initialization timed out. Forcing false.')
                     return false
                 }
                 return prev
             })
-        }, 8000)
+        }, 10000)
 
         const fetchRole = async (u: User) => {
             try {
@@ -70,19 +69,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
         }
 
+        const handleAuth = async (sessionUser: User | null) => {
+            setUser(sessionUser)
+            if (sessionUser) {
+                await fetchRole(sessionUser)
+            } else {
+                setRole(null)
+                setIsLoading(false)
+                clearTimeout(timeout)
+            }
+        }
+
+        // Initial check
+        supabase.auth.getUser().then(({ data: { user: u } }) => {
+            console.log('[Auth] Initial getUser:', u?.email || 'none')
+            handleAuth(u)
+        })
+
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
             async (event, session) => {
-                const currentUser = session?.user || null
-                console.log('[Auth] Auth Event:', event, currentUser?.email || 'no-user')
-                setUser(currentUser)
-
-                if (currentUser) {
-                    await fetchRole(currentUser)
-                } else {
-                    setRole(null)
-                    setIsLoading(false)
-                    clearTimeout(timeout)
+                console.log('[Auth] onAuthStateChange event:', event)
+                if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+                    handleAuth(session?.user || null)
+                } else if (event === 'SIGNED_OUT') {
+                    handleAuth(null)
                 }
+                // INITIAL_SESSION is handled by the manual getUser above to avoid race
             }
         )
 
@@ -93,7 +105,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, [])
 
     const signOut = async () => {
-        console.log('[Auth] Signing out...')
         await supabase.auth.signOut()
         window.location.href = '/login'
     }

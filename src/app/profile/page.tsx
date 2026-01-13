@@ -75,7 +75,13 @@ export default function ProfilePage() {
                         ) : (
                             <div className="space-y-4">
                                 <p className="text-stone-600 text-sm">
-                                    Вам назначена роль <strong>{role === 'director' ? 'Управляющий' : role === 'manager' ? 'Менеджер' : role === 'admin' ? 'Администратор' : 'Официант'}</strong>.
+                                    Вам назначена роль: <strong>{
+                                        role === 'director' ? 'Управляющий' :
+                                            role === 'manager' ? 'Менеджер' :
+                                                role === 'admin' ? 'Администратор' :
+                                                    role === 'waiter' ? 'Официант' :
+                                                        role === 'guest' ? 'Гость' : 'Загрузка...'
+                                    }</strong>.
                                     Вам доступны следующие разделы:
                                 </p>
                                 <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
