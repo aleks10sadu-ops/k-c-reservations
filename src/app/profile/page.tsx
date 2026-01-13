@@ -17,6 +17,7 @@ export default function ProfilePage() {
     const getRoleBadge = (role: UserRole | null) => {
         switch (role) {
             case 'director': return <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100 border-0">Управляющий</Badge>
+            case 'manager': return <Badge className="bg-indigo-100 text-indigo-700 hover:bg-indigo-100 border-0">Менеджер</Badge>
             case 'admin': return <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-0">Администратор</Badge>
             case 'waiter': return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-0">Официант</Badge>
             case 'guest': return <Badge className="bg-stone-100 text-stone-600 hover:bg-stone-100 border-0">Гость</Badge>
@@ -74,17 +75,17 @@ export default function ProfilePage() {
                         ) : (
                             <div className="space-y-4">
                                 <p className="text-stone-600 text-sm">
-                                    Вам назначена роль <strong>{role === 'director' ? 'Управляющий' : role === 'admin' ? 'Администратор' : 'Официант'}</strong>.
+                                    Вам назначена роль <strong>{role === 'director' ? 'Управляющий' : role === 'manager' ? 'Менеджер' : role === 'admin' ? 'Администратор' : 'Официант'}</strong>.
                                     Вам доступны следующие разделы:
                                 </p>
                                 <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    {role === 'director' && (
+                                    {(role === 'director' || role === 'manager') && (
                                         <li className="flex items-center gap-2 text-sm text-stone-700 bg-stone-50 p-2 rounded-lg">
                                             <div className="w-1.5 h-1.5 rounded-full bg-purple-500" />
                                             Журнал аудита и откат действий
                                         </li>
                                     )}
-                                    {(role === 'admin' || role === 'director') && (
+                                    {(role === 'admin' || role === 'director' || role === 'manager') && (
                                         <>
                                             <li className="flex items-center gap-2 text-sm text-stone-700 bg-stone-50 p-2 rounded-lg">
                                                 <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
@@ -96,7 +97,7 @@ export default function ProfilePage() {
                                             </li>
                                         </>
                                     )}
-                                    {(role === 'waiter' || role === 'admin' || role === 'director') && (
+                                    {(role === 'waiter' || role === 'admin' || role === 'director' || role === 'manager') && (
                                         <>
                                             <li className="flex items-center gap-2 text-sm text-stone-700 bg-stone-50 p-2 rounded-lg">
                                                 <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
