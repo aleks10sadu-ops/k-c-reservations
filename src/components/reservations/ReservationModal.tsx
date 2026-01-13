@@ -22,7 +22,8 @@ import {
   ChevronDown,
   ChevronUp,
   AlertCircle,
-  Copy
+  Copy,
+  Printer
 } from 'lucide-react'
 import { Reservation, ReservationStatus, RESERVATION_STATUS_CONFIG, getMenuItemTypeLabel, MenuItemType, Guest, ReservationMenuItem, Payment, MenuItem } from '@/types'
 import { cn, formatCurrency, formatDate, formatTime, calculatePlates, calculateTotalWeight } from '@/lib/utils'
@@ -57,7 +58,6 @@ import { updateReservationServerAction, syncReservationTablesServerAction, syncR
 import { X } from 'lucide-react'
 import { HallScheme } from '@/components/halls/HallScheme'
 import { format } from 'date-fns'
-
 import { AddPaymentDialog } from '@/components/payments/AddPaymentDialog'
 
 interface ReservationModalProps {
@@ -281,11 +281,13 @@ export function ReservationModal({
           comments: currentReservation.comments || ''
         })
         const initialTables =
-          currentReservation.tables?.length
-            ? currentReservation.tables.map((t) => t.id)
-            : currentReservation.table_id
-              ? [currentReservation.table_id]
-              : []
+          currentReservation.table_ids?.length
+            ? currentReservation.table_ids
+            : currentReservation.tables?.length
+              ? currentReservation.tables.map((t) => t.id)
+              : currentReservation.table_id
+                ? [currentReservation.table_id]
+                : []
         setSelectedTables(initialTables)
         setDraftTables(initialTables)
 
@@ -494,147 +496,7 @@ export function ReservationModal({
   }
 
 
-  const syncReservationTables = async (reservationId?: string, tableIds: string[] = []) => {
-    if (!reservationId) {
-      console.error('syncReservationTables: reservationId is missing')
-      return
-    }
 
-    const supabase = createClient()
-    try {
-      console.log('--- START syncReservationTables ---')
-      console.log('Reservation ID:', reservationId)
-      console.log('Table IDs input:', tableIds)
-
-      // Validate UUIDs roughly
-      const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str)
-
-      if (!isUUID(reservationId)) {
-        console.error('INVALID reservationId format:', reservationId)
-      }
-
-      const validTableIds = Array.from(new Set(tableIds)).filter(id => {
-        if (!id) return false
-        if (!isUUID(id)) {
-          console.error('INVALID tableId format detected:', id)
-          return false
-        }
-        return true
-      })
-
-      console.log('Valid Table IDs for sync:', validTableIds)
-
-      // Сначала очищаем предыдущие связи
-      const { error: deleteError } = await supabase.from('reservation_tables').delete().eq('reservation_id', reservationId)
-      if (deleteError) {
-        console.error('DELETE ERROR in syncReservationTables:', deleteError)
-        throw deleteError
-      }
-
-      if (validTableIds.length === 0) {
-        console.log('No tables to sync, skipping insert')
-        return
-      }
-
-      const payload = validTableIds.map((tableId) => ({
-        reservation_id: reservationId,
-        table_id: tableId
-      }))
-
-      console.log('Inserting payload:', JSON.stringify(payload))
-
-      const { error: insertError } = await supabase.from('reservation_tables').insert(payload)
-
-      if (insertError) {
-        console.error('INSERT ERROR in syncReservationTables:', {
-          message: insertError.message,
-          code: insertError.code,
-          details: insertError.details,
-          hint: insertError.hint
-        })
-        alert(`Ошибка БД при привязке столов:\n${insertError.message}\nCode: ${insertError.code}`)
-        throw insertError
-      }
-
-      console.log('Successfully synced tables')
-      console.log('--- END syncReservationTables ---')
-    } catch (error: any) {
-      console.error('CATCH in syncReservationTables:', error)
-      // Manual extraction of common error properties
-      const errorData = {
-        message: error.message,
-        code: error.code,
-        details: error.details,
-        hint: error.hint,
-        stack: error.stack
-      }
-      console.log('Detailed Error Data:', JSON.stringify(errorData, null, 2))
-    }
-  }
-
-  const syncReservationMenuItems = async (reservationId?: string, selectedItemIds: string[] = []) => {
-    if (!reservationId) return
-    const supabase = createClient()
-
-    // Сначала очищаем ВСЕ предыдущие связи для этого бронирования
-    // Это гарантирует отсутствие старых данных при смене меню
-    await supabase.from('reservation_menu_items').delete().eq('reservation_id', reservationId)
-
-    // Добавляем выбранные селективные позиции
-    if (currentMenu && selectedItemIds.length > 0) {
-      const payload = selectedItemIds.map((menuItemId) => {
-        const override = itemOverrides[menuItemId] || {}
-        return {
-          reservation_id: reservationId,
-          menu_item_id: menuItemId,
-          is_selected: true,
-          weight_per_person: override.weight_per_person,
-          name: override.name,
-          order_index: override.order_index,
-          price: override.price
-        }
-      })
-      await supabase.from('reservation_menu_items').insert(payload)
-    }
-
-    // Добавляем все неселективные позиции (они всегда включены)
-    if (currentMenu) {
-      const allMenuItems = menuItems.filter(i => i.menu_id === currentMenu.id)
-      const nonSelectableItems = allMenuItems.filter(item => !item.is_selectable)
-      if (nonSelectableItems.length > 0) {
-        const payload = nonSelectableItems.map((item) => {
-          const override = itemOverrides[item.id] || {}
-          return {
-            reservation_id: reservationId,
-            menu_item_id: item.id,
-            is_selected: true,
-            weight_per_person: override.weight_per_person,
-            name: override.name,
-            order_index: override.order_index,
-            price: override.price
-          }
-        })
-        const { error } = await supabase.from('reservation_menu_items').insert(payload)
-        if (error) console.error('Error inserting non-selectable menu items:', error)
-      }
-    }
-
-    // Добавляем произвольные позиции (ad-hoc)
-    if (adHocItems.length > 0) {
-      const payload = adHocItems.map((item) => ({
-        reservation_id: reservationId,
-        menu_item_id: null, // No global menu item link
-        is_selected: true,
-        weight_per_person: item.weight_per_person,
-        name: item.name,
-        order_index: item.order_index,
-        price: item.price,
-        type: item.type
-      }))
-      const { error } = await supabase.from('reservation_menu_items').insert(payload)
-      if (error) console.error('Error inserting ad-hoc menu items:', error)
-    }
-  }
 
   const handleDelete = async () => {
     if (currentReservation && confirm('Вы уверены что хотите удалить это бронирование?')) {
@@ -675,13 +537,11 @@ export function ReservationModal({
       if (created) {
         // 2. Clone tables
         if (selectedTables.length > 0) {
-          await syncReservationTables(created.id, selectedTables)
+          await syncReservationTablesServerAction(created.id, selectedTables)
         }
 
         // 3. Clone menu items
-        // syncReservationMenuItems uses current component states (selectedSalads, itemOverrides, adHocItems)
-        // which correctly represent the current (original) reservation's menu configuration.
-        await syncReservationMenuItems(created.id, selectedSalads)
+        await syncReservationMenuItemsServerAction(created.id, selectedSalads, itemOverrides, adHocItems)
 
         alert(`Бронирование успешно скопировано на ${formatDate(duplicateDate)}`)
         onSaveSuccess?.()
@@ -912,8 +772,24 @@ export function ReservationModal({
         const created = await createReservation.mutate(dataToSave as any)
         if (created) {
           const tablesToSync = statusToSave === 'canceled' ? [] : selectedTables
-          await syncReservationTables(created.id, tablesToSync)
-          await syncReservationMenuItems(created.id, selectedSalads)
+
+          console.log('--- Creating Reservation Sync ---')
+          console.log('Tables to sync:', tablesToSync)
+
+          const [tablesSyncResult, menuSyncResult] = await Promise.all([
+            syncReservationTablesServerAction(created.id, tablesToSync),
+            syncReservationMenuItemsServerAction(created.id, selectedSalads, itemOverrides, adHocItems, formData.menu_id)
+          ])
+
+          if (!tablesSyncResult.success) {
+            console.error('Tables sync failed:', tablesSyncResult.error)
+            alert(`Ошибка при привязке столов: ${tablesSyncResult.error}`)
+          }
+
+          if (!menuSyncResult.success) {
+            console.error('Menu sync failed:', menuSyncResult.error)
+            alert(`Ошибка при сохранении меню: ${menuSyncResult.error}`)
+          }
 
           if (prepaymentAmount > 0) {
             await createPayment.mutate({
@@ -959,10 +835,24 @@ export function ReservationModal({
         const result = updateResult.data
         if (result) {
           const tablesToSync = statusToSave === 'canceled' ? [] : selectedTables
-          await Promise.all([
-            syncReservationTables(currentReservation.id, tablesToSync),
-            syncReservationMenuItems(currentReservation.id, selectedSalads)
+
+          console.log('--- Updating Reservation Sync ---')
+          console.log('Tables to sync:', tablesToSync)
+
+          const [tablesSyncResult, menuSyncResult] = await Promise.all([
+            syncReservationTablesServerAction(currentReservation.id, tablesToSync),
+            syncReservationMenuItemsServerAction(currentReservation.id, selectedSalads, itemOverrides, adHocItems, formData.menu_id)
           ])
+
+          if (!tablesSyncResult.success) {
+            console.error('Tables sync failed:', tablesSyncResult.error)
+            alert(`Ошибка при привязке столов: ${tablesSyncResult.error}`)
+          }
+
+          if (!menuSyncResult.success) {
+            console.error('Menu sync failed:', menuSyncResult.error)
+            alert(`Ошибка при сохранении меню: ${menuSyncResult.error}`)
+          }
 
           finalReservation = {
             ...currentReservation,
@@ -1238,6 +1128,19 @@ export function ReservationModal({
                     </div>
                   </PopoverContent>
                 </Popover>
+              )}
+
+              {mode === 'view' && reservation && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.open(`/reservations/${reservation.id}/print`, '_blank')}
+                  className="gap-1 sm:gap-2 h-8 sm:h-9 border-stone-200 hover:bg-stone-50"
+                  title="Распечатать карточку"
+                >
+                  <Printer className="h-3 w-3 sm:h-4 sm:w-4" />
+                  <span className="hidden sm:inline text-xs sm:text-sm">Печать</span>
+                </Button>
               )}
 
               {mode === 'view' && reservation && (
@@ -1775,7 +1678,14 @@ export function ReservationModal({
                       {mode !== 'view' && (
                         <Select
                           value={formData.menu_id}
-                          onValueChange={(v) => setFormData({ ...formData, menu_id: v })}
+                          onValueChange={(v) => {
+                            if (v !== formData.menu_id) {
+                              setFormData({ ...formData, menu_id: v })
+                              // Очищаем выбранные селективные позиции и переопределения при смене меню
+                              setSelectedSalads([])
+                              setItemOverrides({})
+                            }
+                          }}
                         >
                           <SelectTrigger className="w-full sm:w-[180px]">
                             <SelectValue placeholder="Выберите меню" />

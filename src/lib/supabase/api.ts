@@ -765,7 +765,8 @@ export async function syncReservationMenuItemsServerAction(
   reservationId: string,
   selectedItemIds: string[],
   itemOverrides: Record<string, any> = {},
-  adHocItems: any[] = []
+  adHocItems: any[] = [],
+  menuId?: string
 ) {
   try {
     const supabase = createServiceRoleClient()
@@ -775,9 +776,45 @@ export async function syncReservationMenuItemsServerAction(
 
     const insertPayload: any[] = []
 
+    // Если указано меню, получаем его позиции для валидации и добавления обязательных блюд
+    let validMenuItemIds = new Set<string>()
+    if (menuId) {
+      const { data: menuItems, error: itemsError } = await supabase
+        .from('menu_items')
+        .select('id, is_selectable')
+        .eq('menu_id', menuId)
+
+      if (!itemsError && menuItems) {
+        validMenuItemIds = new Set(menuItems.map(i => i.id))
+
+        // Автоматически добавляем все неселективные (обязательные) позиции этого меню
+        menuItems.forEach(item => {
+          if (!item.is_selectable) {
+            const override = itemOverrides[item.id] || {}
+            insertPayload.push({
+              reservation_id: reservationId,
+              menu_item_id: item.id,
+              is_selected: true,
+              weight_per_person: override.weight_per_person,
+              name: override.name,
+              order_index: override.order_index,
+              price: override.price,
+              type: override.type
+            })
+          }
+        })
+      }
+    }
+
     // Добавляем выбранные селективные позиции
     if (selectedItemIds.length > 0) {
       selectedItemIds.forEach((menuItemId) => {
+        // Пропускаем если такое ID уже добавлено (как неселективное)
+        if (insertPayload.some(p => p.menu_item_id === menuItemId)) return;
+
+        // Если указано меню, проверяем что позиция принадлежит ему
+        if (menuId && !validMenuItemIds.has(menuItemId)) return;
+
         const override = itemOverrides[menuItemId] || {}
         insertPayload.push({
           reservation_id: reservationId,
@@ -818,6 +855,53 @@ export async function syncReservationMenuItemsServerAction(
     console.error('syncReservationMenuItemsServerAction error:', error)
     return { success: false, error: error.message || 'Unknown error' }
   }
+}
+
+// ==================== HELPER: NORMALIZATION ====================
+
+function normalizeReservation(row: any): Reservation {
+  if (!row) return row;
+
+  // Дедупликация столов
+  const tablesMap = new Map();
+  (row.reservation_tables || []).forEach((rt: any) => {
+    if (rt.table) tablesMap.set(rt.table.id, rt.table);
+  });
+  const tables = Array.from(tablesMap.values());
+
+  const table_ids = Array.from(tablesMap.keys());
+
+  // Дедупликация позиций меню
+  const menuItemsMap = new Map();
+  (row.selected_menu_items || []).forEach((rmi: any) => {
+    // Используем Map чтобы гарантировать уникальность по ID
+    menuItemsMap.set(rmi.id, {
+      id: rmi.id,
+      reservation_id: row.id,
+      menu_item_id: rmi.menu_item_id,
+      is_selected: rmi.is_selected,
+      name: rmi.name,
+      weight_per_person: rmi.weight_per_person,
+      price: rmi.price,
+      type: rmi.type,
+      order_index: rmi.order_index,
+      menu_item: rmi.menu_item
+    });
+  });
+  const selected_menu_items = Array.from(menuItemsMap.values());
+
+  // Calculate prepaid amount from payments array if needed (triggers should handle it though)
+  const prepaid_amount = Array.isArray(row.payments)
+    ? row.payments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0)
+    : Number(row.prepaid_amount) || 0;
+
+  return {
+    ...row,
+    tables,
+    table_ids,
+    selected_menu_items,
+    prepaid_amount
+  };
 }
 
 // ==================== RESERVATIONS ====================
@@ -876,7 +960,7 @@ export async function getReservations(filters?: {
     return []
   }
 
-  return data || []
+  return (data || []).map(normalizeReservation)
 }
 
 export async function getReservationById(id: string): Promise<Reservation | null> {
@@ -907,7 +991,7 @@ export async function getReservationById(id: string): Promise<Reservation | null
     return null
   }
 
-  return data
+  return normalizeReservation(data)
 }
 
 export async function createReservation(reservation: {
@@ -950,7 +1034,7 @@ export async function createReservation(reservation: {
     return null
   }
 
-  return data
+  return normalizeReservation(data)
 }
 
 export async function updateReservation(id: string, updates: Partial<Reservation>): Promise<Reservation | null> {
@@ -987,7 +1071,7 @@ export async function updateReservation(id: string, updates: Partial<Reservation
     return null
   }
 
-  return data
+  return normalizeReservation(data)
 }
 
 export async function deleteReservation(id: string): Promise<boolean> {

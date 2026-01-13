@@ -4,11 +4,11 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { 
-  CalendarDays, 
-  LayoutGrid, 
-  UtensilsCrossed, 
-  Users, 
+import {
+  CalendarDays,
+  LayoutGrid,
+  UtensilsCrossed,
+  Users,
   CreditCard,
   Menu,
   X,
@@ -39,11 +39,11 @@ export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-stone-200 bg-white/80 backdrop-blur-xl">
+    <header className="sticky top-0 z-50 w-full border-b border-stone-200 bg-white/80 backdrop-blur-xl print:hidden">
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-3">
-          <motion.div 
+          <motion.div
             className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 shadow-lg shadow-amber-500/25"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
@@ -65,8 +65,8 @@ export function Header() {
                 <motion.div
                   className={cn(
                     "relative flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors",
-                    isActive 
-                      ? "text-amber-700" 
+                    isActive
+                      ? "text-amber-700"
                       : "text-stone-600 hover:text-stone-900 hover:bg-stone-100"
                   )}
                   whileHover={{ scale: 1.02 }}

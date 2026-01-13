@@ -64,6 +64,7 @@ body {
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }
@@ -74,6 +75,7 @@ body {
     opacity: 0;
     transform: translateY(10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -85,6 +87,7 @@ body {
     opacity: 0;
     transform: translateX(-10px);
   }
+
   to {
     opacity: 1;
     transform: translateX(0);
@@ -96,6 +99,7 @@ body {
     opacity: 0;
     transform: scale(0.95);
   }
+
   to {
     opacity: 1;
     transform: scale(1);
@@ -103,9 +107,12 @@ body {
 }
 
 @keyframes pulse-soft {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0.7;
   }
@@ -218,6 +225,7 @@ body {
 
 /* Mobile-specific improvements */
 @media (max-width: 640px) {
+
   /* Safe area for notched devices */
   body {
     padding-top: env(safe-area-inset-top);
@@ -227,27 +235,38 @@ body {
   }
 
   /* Better touch targets for interactive elements */
-  button, a, [role="button"], input, select, textarea {
+  button,
+  a,
+  [role="button"],
+  input,
+  select,
+  textarea {
     min-height: 44px;
     min-width: 44px;
   }
 
   /* Enhanced touch feedback */
-  button:active, [role="button"]:active, .touch-feedback:active {
+  button:active,
+  [role="button"]:active,
+  .touch-feedback:active {
     transform: scale(0.98);
     transition: transform 0.1s ease;
   }
 
   /* Better hover states for touch devices */
   @media (hover: hover) and (pointer: fine) {
-    button:hover, [role="button"]:hover, .touch-feedback:hover {
+
+    button:hover,
+    [role="button"]:hover,
+    .touch-feedback:hover {
       transform: scale(1.02);
       transition: transform 0.2s ease;
     }
   }
 
   /* Prevent horizontal scroll on small screens */
-  html, body {
+  html,
+  body {
     overflow-x: hidden;
     width: 100%;
   }
@@ -292,15 +311,20 @@ input[type="number"] {
 
 /* Hide scrollbar utility */
 .scrollbar-hide {
-  -ms-overflow-style: none;  /* Internet Explorer 10+ */
-  scrollbar-width: none;  /* Firefox */
+  -ms-overflow-style: none;
+  /* Internet Explorer 10+ */
+  scrollbar-width: none;
+  /* Firefox */
 }
+
 .scrollbar-hide::-webkit-scrollbar {
-  display: none;  /* Safari and Chrome */
+  display: none;
+  /* Safari and Chrome */
 }
 
 /* Mobile optimizations */
 @media (max-width: 640px) {
+
   /* Increase touch targets */
   .touch-manipulation {
     touch-action: manipulation;
@@ -325,18 +349,25 @@ input[type="number"] {
   }
 
   /* Larger interactive elements */
-  button, .cursor-pointer, [role="button"] {
+  button,
+  .cursor-pointer,
+  [role="button"] {
     min-height: 44px;
   }
 
   /* Better form inputs */
-  input, textarea, select {
-    font-size: 16px; /* Prevents zoom on iOS */
-    min-height: 44px; /* Touch-friendly size */
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+    /* Prevents zoom on iOS */
+    min-height: 44px;
+    /* Touch-friendly size */
   }
 
   /* Ensure buttons are touch-friendly */
-  button, [role="button"] {
+  button,
+  [role="button"] {
     min-height: 44px;
     min-width: 44px;
   }
@@ -377,10 +408,21 @@ input[type="number"] {
     line-height: 1.5;
   }
 
-  h1 { font-size: clamp(1.5rem, 6vw, 2rem); }
-  h2 { font-size: clamp(1.25rem, 5vw, 1.5rem); }
-  h3 { font-size: clamp(1.125rem, 4.5vw, 1.25rem); }
-  h4 { font-size: clamp(1rem, 4vw, 1.125rem); }
+  h1 {
+    font-size: clamp(1.5rem, 6vw, 2rem);
+  }
+
+  h2 {
+    font-size: clamp(1.25rem, 5vw, 1.5rem);
+  }
+
+  h3 {
+    font-size: clamp(1.125rem, 4.5vw, 1.25rem);
+  }
+
+  h4 {
+    font-size: clamp(1rem, 4vw, 1.125rem);
+  }
 
   /* Better text sizing for mobile */
   .text-responsive {
@@ -513,6 +555,7 @@ div[class*="border-amber-500"][class*="bg-amber-500"][class*="bg-opacity-10"] {
 
 /* Мобильные устройства - более агрессивные правила */
 @media (max-width: 768px) {
+
   /* Переопределяем любые ограничения ширины на мобильных */
   div[style*="width: 64px"],
   div[style*="width: 80px"] {
@@ -752,13 +795,57 @@ body[style*="position: fixed"] div[style*="height: 200px"] {
 }
 
 /* Максимальное переопределение для любых блокировок */
-.TimeWheelPicker,
-.TimeWheelPicker *,
-[data-radix-popper-content-wrapper] div[style*="width: 64px"],
 [data-radix-popper-content-wrapper] div[style*="height: 160px"] {
   overflow-x: visible !important;
   overflow-y: scroll !important;
   touch-action: manipulation !important;
   pointer-events: auto !important;
   -webkit-overflow-scrolling: touch !important;
+}
+
+@media print {
+
+  header,
+  footer,
+  nav,
+  aside,
+  .print-hidden,
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  /* Ensure Dialog (modal) content is visible during print */
+  [data-radix-portal] {
+    position: static !important;
+  }
+
+  [data-radix-dialog-overlay] {
+    display: none !important;
+  }
+
+  [data-radix-dialog-content] {
+    position: static !important;
+    transform: none !important;
+    width: 100% !important;
+    max-width: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    background: transparent !important;
+  }
 }

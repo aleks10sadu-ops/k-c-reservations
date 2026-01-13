@@ -291,7 +291,9 @@ export function useReservations(filters?: {
           .filter(Boolean)
 
         // Calculate prepaid amount from payments array
-        const prepaid_amount = (row.payments || []).reduce((sum: number, p: any) => sum + (p.amount || 0), 0)
+        const prepaid_amount = Array.isArray(row.payments)
+          ? row.payments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0)
+          : Number(row.prepaid_amount) || 0
 
         return { ...row, tables, table_ids, selected_menu_items, prepaid_amount }
       })
