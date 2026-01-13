@@ -9,9 +9,11 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 
 export default function LoginPage() {
+  const [isSignUp, setIsSignUp] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
@@ -19,24 +21,43 @@ export default function LoginPage() {
     e.preventDefault()
     setIsLoading(true)
     setError(null)
+    setSuccess(null)
 
     try {
       const { createClient } = await import('@/lib/supabase/client')
       const supabase = createClient()
 
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
+      if (isSignUp) {
+        const { error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth/callback`,
+          }
+        })
 
-      if (authError) {
-        setError('Неверный email или пароль')
-        return
+        if (signUpError) {
+          setError(signUpError.message)
+          return
+        }
+
+        setSuccess('Регистрация успешна! Проверьте почту для подтверждения или попробуйте войти.')
+        setIsSignUp(false)
+      } else {
+        const { error: authError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        })
+
+        if (authError) {
+          setError('Неверный email или пароль')
+          return
+        }
+
+        window.location.href = '/'
       }
-
-      window.location.href = '/'
     } catch (err) {
-      setError('Произошла ошибка при входе')
+      setError('Произошла ошибка')
       console.error(err)
     } finally {
       setIsLoading(false)
@@ -75,7 +96,7 @@ export default function LoginPage() {
               Kucher&Conga
             </CardTitle>
             <CardDescription className="text-stone-500">
-              Войдите в систему бронирований
+              {isSignUp ? 'Зарегистрируйте новый аккаунт' : 'Войдите в систему бронирований'}
             </CardDescription>
           </CardHeader>
 
@@ -92,7 +113,7 @@ export default function LoginPage() {
                   <Input
                     id="email"
                     type="email"
-                    placeholder="admin@kucher.com"
+                    placeholder="example@kucher.com"
                     className="pl-10"
                     required
                     value={email}
@@ -148,6 +169,16 @@ export default function LoginPage() {
                   </motion.div>
                 )}
 
+                {success && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    className="bg-emerald-50 text-emerald-600 text-sm p-3 rounded-lg border border-emerald-100 mb-4"
+                  >
+                    {success}
+                  </motion.div>
+                )}
+
                 <Button
                   type="submit"
                   className="w-full gap-2 shadow-lg shadow-amber-500/25"
@@ -162,7 +193,7 @@ export default function LoginPage() {
                     />
                   ) : (
                     <>
-                      Войти
+                      {isSignUp ? 'Зарегистрироваться' : 'Войти'}
                       <ArrowRight className="h-4 w-4" />
                     </>
                   )}
@@ -174,14 +205,27 @@ export default function LoginPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.6 }}
-              className="mt-6 text-center"
+              className="mt-6 flex flex-col gap-2 text-center"
             >
-              <a
-                href="#"
-                className="text-sm text-amber-600 hover:text-amber-700 transition-colors"
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSignUp(!isSignUp)
+                  setError(null)
+                  setSuccess(null)
+                }}
+                className="text-sm text-amber-600 hover:text-amber-700 transition-colors font-medium"
               >
-                Забыли пароль?
-              </a>
+                {isSignUp ? 'Уже есть аккаунт? Войти' : 'Нет аккаунта? Зарегистрироваться'}
+              </button>
+              {!isSignUp && (
+                <a
+                  href="#"
+                  className="text-xs text-stone-400 hover:text-stone-600 transition-colors"
+                >
+                  Забыли пароль?
+                </a>
+              )}
             </motion.div>
           </CardContent>
         </Card>

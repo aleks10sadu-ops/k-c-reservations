@@ -54,7 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     .single()
 
                 if (error) {
-                    console.error('[Auth] Profile fetch error:', error)
+                    console.error('[Auth] Profile fetch error details:', JSON.stringify(error, null, 2))
                     setRole('guest')
                 } else {
                     console.log('[Auth] Profile fetched. Role:', data?.role)
