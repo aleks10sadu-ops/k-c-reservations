@@ -1,5 +1,5 @@
 // Статусы бронирования
-export type ReservationStatus = 
+export type ReservationStatus =
   | 'new'           // Новая бронь - Серый
   | 'in_progress'   // Взято в работу - Бежевый
   | 'prepaid'       // Предоплата внесена - Нежный голубой
@@ -7,13 +7,13 @@ export type ReservationStatus =
   | 'canceled'      // Отмена брони - Нежный красный
 
 // Статусы гостей
-export type GuestStatus = 
+export type GuestStatus =
   | 'regular'       // Обычный гость
   | 'frequent'      // Постоянный гость
   | 'vip'           // VIP
 
 // Типы блюд в меню (стандартные)
-export type StandardMenuItemType = 
+export type StandardMenuItemType =
   | 'appetizer'     // Закуски
   | 'salad'         // Салаты
   | 'set'           // Сеты
@@ -113,9 +113,15 @@ export interface Menu {
 export interface ReservationMenuItem {
   id: string
   reservation_id: string
-  menu_item_id: string
-  menu_item: MenuItem
+  menu_item_id?: string | null
+  menu_item?: MenuItem | null
   is_selected: boolean       // Выбрано ли (для селективных позиций)
+  // Overrides for customization
+  name?: string
+  weight_per_person?: number
+  price?: number
+  type?: MenuItemType
+  order_index?: number
 }
 
 // Гость
@@ -168,6 +174,8 @@ export interface Reservation {
   color?: string
   total_amount: number
   prepaid_amount: number
+  balance: number
+  surplus: number
   payments: Payment[]
   comments?: string
   created_by?: string
@@ -271,8 +279,8 @@ export const STANDARD_MENU_ITEM_TYPE_CONFIG: Record<StandardMenuItemType, {
 
 // Функция для получения метки типа блюда (поддерживает стандартные и кастомные)
 export function getMenuItemTypeLabel(
-  type: MenuItemType, 
-  customTypes?: CustomMenuItemType[], 
+  type: MenuItemType,
+  customTypes?: CustomMenuItemType[],
   plural: boolean = false
 ): string {
   // Проверяем стандартные типы
@@ -280,7 +288,7 @@ export function getMenuItemTypeLabel(
     const config = STANDARD_MENU_ITEM_TYPE_CONFIG[type as StandardMenuItemType]
     return plural ? config.labelPlural : config.label
   }
-  
+
   // Проверяем кастомные типы
   if (customTypes) {
     const customType = customTypes.find(ct => ct.name === type)
@@ -288,7 +296,7 @@ export function getMenuItemTypeLabel(
       return plural ? customType.label_plural : customType.label
     }
   }
-  
+
   // Если не найдено, возвращаем само значение
   return type
 }

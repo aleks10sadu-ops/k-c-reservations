@@ -231,6 +231,11 @@ export function useReservations(filters?: {
             id,
             menu_item_id,
             is_selected,
+            name,
+            weight_per_person,
+            price,
+            type,
+            order_index,
             menu_item:menu_items (*)
           )
         `)
@@ -276,6 +281,11 @@ export function useReservations(filters?: {
             reservation_id: row.id,
             menu_item_id: rmi.menu_item_id,
             is_selected: rmi.is_selected,
+            name: rmi.name,
+            weight_per_person: rmi.weight_per_person,
+            price: rmi.price,
+            type: rmi.type,
+            order_index: rmi.order_index,
             menu_item: rmi.menu_item
           }))
           .filter(Boolean)

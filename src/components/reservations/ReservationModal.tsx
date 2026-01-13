@@ -21,9 +21,10 @@ import {
   MessageSquare,
   ChevronDown,
   ChevronUp,
-  AlertCircle
+  AlertCircle,
+  Copy
 } from 'lucide-react'
-import { Reservation, ReservationStatus, RESERVATION_STATUS_CONFIG, getMenuItemTypeLabel, MenuItemType, Guest, ReservationMenuItem, Payment } from '@/types'
+import { Reservation, ReservationStatus, RESERVATION_STATUS_CONFIG, getMenuItemTypeLabel, MenuItemType, Guest, ReservationMenuItem, Payment, MenuItem } from '@/types'
 import { cn, formatCurrency, formatDate, formatTime, calculatePlates, calculateTotalWeight } from '@/lib/utils'
 import {
   Dialog,
@@ -49,9 +50,10 @@ import {
 } from '@/components/ui/select'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { DateTimePicker } from '@/components/ui/datetime-picker'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import TimeWheelPicker from '@/components/TimeWheelPicker'
 import { useHalls, useMenus, useMenuItems, useMenuItemTypes, useGuests, useTables, useLayoutItems, useCreateMutation, useUpdateMutation, useDeleteMutation, useReservations } from '@/hooks/useSupabase'
-import { updateReservationServerAction } from '@/lib/supabase/api'
+import { updateReservationServerAction, syncReservationTablesServerAction, syncReservationMenuItemsServerAction } from '@/lib/supabase/api'
 import { X } from 'lucide-react'
 import { HallScheme } from '@/components/halls/HallScheme'
 import { format } from 'date-fns'
@@ -84,8 +86,30 @@ export function ReservationModal({
   const [mode, setMode] = useState(initialMode)
   const [showMenuEdit, setShowMenuEdit] = useState(false)
   const [selectedSalads, setSelectedSalads] = useState<string[]>([])
+  const [itemOverrides, setItemOverrides] = useState<Record<string, Partial<ReservationMenuItem>>>({})
+  const [adHocItems, setAdHocItems] = useState<ReservationMenuItem[]>([])
+  const [wasSaladsInitialized, setWasSaladsInitialized] = useState(false)
+  const [duplicateDate, setDuplicateDate] = useState<string>('')
+  const [isDuplicating, setIsDuplicating] = useState(false)
   // Внутреннее состояние для хранения обновленного бронирования
   const [localReservation, setLocalReservation] = useState<Reservation | null>(reservation)
+
+  // Reset showMenuEdit when mode changes to view
+  useEffect(() => {
+    if (mode === 'view') {
+      setShowMenuEdit(false)
+    }
+  }, [mode])
+
+  // Используем локальное состояние, если оно есть, иначе проп
+  const currentReservation = localReservation || reservation
+
+  // Инициализируем дату для копирования при загрузке бронирования
+  useEffect(() => {
+    if (currentReservation?.date) {
+      setDuplicateDate(currentReservation.date)
+    }
+  }, [currentReservation?.date])
 
   // Status variant mapping
   const getStatusVariant = (status: ReservationStatus) => {
@@ -98,9 +122,6 @@ export function ReservationModal({
     }
     return variants[status]
   }
-
-  // Используем локальное состояние, если оно есть, иначе проп
-  const currentReservation = localReservation || reservation
 
   // Form state
   const [formData, setFormData] = useState({
@@ -268,14 +289,39 @@ export function ReservationModal({
         setSelectedTables(initialTables)
         setDraftTables(initialTables)
 
-        // Инициализируем выбранные салаты из сохраненных данных
+        // Инициализируем выбранные салаты и переопределения из сохраненных данных
         if (currentReservation.selected_menu_items?.length) {
           const selectedIds = currentReservation.selected_menu_items
-            .filter(rmi => rmi.is_selected)
-            .map(rmi => rmi.menu_item_id)
+            .filter(rmi => rmi.is_selected && rmi.menu_item_id)
+            .map(rmi => rmi.menu_item_id as string)
           setSelectedSalads(selectedIds)
+
+          const overrides: Record<string, Partial<ReservationMenuItem>> = {}
+          const adHoc: ReservationMenuItem[] = []
+
+          currentReservation.selected_menu_items.forEach(rmi => {
+            if (rmi.menu_item_id) {
+              if (rmi.weight_per_person || rmi.name || rmi.order_index || rmi.price) {
+                overrides[rmi.menu_item_id] = {
+                  weight_per_person: rmi.weight_per_person,
+                  name: rmi.name,
+                  order_index: rmi.order_index,
+                  price: rmi.price
+                }
+              }
+            } else {
+              // This is an ad-hoc item (no menu_item_id)
+              adHoc.push(rmi)
+            }
+          })
+          setItemOverrides(overrides)
+          setAdHocItems(adHoc)
+          setWasSaladsInitialized(true)
         } else {
           setSelectedSalads([])
+          setItemOverrides({})
+          setAdHocItems([])
+          setWasSaladsInitialized((initialMode as string) !== 'create')
         }
       } else if (initialMode === 'create') {
         // Определяем hall_id - приоритет preselectedHallId, затем hall стола, затем первый зал
@@ -326,31 +372,27 @@ export function ReservationModal({
 
   // Инициализируем selectedSalads при переходе в режим редактирования или при выборе меню
   useEffect(() => {
-    if (currentMenu && selectedSalads.length === 0) {
+    if (currentMenu && !wasSaladsInitialized) {
       const items = menuItems.filter(i => i.menu_id === currentMenu.id)
       const selectableItems = items.filter(item => item.is_selectable)
 
-      // Если есть сохраненные данные, используем их
-      if (currentReservation?.selected_menu_items?.length) {
-        const savedSelectableIds = currentReservation.selected_menu_items
-          .filter(rmi => rmi.is_selected && selectableItems.some(si => si.id === rmi.menu_item_id))
-          .map(rmi => rmi.menu_item_id)
-        if (savedSelectableIds.length > 0) {
-          setSelectedSalads(savedSelectableIds)
-          return
-        }
+      // Если это существующее бронирование, мы уже должны были загрузить данные выше
+      if (currentReservation?.id && mode !== 'create') {
+        return
       }
 
-      // Если нет сохраненных данных, инициализируем первые по умолчанию
+      // Если нет сохраненных данных (новое бронирование), инициализируем первые по умолчанию
       if (selectableItems.length > 0) {
         const maxSelections = selectableItems[0]?.max_selections || selectableItems.length
         const defaultSelected = selectableItems
           .slice(0, maxSelections)
           .map(item => item.id)
+          .filter(Boolean) as string[]
         setSelectedSalads(defaultSelected)
+        setWasSaladsInitialized(true)
       }
     }
-  }, [currentMenu, menuItems, currentReservation?.selected_menu_items, selectedSalads.length])
+  }, [currentMenu, menuItems, currentReservation?.id, mode, wasSaladsInitialized])
 
   const handleToggleMenuEdit = () => {
     const newShowMenuEdit = !showMenuEdit
@@ -363,8 +405,9 @@ export function ReservationModal({
       // Если есть сохраненные данные, используем их
       if (currentReservation?.selected_menu_items?.length) {
         const savedSelectableIds = currentReservation.selected_menu_items
-          .filter(rmi => rmi.is_selected && selectableItems.some(si => si.id === rmi.menu_item_id))
+          .filter(rmi => rmi.is_selected && rmi.menu_item_id && selectableItems.some(si => si.id === rmi.menu_item_id))
           .map(rmi => rmi.menu_item_id)
+          .filter(Boolean) as string[]
         if (savedSelectableIds.length > 0) {
           setSelectedSalads(savedSelectableIds)
           setShowMenuEdit(newShowMenuEdit)
@@ -378,6 +421,7 @@ export function ReservationModal({
         const defaultSelected = selectableItems
           .slice(0, maxSelections)
           .map(item => item.id)
+          .filter(Boolean) as string[]
         setSelectedSalads(defaultSelected)
       }
     }
@@ -390,8 +434,14 @@ export function ReservationModal({
       const total = currentMenu.price_per_person * formData.guests_count
       return isNaN(total) ? 0 : total
     }
+
+    // Если меню не выбрано, суммируем цены произвольных позиций
+    if (adHocItems.length > 0) {
+      return adHocItems.reduce((sum, item) => sum + (item.price || 0), 0)
+    }
+
     return formData.total_amount || 0
-  }, [currentMenu, formData.guests_count, formData.total_amount])
+  }, [currentMenu, formData.guests_count, formData.total_amount, adHocItems])
 
   const occupiedTableMap = useMemo(() => {
     const map = new Map<string, string>()
@@ -405,15 +455,29 @@ export function ReservationModal({
     return map
   }, [dayReservations, currentReservation?.id])
 
-  const menuItemsByType = useMemo((): Partial<Record<MenuItemType, typeof menuItems>> => {
-    if (!currentMenu) return {}
-    const items = menuItems.filter(i => i.menu_id === currentMenu.id)
-    return items.reduce((acc, item) => {
-      if (!acc[item.type]) acc[item.type] = []
-      acc[item.type]!.push(item)
-      return acc
-    }, {} as Partial<Record<MenuItemType, typeof items>>)
-  }, [currentMenu, menuItems])
+  const menuItemsByType = useMemo(() => {
+    const result: Record<string, (MenuItem | ReservationMenuItem)[]> = {}
+
+    // 1. Сначала добавляем позиции из глобального меню (если выбрано)
+    if (currentMenu) {
+      const globalItems = menuItems.filter(i => i.menu_id === currentMenu.id)
+      globalItems.forEach(item => {
+        if (!result[item.type]) result[item.type] = []
+        result[item.type].push(item)
+      })
+    }
+
+    // 2. Затем добавляем произвольные позиции (ad-hoc) этого бронирования
+    adHocItems.forEach(item => {
+      const type = item.type || 'Other'
+      if (!result[type]) result[type] = []
+
+      // Избегаем дубликатов, если вдруг они просочились сюда (хотя adHocItems по определению без menu_item_id)
+      result[type].push(item)
+    })
+
+    return result
+  }, [currentMenu, menuItems, adHocItems])
 
   const handleMobileTableClick = (tableId: string) => {
     setDraftTables((prev) => {
@@ -431,51 +495,144 @@ export function ReservationModal({
 
 
   const syncReservationTables = async (reservationId?: string, tableIds: string[] = []) => {
-    if (!reservationId) return
+    if (!reservationId) {
+      console.error('syncReservationTables: reservationId is missing')
+      return
+    }
+
     const supabase = createClient()
-    // Сначала очищаем предыдущие связи
-    await supabase.from('reservation_tables').delete().eq('reservation_id', reservationId)
-    if (!tableIds.length) return
-    const payload = tableIds.map((tableId) => ({ reservation_id: reservationId, table_id: tableId }))
-    await supabase.from('reservation_tables').insert(payload)
+    try {
+      console.log('--- START syncReservationTables ---')
+      console.log('Reservation ID:', reservationId)
+      console.log('Table IDs input:', tableIds)
+
+      // Validate UUIDs roughly
+      const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str)
+
+      if (!isUUID(reservationId)) {
+        console.error('INVALID reservationId format:', reservationId)
+      }
+
+      const validTableIds = Array.from(new Set(tableIds)).filter(id => {
+        if (!id) return false
+        if (!isUUID(id)) {
+          console.error('INVALID tableId format detected:', id)
+          return false
+        }
+        return true
+      })
+
+      console.log('Valid Table IDs for sync:', validTableIds)
+
+      // Сначала очищаем предыдущие связи
+      const { error: deleteError } = await supabase.from('reservation_tables').delete().eq('reservation_id', reservationId)
+      if (deleteError) {
+        console.error('DELETE ERROR in syncReservationTables:', deleteError)
+        throw deleteError
+      }
+
+      if (validTableIds.length === 0) {
+        console.log('No tables to sync, skipping insert')
+        return
+      }
+
+      const payload = validTableIds.map((tableId) => ({
+        reservation_id: reservationId,
+        table_id: tableId
+      }))
+
+      console.log('Inserting payload:', JSON.stringify(payload))
+
+      const { error: insertError } = await supabase.from('reservation_tables').insert(payload)
+
+      if (insertError) {
+        console.error('INSERT ERROR in syncReservationTables:', {
+          message: insertError.message,
+          code: insertError.code,
+          details: insertError.details,
+          hint: insertError.hint
+        })
+        alert(`Ошибка БД при привязке столов:\n${insertError.message}\nCode: ${insertError.code}`)
+        throw insertError
+      }
+
+      console.log('Successfully synced tables')
+      console.log('--- END syncReservationTables ---')
+    } catch (error: any) {
+      console.error('CATCH in syncReservationTables:', error)
+      // Manual extraction of common error properties
+      const errorData = {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+        stack: error.stack
+      }
+      console.log('Detailed Error Data:', JSON.stringify(errorData, null, 2))
+    }
   }
 
   const syncReservationMenuItems = async (reservationId?: string, selectedItemIds: string[] = []) => {
-    if (!reservationId || !currentMenu) return
+    if (!reservationId) return
     const supabase = createClient()
 
-    // Получаем все позиции меню для текущего меню
-    const allMenuItems = menuItems.filter(i => i.menu_id === currentMenu.id)
-
-    // Сначала очищаем все предыдущие связи для этого бронирования и меню
-    const allMenuItemIds = allMenuItems.map(item => item.id)
-    if (allMenuItemIds.length > 0) {
-      await supabase
-        .from('reservation_menu_items')
-        .delete()
-        .eq('reservation_id', reservationId)
-        .in('menu_item_id', allMenuItemIds)
-    }
+    // Сначала очищаем ВСЕ предыдущие связи для этого бронирования
+    // Это гарантирует отсутствие старых данных при смене меню
+    await supabase.from('reservation_menu_items').delete().eq('reservation_id', reservationId)
 
     // Добавляем выбранные селективные позиции
-    if (selectedItemIds.length > 0) {
-      const payload = selectedItemIds.map((menuItemId) => ({
-        reservation_id: reservationId,
-        menu_item_id: menuItemId,
-        is_selected: true
-      }))
+    if (currentMenu && selectedItemIds.length > 0) {
+      const payload = selectedItemIds.map((menuItemId) => {
+        const override = itemOverrides[menuItemId] || {}
+        return {
+          reservation_id: reservationId,
+          menu_item_id: menuItemId,
+          is_selected: true,
+          weight_per_person: override.weight_per_person,
+          name: override.name,
+          order_index: override.order_index,
+          price: override.price
+        }
+      })
       await supabase.from('reservation_menu_items').insert(payload)
     }
 
     // Добавляем все неселективные позиции (они всегда включены)
-    const nonSelectableItems = allMenuItems.filter(item => !item.is_selectable)
-    if (nonSelectableItems.length > 0) {
-      const payload = nonSelectableItems.map((item) => ({
+    if (currentMenu) {
+      const allMenuItems = menuItems.filter(i => i.menu_id === currentMenu.id)
+      const nonSelectableItems = allMenuItems.filter(item => !item.is_selectable)
+      if (nonSelectableItems.length > 0) {
+        const payload = nonSelectableItems.map((item) => {
+          const override = itemOverrides[item.id] || {}
+          return {
+            reservation_id: reservationId,
+            menu_item_id: item.id,
+            is_selected: true,
+            weight_per_person: override.weight_per_person,
+            name: override.name,
+            order_index: override.order_index,
+            price: override.price
+          }
+        })
+        const { error } = await supabase.from('reservation_menu_items').insert(payload)
+        if (error) console.error('Error inserting non-selectable menu items:', error)
+      }
+    }
+
+    // Добавляем произвольные позиции (ad-hoc)
+    if (adHocItems.length > 0) {
+      const payload = adHocItems.map((item) => ({
         reservation_id: reservationId,
-        menu_item_id: item.id,
-        is_selected: true
+        menu_item_id: null, // No global menu item link
+        is_selected: true,
+        weight_per_person: item.weight_per_person,
+        name: item.name,
+        order_index: item.order_index,
+        price: item.price,
+        type: item.type
       }))
-      await supabase.from('reservation_menu_items').insert(payload)
+      const { error } = await supabase.from('reservation_menu_items').insert(payload)
+      if (error) console.error('Error inserting ad-hoc menu items:', error)
     }
   }
 
@@ -485,6 +642,56 @@ export function ReservationModal({
       if (result) {
         onSaveSuccess?.()
       }
+    }
+  }
+
+  const handleDuplicate = async () => {
+    if (!currentReservation || !duplicateDate) {
+      alert('Выберите дату для копирования')
+      return
+    }
+
+    setIsDuplicating(true)
+    try {
+      // 1. Create new reservation (cloning fields)
+      const dataToSave = {
+        date: duplicateDate,
+        time: currentReservation.time,
+        hall_id: currentReservation.hall_id,
+        table_id: selectedTables.length > 0 ? selectedTables[0] : (formData.table_id || undefined),
+        guest_id: currentReservation.guest_id,
+        guests_count: Number(formData.guests_count) || 1,
+        children_count: Number(formData.children_count) || 0,
+        menu_id: formData.menu_id || undefined,
+        color: formData.color,
+        status: 'new' as ReservationStatus,
+        total_amount: Number(computedTotal),
+        prepaid_amount: 0, // Reset payments for the copy
+        comments: formData.comments,
+      }
+
+      const created = await createReservation.mutate(dataToSave)
+
+      if (created) {
+        // 2. Clone tables
+        if (selectedTables.length > 0) {
+          await syncReservationTables(created.id, selectedTables)
+        }
+
+        // 3. Clone menu items
+        // syncReservationMenuItems uses current component states (selectedSalads, itemOverrides, adHocItems)
+        // which correctly represent the current (original) reservation's menu configuration.
+        await syncReservationMenuItems(created.id, selectedSalads)
+
+        alert(`Бронирование успешно скопировано на ${formatDate(duplicateDate)}`)
+        onSaveSuccess?.()
+        onClose()
+      }
+    } catch (error) {
+      console.error('Error duplicating reservation:', error)
+      alert('Ошибка при копировании: ' + (error as any)?.message)
+    } finally {
+      setIsDuplicating(false)
     }
   }
 
@@ -629,7 +836,7 @@ export function ReservationModal({
       date: dateToSave,
       time: timeForDB,
       hall_id: formData.hall_id,
-      table_id: selectedTables.length > 0 ? selectedTables[0] : (formData.table_id && formData.table_id.trim() ? formData.table_id : undefined),
+      table_id: statusToSave === 'canceled' ? null : (selectedTables.length > 0 ? selectedTables[0] : (formData.table_id && formData.table_id.trim() ? formData.table_id : undefined)),
       guest_id: guestId,
       guests_count: Number(formData.guests_count) || 1,
       children_count: Number(formData.children_count) || 0,
@@ -643,36 +850,55 @@ export function ReservationModal({
 
     // Формируем selected_menu_items для обновления отображения
     const buildSelectedMenuItems = (reservationId: string): ReservationMenuItem[] => {
-      if (!currentMenu) return []
-
-      const allMenuItemsForMenu = menuItems.filter(i => i.menu_id === currentMenu.id)
-      const selectableItems = allMenuItemsForMenu.filter(item => item.is_selectable)
-      const nonSelectableItems = allMenuItemsForMenu.filter(item => !item.is_selectable)
-
       const result: ReservationMenuItem[] = []
 
-      // Добавляем выбранные селективные позиции
-      selectedSalads.forEach(menuItemId => {
-        const menuItem = selectableItems.find(item => item.id === menuItemId)
-        if (menuItem) {
+      if (currentMenu) {
+        const allMenuItemsForMenu = menuItems.filter(i => i.menu_id === currentMenu.id)
+        const selectableItems = allMenuItemsForMenu.filter(item => item.is_selectable)
+        const nonSelectableItems = allMenuItemsForMenu.filter(item => !item.is_selectable)
+
+        // Добавляем выбранные селективные позиции
+        selectedSalads.forEach(menuItemId => {
+          const menuItem = selectableItems.find(item => item.id === menuItemId)
+          const override = itemOverrides[menuItemId] || {}
+          if (menuItem) {
+            result.push({
+              id: '',
+              reservation_id: reservationId,
+              menu_item_id: menuItemId,
+              is_selected: true,
+              name: override.name,
+              weight_per_person: override.weight_per_person,
+              price: override.price,
+              order_index: override.order_index,
+              menu_item: menuItem
+            })
+          }
+        })
+
+        // Добавляем все неселективные позиции
+        nonSelectableItems.forEach(menuItem => {
+          const override = itemOverrides[menuItem.id] || {}
           result.push({
-            id: '', // Временный ID, будет заменен при загрузке
+            id: '',
             reservation_id: reservationId,
-            menu_item_id: menuItemId,
+            menu_item_id: menuItem.id,
             is_selected: true,
+            name: override.name,
+            weight_per_person: override.weight_per_person,
+            price: override.price,
+            order_index: override.order_index,
             menu_item: menuItem
           })
-        }
-      })
+        })
+      }
 
-      // Добавляем все неселективные позиции
-      nonSelectableItems.forEach(menuItem => {
+      // Добавляем произвольные позиции (ad-hoc)
+      adHocItems.forEach(item => {
         result.push({
-          id: '',
+          ...item,
           reservation_id: reservationId,
-          menu_item_id: menuItem.id,
-          is_selected: true,
-          menu_item: menuItem
+          id: (item.id && item.id.startsWith('new-')) ? '' : item.id
         })
       })
 
@@ -683,7 +909,7 @@ export function ReservationModal({
 
     if (mode === 'create') {
       try {
-        const created = await createReservation.mutate(dataToSave)
+        const created = await createReservation.mutate(dataToSave as any)
         if (created) {
           const tablesToSync = statusToSave === 'canceled' ? [] : selectedTables
           await syncReservationTables(created.id, tablesToSync)
@@ -716,36 +942,43 @@ export function ReservationModal({
         alert('Ошибка при создании бронирования: ' + (error as any)?.message);
       }
     } else if (currentReservation) {
-      console.log('Save Debug - Original formData.date:', formData.date)
-      console.log('Save Debug - Processed dateToSave:', dateToSave)
-      console.log('Save Debug - Final dataToSave:', dataToSave)
+      try {
+        console.log('Save Debug - Original formData.date:', formData.date)
+        console.log('Save Debug - Processed dateToSave:', dateToSave)
+        console.log('Save Debug - Final dataToSave:', dataToSave)
 
-      const updateResult = await updateReservationServerAction(currentReservation.id, dataToSave)
-      console.log('Server action update result:', updateResult)
+        const updateResult = await updateReservationServerAction(currentReservation.id, dataToSave as any)
+        console.log('Server action update result:', updateResult)
 
-      if (!updateResult.success) {
-        console.error('Server action failed:', updateResult.error)
-        alert('Ошибка сохранения: ' + ((updateResult.error as any)?.message || 'Неизвестная ошибка'))
-        return
-      }
+        if (!updateResult.success) {
+          console.error('Server action failed:', updateResult.error)
+          alert('Ошибка сохранения: ' + ((updateResult.error as any)?.message || 'Неизвестная ошибка'))
+          return
+        }
 
-      const result = updateResult.data
-      if (result) {
-        const tablesToSync = statusToSave === 'canceled' ? [] : selectedTables
-        await syncReservationTables(currentReservation.id, tablesToSync)
-        await syncReservationMenuItems(currentReservation.id, selectedSalads)
+        const result = updateResult.data
+        if (result) {
+          const tablesToSync = statusToSave === 'canceled' ? [] : selectedTables
+          await Promise.all([
+            syncReservationTables(currentReservation.id, tablesToSync),
+            syncReservationMenuItems(currentReservation.id, selectedSalads)
+          ])
 
-        finalReservation = {
-          ...currentReservation,
-          ...(dataToSave as any),
-          status: statusToSave,
-          tables: tables.filter(t => (statusToSave === 'canceled' ? [] : selectedTables).includes(t.id)),
-          table_ids: statusToSave === 'canceled' ? [] : selectedTables,
-          selected_menu_items: buildSelectedMenuItems(currentReservation.id)
-        } as Reservation;
-        setLocalReservation(finalReservation)
-        setFormData(prev => ({ ...prev, status: statusToSave }))
-        onSaveSuccess?.(finalReservation)
+          finalReservation = {
+            ...currentReservation,
+            ...(dataToSave as any),
+            status: statusToSave,
+            tables: tables.filter(t => (statusToSave === 'canceled' ? [] : selectedTables).includes(t.id)),
+            table_ids: statusToSave === 'canceled' ? [] : selectedTables,
+            selected_menu_items: buildSelectedMenuItems(currentReservation.id)
+          } as Reservation;
+          setLocalReservation(finalReservation)
+          setFormData(prev => ({ ...prev, status: statusToSave }))
+          onSaveSuccess?.(finalReservation)
+        }
+      } catch (error) {
+        console.error('Error updating reservation:', error);
+        alert('Ошибка при сохранении изменений: ' + (error as any)?.message);
       }
     }
   }
@@ -828,7 +1061,6 @@ export function ReservationModal({
                     setFormData((prev) => ({ ...prev, table_id: draftTables[0] ?? '' }))
                     setShowDesktopTablePicker(false)
                   }}
-                  disabled={draftTables.length > 0 && !hasEnoughCapacity}
                 >
                   Готово
                 </Button>
@@ -908,7 +1140,6 @@ export function ReservationModal({
                     setFormData((prev) => ({ ...prev, table_id: draftTables[0] ?? '' }))
                     setShowMobileTablePicker(false)
                   }}
-                  disabled={draftTables.length > 0 && !hasEnoughCapacity}
                 >
                   Готово
                 </Button>
@@ -963,6 +1194,52 @@ export function ReservationModal({
 
             {/* Action Buttons - всегда справа */}
             <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+              {reservation && mode !== 'create' && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1 sm:gap-2 h-8 sm:h-9 text-stone-600 hover:text-amber-600 hover:border-amber-200"
+                      onClick={() => setDuplicateDate(formData.date)}
+                    >
+                      <Copy className="h-3 w-3 sm:h-4 sm:w-4" />
+                      <span className="hidden sm:inline text-xs sm:text-sm">Копия</span>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80 p-4" align="end">
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <h4 className="font-medium leading-none text-stone-900">Копировать бронь</h4>
+                        <p className="text-sm text-stone-500">
+                          Выберите новую дату для создания копии этого бронирования. Все данные, кроме оплат, будут перенесены.
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-stone-700">Новая дата</Label>
+                        <DateTimePicker
+                          value={duplicateDate}
+                          onChange={(date) => setDuplicateDate(date)}
+                          dateOnly={true}
+                        />
+                      </div>
+                      <Button
+                        className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+                        onClick={handleDuplicate}
+                        disabled={isDuplicating || !duplicateDate}
+                      >
+                        {isDuplicating ? (
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        ) : (
+                          <Copy className="h-4 w-4 mr-2" />
+                        )}
+                        Создать копию
+                      </Button>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              )}
+
               {mode === 'view' && reservation && (
                 <Button
                   variant="outline"
@@ -1516,7 +1793,7 @@ export function ReservationModal({
                   </div>
 
                   {/* Menu Items */}
-                  {currentMenu && (
+                  {(currentMenu || adHocItems.length > 0 || (showMenuEdit && mode !== 'view')) && (
                     <AnimatePresence>
                       {(mode === 'view' || showMenuEdit) && (
                         <motion.div
@@ -1525,12 +1802,13 @@ export function ReservationModal({
                           exit={{ opacity: 0, height: 0 }}
                           className="space-y-3"
                         >
-                          {(Object.keys(menuItemsByType) as MenuItemType[]).map((type) => {
+                          {(Object.keys(menuItemsByType) as string[]).map((type) => {
                             const items = menuItemsByType[type]
                             if (!items?.length) return null
 
-                            const typeLabelPlural = getMenuItemTypeLabel(type, customTypes, true)
-                            const isSelectable = items[0]?.is_selectable
+                            const typeLabelPlural = getMenuItemTypeLabel(type as MenuItemType, customTypes, true)
+                            const firstItem = items[0]
+                            const isSelectableGroup = !(!('menu_id' in firstItem) || !(firstItem as MenuItem).is_selectable)
                             const platesCount = calculatePlates(formData.guests_count)
 
                             return (
@@ -1545,26 +1823,40 @@ export function ReservationModal({
                                 </div>
                                 <div className="divide-y divide-stone-100">
                                   {items.map((item, idx) => {
+                                    const isAdHoc = !('menu_id' in item)
+                                    const itemId = isAdHoc ? (item as ReservationMenuItem).id : (item as MenuItem).id
+                                    const itemName = isAdHoc ? (item as ReservationMenuItem).name : (item as MenuItem).name
+                                    const itemWeight = isAdHoc ? (item as ReservationMenuItem).weight_per_person : (item as MenuItem).weight_per_person
+                                    const isSelectable = !isAdHoc && (item as MenuItem).is_selectable
+
                                     let isSelected: boolean
-                                    if (!isSelectable) {
+                                    if (isAdHoc) {
+                                      isSelected = true
+                                    } else if (!isSelectable) {
                                       isSelected = true
                                     } else if (showMenuEdit) {
-                                      isSelected = selectedSalads.includes(item.id)
+                                      isSelected = selectedSalads.includes(itemId)
                                     } else if (mode === 'view' && currentReservation?.selected_menu_items?.length) {
                                       isSelected = currentReservation.selected_menu_items.some(
-                                        rmi => rmi.menu_item_id === item.id && rmi.is_selected
+                                        rmi => rmi.menu_item_id === itemId && rmi.is_selected
                                       )
                                     } else {
-                                      isSelected = selectedSalads.includes(item.id) || (selectedSalads.length === 0 && idx < (items[0]?.max_selections || items.length))
+                                      isSelected = selectedSalads.includes(itemId) || (selectedSalads.length === 0 && idx < ((item as MenuItem).max_selections || items.length))
                                     }
 
-                                    const totalWeight = calculateTotalWeight(item.weight_per_person, formData.guests_count)
+                                    const displayWeight = isAdHoc
+                                      ? (item as ReservationMenuItem).weight_per_person
+                                      : (itemOverrides[itemId]?.weight_per_person ?? (item as MenuItem).weight_per_person)
+
+                                    const displayName = isAdHoc
+                                      ? (item as ReservationMenuItem).name
+                                      : (itemOverrides[itemId]?.name ?? (item as MenuItem).name)
 
                                     return (
                                       <div
-                                        key={item.id}
+                                        key={isAdHoc ? `adhoc-${itemId}-${idx}` : itemId}
                                         className={cn(
-                                          "px-4 py-3 flex items-center justify-between gap-4",
+                                          "px-4 py-3 flex items-center justify-between gap-4 group",
                                           !isSelected && "opacity-50"
                                         )}
                                       >
@@ -1574,33 +1866,175 @@ export function ReservationModal({
                                               checked={isSelected}
                                               onCheckedChange={(checked) => {
                                                 if (checked) {
-                                                  if (!selectedSalads.includes(item.id)) {
-                                                    setSelectedSalads([...selectedSalads, item.id])
+                                                  if (!selectedSalads.includes(itemId)) {
+                                                    setSelectedSalads([...selectedSalads, itemId])
                                                   }
                                                 } else {
-                                                  setSelectedSalads(selectedSalads.filter(id => id !== item.id))
+                                                  setSelectedSalads(selectedSalads.filter(id => id !== itemId))
                                                 }
                                               }}
                                             />
                                           )}
-                                          <span className={cn(
-                                            "text-sm break-anywhere flex-1",
-                                            isSelected ? "text-stone-900" : "text-stone-400"
-                                          )}>
-                                            {item.name}
-                                          </span>
+                                          <div className="flex flex-col flex-1 min-w-0">
+                                            <span className={cn(
+                                              "text-sm break-anywhere",
+                                              isSelected ? "text-stone-900" : "text-stone-400"
+                                            )}>
+                                              {showMenuEdit && mode !== 'view' ? (
+                                                <Input
+                                                  className="h-8 py-1 px-2 text-sm"
+                                                  value={displayName ?? ''}
+                                                  onChange={(e) => {
+                                                    if (isAdHoc) {
+                                                      const newAdHoc = [...adHocItems]
+                                                      const adItem = newAdHoc.find(ai => ai.id === itemId)
+                                                      if (adItem) adItem.name = e.target.value
+                                                      setAdHocItems(newAdHoc)
+                                                    } else {
+                                                      setItemOverrides({
+                                                        ...itemOverrides,
+                                                        [itemId]: { ...itemOverrides[itemId], name: e.target.value }
+                                                      })
+                                                    }
+                                                  }}
+                                                />
+                                              ) : (
+                                                displayName
+                                              )}
+                                            </span>
+                                          </div>
                                         </div>
                                         <div className="flex items-center gap-4 text-sm text-stone-500 shrink-0">
-                                          <span className="whitespace-nowrap">{item.weight_per_person}г/чел</span>
-                                          <span className="font-medium whitespace-nowrap">{totalWeight}г</span>
+                                          <div className="flex items-center gap-1">
+                                            {showMenuEdit && mode !== 'view' ? (
+                                              <Input
+                                                type="number"
+                                                className="h-8 w-16 py-1 px-2 text-sm"
+                                                value={displayWeight ?? 0}
+                                                onChange={(e) => {
+                                                  const val = parseInt(e.target.value) || 0
+                                                  if (isAdHoc) {
+                                                    const newAdHoc = [...adHocItems]
+                                                    const adItem = newAdHoc.find(ai => ai.id === itemId)
+                                                    if (adItem) adItem.weight_per_person = val
+                                                    setAdHocItems(newAdHoc)
+                                                  } else {
+                                                    setItemOverrides({
+                                                      ...itemOverrides,
+                                                      [itemId]: { ...itemOverrides[itemId], weight_per_person: val }
+                                                    })
+                                                  }
+                                                }}
+                                              />
+                                            ) : (
+                                              <span>{displayWeight}</span>
+                                            )}
+                                            <span>г/чел</span>
+                                          </div>
+                                          <div className="flex items-center gap-1">
+                                            {showMenuEdit && mode !== 'view' ? (
+                                              <Input
+                                                type="number"
+                                                className="h-8 w-20 py-1 px-2 text-sm text-right"
+                                                value={isAdHoc ? ((item as ReservationMenuItem).price ?? 0) : (itemOverrides[itemId]?.price ?? (item as MenuItem).price ?? 0)}
+                                                onChange={(e) => {
+                                                  const val = parseFloat(e.target.value) || 0
+                                                  if (isAdHoc) {
+                                                    const newAdHoc = [...adHocItems]
+                                                    const adItem = newAdHoc.find(ai => ai.id === itemId)
+                                                    if (adItem) adItem.price = val
+                                                    setAdHocItems(newAdHoc)
+                                                  } else {
+                                                    setItemOverrides({
+                                                      ...itemOverrides,
+                                                      [itemId]: { ...itemOverrides[itemId], price: val }
+                                                    })
+                                                  }
+                                                }}
+                                              />
+                                            ) : (
+                                              <span>{isAdHoc ? ((item as ReservationMenuItem).price ?? 0) : (itemOverrides[itemId]?.price ?? (item as MenuItem).price ?? 0)}</span>
+                                            )}
+                                            <span>₽</span>
+                                          </div>
+                                          <span className="font-medium whitespace-nowrap min-w-[50px] text-right">
+                                            {calculateTotalWeight(displayWeight || 0, formData.guests_count)}г
+                                          </span>
+                                          {isAdHoc && showMenuEdit && mode !== 'view' && (
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              className="h-8 w-8 text-stone-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                              onClick={() => {
+                                                setAdHocItems(adHocItems.filter(ai => ai.id !== itemId))
+                                              }}
+                                            >
+                                              <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                          )}
                                         </div>
                                       </div>
                                     )
                                   })}
+
+                                  {showMenuEdit && mode !== 'view' && (
+                                    <div className="px-4 py-2 bg-stone-50/50">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-8 text-stone-500 hover:text-amber-600 gap-1 w-full justify-center"
+                                        onClick={() => {
+                                          const newItem: ReservationMenuItem = {
+                                            id: `new-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                                            reservation_id: currentReservation?.id || '',
+                                            menu_item_id: null,
+                                            is_selected: true,
+                                            name: '',
+                                            weight_per_person: 0,
+                                            price: 0,
+                                            type: type,
+                                            order_index: (adHocItems.length + 1) * 10
+                                          }
+                                          setAdHocItems([...adHocItems, newItem])
+                                        }}
+                                      >
+                                        <Plus className="h-3.5 w-3.5" />
+                                        <span>Добавить позицию</span>
+                                      </Button>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             )
                           })}
+
+                          {showMenuEdit && mode !== 'view' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-full border-dashed text-stone-500 hover:text-amber-600 border-stone-300 gap-2 h-10"
+                              onClick={() => {
+                                const sectionName = prompt('Введите название нового раздела (например: Фрукты, Напитки):')
+                                if (sectionName) {
+                                  const newItem: ReservationMenuItem = {
+                                    id: `new-${Date.now()}`,
+                                    reservation_id: currentReservation?.id || '',
+                                    menu_item_id: null,
+                                    is_selected: true,
+                                    name: '',
+                                    weight_per_person: 0,
+                                    price: 0,
+                                    type: sectionName,
+                                    order_index: (adHocItems.length + 1) * 10
+                                  }
+                                  setAdHocItems([...adHocItems, newItem])
+                                }
+                              }}
+                            >
+                              <Plus className="h-4 w-4" />
+                              <span>Добавить свой раздел</span>
+                            </Button>
+                          )}
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -1684,9 +2118,20 @@ export function ReservationModal({
                 <span className="text-stone-600 font-medium">Итого к оплате</span>
                 <div className="text-right">
                   <span className="text-xl sm:text-2xl font-bold text-amber-600">
-                    {formatCurrency(computedTotal)}
+                    {(() => {
+                      const paid = mode === 'create' ? prepaymentAmount : (currentReservation?.prepaid_amount || 0)
+                      const balance = Math.max(0, computedTotal - paid)
+                      return formatCurrency(balance)
+                    })()}
                   </span>
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-stone-500">Сумма до вычета</span>
+                <span className="font-semibold text-stone-600">
+                  {formatCurrency(computedTotal)}
+                </span>
               </div>
 
               <div className="flex items-center justify-between text-sm">
@@ -1698,18 +2143,20 @@ export function ReservationModal({
               <div className="flex items-center justify-between text-sm border-t border-stone-200 pt-2">
                 {(() => {
                   const paid = mode === 'create' ? prepaymentAmount : (currentReservation?.prepaid_amount || 0)
-                  const diff = computedTotal - paid
-                  return (
-                    <>
-                      <span className="text-stone-500">{diff < 0 ? 'Переплата' : 'Остаток'}</span>
-                      <span className={cn(
-                        "font-bold",
-                        diff < 0 ? "text-emerald-600" : "text-stone-700"
-                      )}>
-                        {formatCurrency(Math.abs(diff))}
-                      </span>
-                    </>
-                  )
+                  const surplus = Math.max(0, paid - computedTotal)
+
+                  if (surplus > 0) {
+                    return (
+                      <>
+                        <span className="text-stone-500">Излишек</span>
+                        <span className="font-bold text-emerald-600">
+                          {formatCurrency(surplus)}
+                        </span>
+                      </>
+                    )
+                  }
+
+                  return null
                 })()}
               </div>
 

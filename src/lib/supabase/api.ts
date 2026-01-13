@@ -1,4 +1,4 @@
-"use server"
+"use server" // test
 
 import { createClient, createServiceRoleClient } from './server'
 import {
@@ -729,6 +729,97 @@ export async function updateReservationServerAction(id: string, updates: Partial
   }
 }
 
+export async function syncReservationTablesServerAction(reservationId: string, tableIds: string[]) {
+  try {
+    const supabase = createServiceRoleClient()
+
+    // Сначала очищаем предыдущие связи
+    const { error: deleteError } = await supabase
+      .from('reservation_tables')
+      .delete()
+      .eq('reservation_id', reservationId)
+
+    if (deleteError) throw deleteError
+
+    if (tableIds.length > 0) {
+      const payload = tableIds.map((tableId) => ({
+        reservation_id: reservationId,
+        table_id: tableId
+      }))
+
+      const { error: insertError } = await supabase
+        .from('reservation_tables')
+        .insert(payload)
+
+      if (insertError) throw insertError
+    }
+
+    return { success: true }
+  } catch (error: any) {
+    console.error('syncReservationTablesServerAction error:', error)
+    return { success: false, error: error.message || 'Unknown error' }
+  }
+}
+
+export async function syncReservationMenuItemsServerAction(
+  reservationId: string,
+  selectedItemIds: string[],
+  itemOverrides: Record<string, any> = {},
+  adHocItems: any[] = []
+) {
+  try {
+    const supabase = createServiceRoleClient()
+
+    // Сначала очищаем ВСЕ предыдущие связи
+    await supabase.from('reservation_menu_items').delete().eq('reservation_id', reservationId)
+
+    const insertPayload: any[] = []
+
+    // Добавляем выбранные селективные позиции
+    if (selectedItemIds.length > 0) {
+      selectedItemIds.forEach((menuItemId) => {
+        const override = itemOverrides[menuItemId] || {}
+        insertPayload.push({
+          reservation_id: reservationId,
+          menu_item_id: menuItemId,
+          is_selected: true,
+          weight_per_person: override.weight_per_person,
+          name: override.name,
+          order_index: override.order_index,
+          price: override.price,
+          type: override.type
+        })
+      })
+    }
+
+    // Добавляем произвольные позиции (ad-hoc)
+    if (adHocItems.length > 0) {
+      adHocItems.forEach(item => {
+        insertPayload.push({
+          reservation_id: reservationId,
+          menu_item_id: null,
+          is_selected: true,
+          name: item.name,
+          weight_per_person: item.weight_per_person,
+          price: item.price,
+          type: item.type,
+          order_index: item.order_index
+        })
+      })
+    }
+
+    if (insertPayload.length > 0) {
+      const { error: insertError } = await supabase.from('reservation_menu_items').insert(insertPayload)
+      if (insertError) throw insertError
+    }
+
+    return { success: true }
+  } catch (error: any) {
+    console.error('syncReservationMenuItemsServerAction error:', error)
+    return { success: false, error: error.message || 'Unknown error' }
+  }
+}
+
 // ==================== RESERVATIONS ====================
 
 export async function getReservations(filters?: {
@@ -748,7 +839,15 @@ export async function getReservations(filters?: {
       table:tables (*),
       guest:guests (*),
       menu:menus (*),
-      payments (*)
+      payments (*),
+      reservation_tables:reservation_tables (
+        table_id,
+        table:tables (*)
+      ),
+      selected_menu_items:reservation_menu_items (
+        *,
+        menu_item:menu_items (*)
+      )
     `)
 
   if (filters?.date) {
@@ -790,7 +889,15 @@ export async function getReservationById(id: string): Promise<Reservation | null
       table:tables (*),
       guest:guests (*),
       menu:menus (*),
-      payments (*)
+      payments (*),
+      reservation_tables:reservation_tables (
+        table_id,
+        table:tables (*)
+      ),
+      selected_menu_items:reservation_menu_items (
+        *,
+        menu_item:menu_items (*)
+      )
     `)
     .eq('id', id)
     .single()
@@ -826,7 +933,15 @@ export async function createReservation(reservation: {
       table:tables (*),
       guest:guests (*),
       menu:menus (*),
-      payments (*)
+      payments (*),
+      reservation_tables:reservation_tables (
+        table_id,
+        table:tables (*)
+      ),
+      selected_menu_items:reservation_menu_items (
+        *,
+        menu_item:menu_items (*)
+      )
     `)
     .single()
 
@@ -854,7 +969,15 @@ export async function updateReservation(id: string, updates: Partial<Reservation
       table:tables (*),
       guest:guests (*),
       menu:menus (*),
-      payments (*)
+      payments (*),
+      reservation_tables:reservation_tables (
+        table_id,
+        table:tables (*)
+      ),
+      selected_menu_items:reservation_menu_items (
+        *,
+        menu_item:menu_items (*)
+      )
     `)
     .single()
 
