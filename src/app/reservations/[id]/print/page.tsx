@@ -53,29 +53,29 @@ export default async function PrintReservationPage({ params }: PageProps) {
     const surplusAmount = Math.max(0, paidAmount - reservation.total_amount)
 
     return (
-        <div className="bg-white p-4 text-black leading-tight text-[11px] print:p-0">
+        <div className="bg-white p-4 text-black leading-tight text-[13px] print:p-0">
             <PrintAutoStart />
 
             {/* Header - Very Compact */}
             <div className="flex justify-between items-end border-b-2 border-black pb-2 mb-4">
                 <div>
-                    <h1 className="text-xl font-bold uppercase tracking-tighter">
+                    <h1 className="text-2xl font-bold uppercase tracking-tighter">
                         Бронирование #{reservation.id.slice(0, 8)}
                     </h1>
-                    <p className="text-[9px] text-stone-600 font-medium italic">Kucher & Conga</p>
+                    <p className="text-[11px] text-stone-600 font-medium italic">Kucher & Conga</p>
                 </div>
                 <div className="text-right">
-                    <div className="text-lg font-black">{formatDate(reservation.date)} в {formatTime(reservation.time)}</div>
+                    <div className="text-xl font-black">{formatDate(reservation.date)} в {formatTime(reservation.time)}</div>
                 </div>
             </div>
 
             {/* Main Info Grid - Compact */}
             <div className="grid grid-cols-3 gap-6 mb-4">
                 <div className="col-span-1 space-y-1">
-                    <h2 className="text-[9px] font-black uppercase tracking-widest text-black border-b border-stone-200 pb-1 flex items-center gap-1">
+                    <h2 className="text-[11px] font-black uppercase tracking-widest text-black border-b border-stone-200 pb-1 flex items-center gap-1">
                         <User className="h-3 w-3" /> Гость
                     </h2>
-                    <div className="text-sm font-bold">
+                    <div className="text-base font-bold">
                         {reservation.guest?.last_name} {reservation.guest?.first_name}
                     </div>
                     {reservation.guest?.phone && (
@@ -87,30 +87,36 @@ export default async function PrintReservationPage({ params }: PageProps) {
                 </div>
 
                 <div className="col-span-1 space-y-1">
-                    <h2 className="text-[9px] font-black uppercase tracking-widest text-black border-b border-stone-200 pb-1 flex items-center gap-1">
+                    <h2 className="text-[11px] font-black uppercase tracking-widest text-black border-b border-stone-200 pb-1 flex items-center gap-1">
                         <MapPin className="h-3 w-3" /> Размещение
                     </h2>
                     <div className="flex flex-col gap-0.5">
-                        <div><span className="text-stone-700 font-bold uppercase text-[8px]">Зал:</span> <span className="font-bold">{reservation.hall?.name || '—'}</span></div>
-                        <div><span className="text-stone-700 font-bold uppercase text-[8px]">Столы:</span> <span className="font-bold">{tableNumbers || '—'}</span></div>
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-stone-700 font-bold uppercase text-[10px] min-w-[40px]">Зал:</span>
+                            <span className="font-bold text-base">{reservation.hall?.name || '—'}</span>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-stone-700 font-bold uppercase text-[10px] min-w-[40px]">Столы:</span>
+                            <span className="font-bold text-base">{tableNumbers || '—'}</span>
+                        </div>
                     </div>
                 </div>
 
                 <div className="col-span-1 space-y-1">
-                    <h2 className="text-[9px] font-black uppercase tracking-widest text-black border-b border-stone-200 pb-1 flex items-center gap-1">
+                    <h2 className="text-[11px] font-black uppercase tracking-widest text-black border-b border-stone-200 pb-1 flex items-center gap-1">
                         <Users className="h-3 w-3" /> Персоны
                     </h2>
-                    <div className="text-sm font-bold">
+                    <div className="text-base font-bold">
                         {reservation.guests_count} взр.
                         {reservation.children_count > 0 && ` / ${reservation.children_count} дет.`}
                     </div>
-                    <div className="text-[9px] text-stone-700 font-medium">{calculatePlates(reservation.guests_count)} тарелок</div>
+                    <div className="text-[11px] text-stone-700 font-medium">{calculatePlates(reservation.guests_count)} тарелок</div>
                 </div>
             </div>
 
             {/* Menu - Two Columns if possible */}
             <div className="mb-4">
-                <h2 className="text-[9px] font-black uppercase tracking-widest text-black border-b border-stone-200 pb-1 mb-2 flex items-center gap-1">
+                <h2 className="text-[11px] font-black uppercase tracking-widest text-black border-b border-stone-200 pb-1 mb-2 flex items-center gap-1">
                     <ChefHat className="h-3 w-3" /> Меню: {reservation.menu?.name || 'Индивидуально'}
                 </h2>
 
@@ -122,18 +128,18 @@ export default async function PrintReservationPage({ params }: PageProps) {
                         return (
                             <div key={type} className="break-inside-avoid mb-3">
                                 <div className="bg-stone-50 px-2 py-0.5 mb-1 flex justify-between items-center border-l-2 border-black">
-                                    <span className="font-bold uppercase text-[9px] tracking-wider text-black">{label}</span>
+                                    <span className="font-bold uppercase text-[11px] tracking-wider text-black">{label}</span>
                                 </div>
-                                <table className="w-full text-[10px]">
+                                <table className="w-full text-[12px]">
                                     <tbody className="divide-y divide-stone-100">
                                         {items.map((item, idx) => {
                                             const name = item.name || item.menu_item?.name
                                             const weight = item.weight_per_person || item.menu_item?.weight_per_person || 0
                                             return (
                                                 <tr key={item.id || idx}>
-                                                    <td className="py-0.5 pr-2 text-black font-medium">{name}</td>
-                                                    <td className="py-0.5 text-right text-stone-700 whitespace-nowrap">{weight}г</td>
-                                                    <td className="py-0.5 text-right font-black w-12 whitespace-nowrap text-black">
+                                                    <td className="py-1 pr-2 text-black font-medium">{name}</td>
+                                                    <td className="py-1 text-right text-stone-700 whitespace-nowrap">{weight}г</td>
+                                                    <td className="py-1 text-right font-black w-14 whitespace-nowrap text-black">
                                                         {calculateTotalWeight(weight, reservation.guests_count)}г
                                                     </td>
                                                 </tr>
@@ -150,42 +156,42 @@ export default async function PrintReservationPage({ params }: PageProps) {
             {/* Footer Grid - Compact */}
             <div className="grid grid-cols-2 gap-8 pt-2 border-t border-black break-inside-avoid">
                 <div className="space-y-2">
-                    <h2 className="text-[9px] font-black uppercase tracking-widest text-black border-b border-stone-200 pb-1 flex items-center gap-1">
+                    <h2 className="text-[11px] font-black uppercase tracking-widest text-black border-b border-stone-200 pb-1 flex items-center gap-1">
                         <MessageSquare className="h-3 w-3" /> Комментарии
                     </h2>
-                    <div className="text-[10px] text-black leading-snug whitespace-pre-wrap font-medium">
+                    <div className="text-[12px] text-black leading-snug whitespace-pre-wrap font-medium">
                         {reservation.comments || '—'}
                     </div>
                 </div>
 
                 <div className="space-y-1">
-                    <h2 className="text-[9px] font-black uppercase tracking-widest text-black border-b border-stone-200 pb-1 flex items-center gap-1">
+                    <h2 className="text-[11px] font-black uppercase tracking-widest text-black border-b border-stone-200 pb-1 flex items-center gap-1">
                         <CreditCard className="h-3 w-3" /> Расчет
                     </h2>
                     <div className="space-y-0.5">
-                        <div className="flex justify-between text-[10px]">
+                        <div className="flex justify-between text-[12px]">
                             <span className="text-stone-700 font-bold">Сумма:</span>
                             <span className="font-black text-black">{formatCurrency(reservation.total_amount)}</span>
                         </div>
-                        <div className="flex justify-between text-[10px]">
+                        <div className="flex justify-between text-[12px]">
                             <span className="text-stone-700 font-bold">Оплачено:</span>
                             <span className="font-black text-black">{formatCurrency(paidAmount)}</span>
                         </div>
                         {surplusAmount > 0 && (
-                            <div className="flex justify-between text-[10px]">
+                            <div className="flex justify-between text-[12px]">
                                 <span className="text-blue-700 font-bold italic">Излишек:</span>
                                 <span className="font-black text-blue-800">{formatCurrency(surplusAmount)}</span>
                             </div>
                         )}
                         <div className="flex justify-between items-center border-t-2 border-black pt-1 mt-1">
-                            <span className="font-black uppercase text-[10px] text-black">Остаток:</span>
-                            <span className="text-lg font-black text-black">{formatCurrency(remainingAmount)}</span>
+                            <span className="font-black uppercase text-[12px] text-black">Остаток:</span>
+                            <span className="text-xl font-black text-black">{formatCurrency(remainingAmount)}</span>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div className="mt-6 text-center text-[8px] text-stone-500 uppercase tracking-widest italic font-bold">
+            <div className="mt-6 text-center text-[10px] text-stone-500 uppercase tracking-widest italic font-bold">
                 {new Date().toLocaleString('ru-RU')} • Kucher&Conga
             </div>
 
