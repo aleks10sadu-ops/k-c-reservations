@@ -16,7 +16,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { endOfMonth, format, startOfMonth, startOfYear, endOfYear } from 'date-fns'
 import { ru } from 'date-fns/locale'
 
+import { useAuth } from '@/hooks/use-auth'
+import { redirect } from 'next/navigation'
+
 export default function HomePage() {
+  const { user, role, isLoading, signOut } = useAuth()
   const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [modalMode, setModalMode] = useState<'view' | 'edit' | 'create'>('view')
@@ -87,7 +91,7 @@ export default function HomePage() {
   // Multi-word search function - each word must match at least one searchable field
   const matchesMultiWordSearch = (reservation: Reservation, query: string): boolean => {
     if (!query.trim()) return true
-    
+
     // Create a combined searchable string from all relevant fields
     const searchableFields = [
       reservation.guest?.last_name || '',
@@ -97,12 +101,12 @@ export default function HomePage() {
       reservation.comments || '',
       reservation.hall?.name || '',
     ].map(field => field.toLowerCase())
-    
+
     // Split query into words (handles multiple spaces)
     const queryWords = query.toLowerCase().trim().split(/\s+/).filter(word => word.length > 0)
-    
+
     // Each query word must match at least one field
-    return queryWords.every(word => 
+    return queryWords.every(word =>
       searchableFields.some(field => field.includes(word))
     )
   }
@@ -110,18 +114,18 @@ export default function HomePage() {
   const filteredReservations = useMemo(() => {
     return reservations.filter(reservation => {
       const matchesSearch = matchesMultiWordSearch(reservation, searchQuery)
-      
+
       const matchesStatus = statusFilter === 'all' || reservation.status === statusFilter
       const matchesHall = filters.hallId === 'all' || reservation.hall_id === filters.hallId
       const matchesMenu = filters.menuId === 'all' || reservation.menu_id === filters.menuId
-      const matchesPayment = filters.paymentMethod === 'all' || 
+      const matchesPayment = filters.paymentMethod === 'all' ||
         (reservation.payments || []).some((p) => p.payment_method === filters.paymentMethod)
 
-      const matchesGuests = 
+      const matchesGuests =
         (filters.minGuests === '' || reservation.guests_count >= Number(filters.minGuests)) &&
         (filters.maxGuests === '' || reservation.guests_count <= Number(filters.maxGuests))
 
-      const matchesChildren = 
+      const matchesChildren =
         (filters.minChildren === '' || reservation.children_count >= Number(filters.minChildren)) &&
         (filters.maxChildren === '' || reservation.children_count <= Number(filters.maxChildren))
 
@@ -207,6 +211,36 @@ export default function HomePage() {
     canceled: reservations.filter(r => r.status === 'canceled').length,
   }), [reservations])
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-amber-600" />
+      </div>
+    )
+  }
+
+  if (role === 'guest') {
+    redirect('/profile')
+  }
+
+  if (role === 'waiter') {
+    redirect('/positions')
+  }
+
+  if (!user || (role !== 'admin' && role !== 'director' && role !== 'manager')) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-xl font-semibold">Доступ ограничен</h1>
+          <p className="text-stone-500">У вас недостаточно прав для просмотра этой страницы.</p>
+          <Button onClick={() => signOut()} variant="outline" className="mt-4">
+            Выйти из системы
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   if (error) {
     return (
       <div className="flex items-center justify-center min-h-[400px] text-red-500">
@@ -229,9 +263,9 @@ export default function HomePage() {
               <h1 className="text-3xl font-bold text-stone-900">Бронирования</h1>
               <p className="mt-1 text-stone-500">Управляйте бронированиями ресторана</p>
             </div>
-            
-            <Button 
-              size="lg" 
+
+            <Button
+              size="lg"
               className="gap-2 shadow-lg shadow-amber-500/25"
               onClick={() => handleAddReservation()}
             >
@@ -257,15 +291,14 @@ export default function HomePage() {
               {loading ? <Loader2 className="h-5 w-5 sm:h-6 sm:w-6 animate-spin" /> : stats.total}
             </p>
           </motion.div>
-          
+
           {(Object.entries(RESERVATION_STATUS_CONFIG) as [ReservationStatus, typeof RESERVATION_STATUS_CONFIG[ReservationStatus]][]).map(([status, config]) => (
             <motion.div
               key={status}
               whileHover={{ scale: 1.02 }}
               onClick={() => setStatusFilter(statusFilter === status ? 'all' : status)}
-              className={`rounded-2xl border-2 p-3 sm:p-4 shadow-sm cursor-pointer transition-all touch-manipulation ${
-                statusFilter === status ? 'ring-2 ring-offset-2 ring-amber-500' : ''
-              }`}
+              className={`rounded-2xl border-2 p-3 sm:p-4 shadow-sm cursor-pointer transition-all touch-manipulation ${statusFilter === status ? 'ring-2 ring-offset-2 ring-amber-500' : ''
+                }`}
               style={{
                 backgroundColor: config.bgColor,
                 borderColor: config.borderColor
@@ -277,9 +310,9 @@ export default function HomePage() {
                   <Loader2 className="h-5 w-5 sm:h-6 sm:w-6 animate-spin" />
                 ) : (
                   status === 'new' ? stats.new :
-                  status === 'in_progress' ? stats.inProgress :
-                  status === 'prepaid' ? stats.prepaid :
-                  status === 'paid' ? stats.paid : stats.canceled
+                    status === 'in_progress' ? stats.inProgress :
+                      status === 'prepaid' ? stats.prepaid :
+                        status === 'paid' ? stats.paid : stats.canceled
                 )}
               </p>
             </motion.div>
@@ -293,7 +326,7 @@ export default function HomePage() {
           transition={{ delay: 0.2 }}
           className="mb-6 px-2 sm:px-0"
         >
-            <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-3">
               <div className="relative" ref={searchRef}>
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400 z-10" />
@@ -319,8 +352,8 @@ export default function HomePage() {
                   {statusFilter !== 'all' && (
                     <Badge
                       variant={statusFilter === 'new' ? 'new' :
-                              statusFilter === 'in_progress' ? 'inProgress' :
-                              statusFilter === 'prepaid' ? 'prepaid' : 'paid'}
+                        statusFilter === 'in_progress' ? 'inProgress' :
+                          statusFilter === 'prepaid' ? 'prepaid' : 'paid'}
                       className="cursor-pointer text-xs px-2 py-1"
                       onClick={() => setStatusFilter('all')}
                     >
@@ -373,8 +406,8 @@ export default function HomePage() {
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 mb-1">
-                                      <div 
-                                        className="w-2 h-2 rounded-full flex-shrink-0" 
+                                      <div
+                                        className="w-2 h-2 rounded-full flex-shrink-0"
                                         style={{ backgroundColor: statusConfig.borderColor }}
                                       />
                                       <span className="font-medium text-stone-900 truncate">
@@ -404,9 +437,9 @@ export default function HomePage() {
                                   <Badge
                                     variant={
                                       reservation.status === 'new' ? 'new' :
-                                      reservation.status === 'in_progress' ? 'inProgress' :
-                                      reservation.status === 'prepaid' ? 'prepaid' :
-                                      reservation.status === 'paid' ? 'paid' : 'canceled'
+                                        reservation.status === 'in_progress' ? 'inProgress' :
+                                          reservation.status === 'prepaid' ? 'prepaid' :
+                                            reservation.status === 'paid' ? 'paid' : 'canceled'
                                     }
                                     className="text-[10px] px-1.5 py-0.5 flex-shrink-0"
                                   >
@@ -559,7 +592,7 @@ export default function HomePage() {
               <Loader2 className="h-8 w-8 animate-spin text-amber-600" />
             </div>
           ) : (
-            <Calendar 
+            <Calendar
               reservations={filteredReservations}
               onReservationClick={handleReservationClick}
               onAddReservation={handleAddReservation}

@@ -25,6 +25,8 @@ export const metadata: Metadata = {
   },
 }
 
+import { AuthProvider } from "@/hooks/use-auth"
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -33,14 +35,16 @@ export default function RootLayout({
   return (
     <html lang="ru" className={onest.variable}>
       <body className="min-h-screen bg-background font-sans antialiased">
-        <TooltipProvider>
-          <div className="relative flex min-h-screen flex-col">
-            <Header />
-            <main className="flex-1">
-              {children}
-            </main>
-          </div>
-        </TooltipProvider>
+        <AuthProvider>
+          <TooltipProvider>
+            <div className="relative flex min-h-screen flex-col">
+              <Header />
+              <main className="flex-1">
+                {children}
+              </main>
+            </div>
+          </TooltipProvider>
+        </AuthProvider>
       </body>
     </html>
   )

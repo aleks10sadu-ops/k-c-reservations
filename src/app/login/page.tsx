@@ -9,17 +9,38 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 
 export default function LoginPage() {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
-    // Simulate login - replace with actual Supabase auth
-    setTimeout(() => {
-      setIsLoading(false)
+    setError(null)
+
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+
+      if (authError) {
+        setError('Неверный email или пароль')
+        return
+      }
+
       window.location.href = '/'
-    }, 1500)
+    } catch (err) {
+      setError('Произошла ошибка при входе')
+      console.error(err)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -39,7 +60,7 @@ export default function LoginPage() {
         <Card className="border-0 shadow-2xl shadow-stone-200/50">
           <CardHeader className="text-center pb-2">
             {/* Logo */}
-            <motion.div 
+            <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               transition={{ type: "spring", bounce: 0.5, delay: 0.2 }}
@@ -49,7 +70,7 @@ export default function LoginPage() {
                 <span className="text-2xl font-bold text-white">K&C</span>
               </div>
             </motion.div>
-            
+
             <CardTitle className="text-2xl font-bold text-stone-900">
               Kucher&Conga
             </CardTitle>
@@ -74,6 +95,8 @@ export default function LoginPage() {
                     placeholder="admin@kucher.com"
                     className="pl-10"
                     required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                   />
                 </div>
               </motion.div>
@@ -92,6 +115,8 @@ export default function LoginPage() {
                     placeholder="••••••••"
                     className="pl-10 pr-10"
                     required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                   />
                   <button
                     type="button"
@@ -113,8 +138,18 @@ export default function LoginPage() {
                 transition={{ delay: 0.5 }}
                 className="pt-2"
               >
-                <Button 
-                  type="submit" 
+                {error && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    className="bg-red-50 text-red-600 text-sm p-3 rounded-lg border border-red-100 mb-4"
+                  >
+                    {error}
+                  </motion.div>
+                )}
+
+                <Button
+                  type="submit"
                   className="w-full gap-2 shadow-lg shadow-amber-500/25"
                   size="lg"
                   disabled={isLoading}
@@ -141,8 +176,8 @@ export default function LoginPage() {
               transition={{ delay: 0.6 }}
               className="mt-6 text-center"
             >
-              <a 
-                href="#" 
+              <a
+                href="#"
                 className="text-sm text-amber-600 hover:text-amber-700 transition-colors"
               >
                 Забыли пароль?
@@ -160,7 +195,7 @@ export default function LoginPage() {
           © 2026 Kucher&Conga Restaurant. Все права защищены.
         </motion.p>
       </motion.div>
-    </div>
+    </div >
   )
 }
 
