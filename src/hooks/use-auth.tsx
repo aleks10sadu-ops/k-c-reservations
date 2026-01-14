@@ -47,9 +47,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     return currentLoading
                 })
             }
-        }, 15000) // 15 seconds is more than enough even for slow 3G
+        }, 8000) // Reduced to 8 seconds
 
         const fetchRole = async (u: User) => {
+            // 1. Try to get role from metadata (Instant)
+            const metaRole = u.app_metadata?.role as UserRole | undefined
+            if (metaRole && ['guest', 'waiter', 'admin', 'director', 'manager'].includes(metaRole)) {
+                console.log('[Auth] Role from metadata:', metaRole)
+                if (mountRef.current) {
+                    setRole(metaRole)
+                    setIsLoading(false)
+                    clearTimeout(globalTimeout)
+                    return
+                }
+            }
+
+            // 2. Fallback to database (Slower)
             try {
                 console.log('[Auth] Fetching role for:', u.email)
                 const { data, error } = await supabase
@@ -61,6 +74,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 if (mountRef.current) {
                     if (error) {
                         console.error('[Auth] Profile fetch error:', error)
+                        // If metadata failed AND db failed, we might be in a weird state. 
+                        // But defaulting to guest is better than infinite load.
                         setRole('guest')
                     } else {
                         console.log('[Auth] Profile fetched. Role:', data?.role)
@@ -84,14 +99,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             setUser(sessionUser)
             if (sessionUser) {
-                // If we already have a role for THIS user, don't show loading spinner
-                // unless it's the very first time.
-                if (role && user?.id === sessionUser.id) {
-                    // Update silently in background
-                    fetchRole(sessionUser)
-                } else {
-                    await fetchRole(sessionUser)
-                }
+                // Always check role, even if we have one, to ensure it matches current metadata/DB
+                await fetchRole(sessionUser)
             } else {
                 setRole(null)
                 setIsLoading(false)

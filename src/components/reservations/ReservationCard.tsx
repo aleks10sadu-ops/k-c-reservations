@@ -62,11 +62,11 @@ export function ReservationCard({ reservation, onClick, compact = false }: Reser
         </div>
 
         <div className="flex items-center gap-3 mt-1">
-          <div className="flex items-center gap-1 text-stone-600">
-            <MapPin className="h-3 w-3" />
+          <div className="flex items-center gap-1 text-stone-600 min-w-0">
+            <MapPin className="h-3 w-3 flex-shrink-0" />
             <span className="text-xs truncate">{reservation.hall?.name}</span>
           </div>
-          <div className="flex items-center gap-1 text-stone-600">
+          <div className="flex items-center gap-1 text-stone-600 flex-shrink-0">
             <Users className="h-3 w-3" />
             <span className="text-xs">{reservation.guests_count}</span>
           </div>

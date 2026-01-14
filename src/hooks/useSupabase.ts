@@ -26,7 +26,7 @@ function useSupabaseQuery<T>(
   const [loading, setLoading] = useState(!skip)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (signal?: AbortSignal) => {
     // Пропускаем запрос если skip=true
     if (skip) {
       setData([])
@@ -58,16 +58,22 @@ function useSupabaseQuery<T>(
         console.log(`[useSupabaseQuery] Fetching ${tableName} with filters:`, filters)
       }
 
+      if (signal) {
+        query = query.abortSignal(signal)
+      }
+
       const { data: result, error: queryError } = await query
 
       if (queryError) {
-        console.error(`[useSupabaseQuery] Error fetching ${tableName}:`, {
-          code: queryError.code,
-          message: queryError.message,
-          details: queryError.details,
-          hint: queryError.hint,
-          filters
-        })
+        // Check if this is actually an AbortError reported as a PostgREST error
+        if (queryError.message?.includes('AbortError') || queryError.details?.includes('AbortError')) {
+          throw queryError // Throw to catch block which ignores it
+        }
+
+        // Detailed error logging for REAL errors
+        console.error(`[useSupabaseQuery] PostgREST Error fetching ${tableName}:`,
+          JSON.stringify(queryError, Object.getOwnPropertyNames(queryError), 2)
+        )
         throw queryError
       }
 
@@ -82,15 +88,34 @@ function useSupabaseQuery<T>(
       // Явно приводим ответ к ожидаемому типу данных
       setData((result || []) as T[])
     } catch (err: any) {
+      // Ignore abort errors
+      const isAbort =
+        (signal && signal.aborted) ||
+        err.name === 'AbortError' ||
+        err.message?.includes('AbortError') ||
+        err.details?.includes('AbortError')
+
+      if (isAbort) {
+        // console.log(`[useSupabaseQuery] Request aborted for ${tableName}`)
+        return
+      }
+
       setError(err.message)
-      console.error(`Error fetching ${tableName}:`, err)
+      console.error(`[useSupabaseQuery] Exception fetching ${tableName}:`, err)
     } finally {
-      setLoading(false)
+      if (!signal?.aborted) {
+        setLoading(false)
+      }
     }
   }, [tableName, selectQuery, JSON.stringify(filters), JSON.stringify(orderBy), skip])
 
   useEffect(() => {
-    fetchData()
+    const controller = new AbortController()
+    fetchData(controller.signal)
+
+    return () => {
+      controller.abort()
+    }
   }, [fetchData])
 
   // Subscribe to realtime changes
