@@ -208,6 +208,13 @@ export function ReservationModal({
   const createGuest = useCreateMutation<Guest>('guests')
   const createPayment = useCreateMutation<Payment>('payments')
 
+  // Selected Guest Object
+  const selectedGuestObj = useMemo(() => {
+    return guests.find(g => g.id === formData.guest_id)
+  }, [formData.guest_id, guests])
+
+  const isGuestBlacklisted = selectedGuestObj?.status === 'blacklist'
+
   // Check if mobile device
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768)
@@ -589,6 +596,12 @@ export function ReservationModal({
 
     if (!guestId) {
       alert('Выберите гостя')
+      return
+    }
+
+    const guestObj = guests.find(g => g.id === guestId)
+    if (guestObj?.status === 'blacklist') {
+      alert('Этот гость находится в чёрном списке. Бронирование невозможно.')
       return
     }
 
@@ -1235,6 +1248,15 @@ export function ReservationModal({
                       <p className="mt-1 text-stone-900 break-anywhere">{currentReservation?.guest?.phone}</p>
                     </div>
                   </div>
+                  {currentReservation?.guest?.notes && (
+                    <div className="p-3 bg-stone-50 border border-stone-100 rounded-xl mt-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <MessageSquare className="h-3.5 w-3.5 text-stone-400" />
+                        <span className="text-[10px] font-semibold text-stone-500 uppercase tracking-tighter">Заметки о госте</span>
+                      </div>
+                      <p className="text-sm text-stone-600 whitespace-pre-wrap leading-relaxed">{currentReservation.guest.notes}</p>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -1245,6 +1267,21 @@ export function ReservationModal({
                         value={formData.guest_id}
                         onChange={(v) => setFormData({ ...formData, guest_id: v })}
                       />
+                      {isGuestBlacklisted && (
+                        <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-red-700 mt-2">
+                          <AlertCircle className="h-5 w-5 shrink-0" />
+                          <p className="text-sm font-bold">Этот гость находится в чёрном списке</p>
+                        </div>
+                      )}
+                      {selectedGuestObj?.notes && (
+                        <div className="p-3 bg-stone-50 border border-stone-200 rounded-xl mt-2">
+                          <div className="flex items-center gap-2 mb-1">
+                            <MessageSquare className="h-4 w-4 text-stone-400" />
+                            <span className="text-xs font-medium text-stone-500 uppercase tracking-wider">Заметки о госте</span>
+                          </div>
+                          <p className="text-sm text-stone-700 whitespace-pre-wrap">{selectedGuestObj.notes}</p>
+                        </div>
+                      )}
                       <Button variant="outline" size="sm" onClick={() => setShowNewGuest(true)}>
                         <Plus className="h-4 w-4 mr-2" />
                         Новый гость
@@ -1284,23 +1321,39 @@ export function ReservationModal({
                           <motion.div
                             initial={{ opacity: 0, y: -5 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between"
+                            className={cn(
+                              "mt-2 p-3 border rounded-lg flex items-center justify-between",
+                              matchingGuest.status === 'blacklist' ? "bg-red-50 border-red-200" : "bg-amber-50 border-amber-200"
+                            )}
                           >
                             <div className="text-sm">
-                              <p className="font-medium text-amber-900">Гость найден:</p>
-                              <p className="text-amber-800">{matchingGuest.last_name} {matchingGuest.first_name}</p>
+                              <p className={cn("font-medium", matchingGuest.status === 'blacklist' ? "text-red-900" : "text-amber-900")}>
+                                Гость найден: {matchingGuest.status === 'blacklist' && "(ЧЁРНЫЙ СПИСОК)"}
+                              </p>
+                              <p className={cn(matchingGuest.status === 'blacklist' ? "text-red-800" : "text-amber-800")}>
+                                {matchingGuest.last_name} {matchingGuest.first_name}
+                              </p>
+                              {matchingGuest.notes && (
+                                <div className="mt-2 pt-2 border-t border-amber-100 italic text-stone-600 line-clamp-2">
+                                  "{matchingGuest.notes}"
+                                </div>
+                              )}
+                              {matchingGuest.status === 'blacklist' && (
+                                <p className="text-xs font-bold text-red-600 mt-1 uppercase">Этот гость в чёрном списке</p>
+                              )}
                             </div>
                             <Button
                               size="sm"
-                              variant="default"
-                              className="bg-amber-600 hover:bg-amber-700 text-white"
+                              variant={matchingGuest.status === 'blacklist' ? "destructive" : "default"}
+                              className={matchingGuest.status === 'blacklist' ? "" : "bg-amber-600 hover:bg-amber-700 text-white"}
+                              disabled={matchingGuest.status === 'blacklist'}
                               onClick={() => {
                                 setFormData(prev => ({ ...prev, guest_id: matchingGuest.id }))
                                 setShowNewGuest(false)
                                 setNewGuestData({ first_name: '', last_name: '', phone: '' })
                               }}
                             >
-                              Выбрать
+                              {matchingGuest.status === 'blacklist' ? "ЗАБЛОКИРОВАНО" : "Выбрать"}
                             </Button>
                           </motion.div>
                         )}
@@ -2129,12 +2182,15 @@ export function ReservationModal({
               </Button>
               <Button
                 onClick={handleSave}
-                disabled={isLoading}
-                className="gap-2"
+                disabled={isLoading || isGuestBlacklisted}
+                className={cn(
+                  "gap-2",
+                  isGuestBlacklisted && "bg-stone-400 opacity-50 cursor-not-allowed"
+                )}
                 size={isMobile ? "sm" : "default"}
               >
                 {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                Сохранить
+                {isGuestBlacklisted ? 'В чёрном списке' : 'Сохранить'}
               </Button>
             </div>
           </div>

@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import type { Guest } from "@/types"
+import { GUEST_STATUS_CONFIG } from "@/types"
 
 interface GuestComboboxProps {
     guests: Guest[]
@@ -46,9 +47,21 @@ export function GuestCombobox({ guests, value, onChange }: GuestComboboxProps) {
                     className="w-full justify-between font-normal text-left h-auto py-3 md:py-2"
                 >
                     {selectedGuest ? (
-                        <div className="flex flex-col md:flex-row md:gap-2 items-start md:items-center">
-                            <span className="font-medium">{selectedGuest.last_name} {selectedGuest.first_name}</span>
-                            <span className="text-xs md:text-sm text-stone-500">{selectedGuest.phone}</span>
+                        <div className="flex flex-col md:flex-row md:gap-2 items-start md:items-center w-full min-w-0">
+                            <span className="font-medium truncate">{selectedGuest.last_name} {selectedGuest.first_name}</span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs md:text-sm text-stone-500">{selectedGuest.phone}</span>
+                                <span
+                                    className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded border"
+                                    style={{
+                                        color: GUEST_STATUS_CONFIG[selectedGuest.status].color,
+                                        backgroundColor: GUEST_STATUS_CONFIG[selectedGuest.status].bgColor + '80', // semi-transparent
+                                        borderColor: GUEST_STATUS_CONFIG[selectedGuest.status].color + '40'
+                                    }}
+                                >
+                                    {GUEST_STATUS_CONFIG[selectedGuest.status].label}
+                                </span>
+                            </div>
                         </div>
                     ) : (
                         <span className="text-stone-500">Выберите гостя...</span>
@@ -93,8 +106,19 @@ export function GuestCombobox({ guests, value, onChange }: GuestComboboxProps) {
                                             value === guest.id ? "text-primary opacity-100" : "opacity-0"
                                         )}
                                     />
-                                    <div className="flex flex-col">
-                                        <span className="font-medium">{guest.last_name} {guest.first_name}</span>
+                                    <div className="flex flex-col flex-1 min-w-0">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="font-medium truncate">{guest.last_name} {guest.first_name}</span>
+                                            <span
+                                                className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded flex-shrink-0"
+                                                style={{
+                                                    color: GUEST_STATUS_CONFIG[guest.status].color,
+                                                    backgroundColor: GUEST_STATUS_CONFIG[guest.status].bgColor
+                                                }}
+                                            >
+                                                {GUEST_STATUS_CONFIG[guest.status].label}
+                                            </span>
+                                        </div>
                                         <span className="text-xs text-stone-500">{guest.phone}</span>
                                     </div>
                                 </div>

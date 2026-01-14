@@ -11,6 +11,7 @@ export type GuestStatus =
   | 'regular'       // Обычный гость
   | 'frequent'      // Постоянный гость
   | 'vip'           // VIP
+  | 'blacklist'     // Чёрный список
 
 // Типы блюд в меню (стандартные)
 export type StandardMenuItemType =
@@ -260,6 +261,11 @@ export const GUEST_STATUS_CONFIG: Record<GuestStatus, {
     label: 'VIP',
     color: '#B45309',
     bgColor: '#FEF3C7',
+  },
+  blacklist: {
+    label: 'Чёрный список',
+    color: '#DC2626',
+    bgColor: '#FEE2E2',
   },
 }
 

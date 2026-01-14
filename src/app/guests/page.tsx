@@ -15,7 +15,8 @@ import {
   Pencil,
   History,
   Loader2,
-  Trash2
+  Trash2,
+  AlertCircle
 } from 'lucide-react'
 import { PageTransition } from '@/components/layout/PageTransition'
 import { Button } from '@/components/ui/button'
@@ -98,6 +99,7 @@ export default function GuestsPage() {
     regular: guests.filter(g => g.status === 'regular').length,
     frequent: guests.filter(g => g.status === 'frequent').length,
     vip: guests.filter(g => g.status === 'vip').length,
+    blacklist: guests.filter(g => g.status === 'blacklist').length,
   }
 
   const resetForm = () => {
@@ -265,14 +267,15 @@ export default function GuestsPage() {
                         <Crown className="h-5 w-5" style={{ color: config.color }} />
                       ) : status === 'frequent' ? (
                         <Star className="h-5 w-5" style={{ color: config.color }} />
+                      ) : status === 'blacklist' ? (
+                        <AlertCircle className="h-5 w-5" style={{ color: config.color }} />
                       ) : (
                         <Users className="h-5 w-5" style={{ color: config.color }} />
                       )}
                     </div>
                     <div>
                       <p className="text-2xl font-bold" style={{ color: config.color }}>
-                        {status === 'regular' ? stats.regular :
-                          status === 'frequent' ? stats.frequent : stats.vip}
+                        {stats[status] || 0}
                       </p>
                       <p className="text-sm text-stone-500">{config.label}</p>
                     </div>
@@ -338,7 +341,8 @@ export default function GuestsPage() {
                               </h3>
                               <Badge
                                 variant={guest.status === 'vip' ? 'vip' :
-                                  guest.status === 'frequent' ? 'frequent' : 'secondary'}
+                                  guest.status === 'frequent' ? 'frequent' :
+                                    guest.status === 'blacklist' ? 'destructive' : 'secondary'}
                               >
                                 {statusConfig.label}
                               </Badge>
@@ -430,7 +434,8 @@ export default function GuestsPage() {
                       <div className="flex items-center gap-2 mt-1">
                         <Badge
                           variant={selectedGuest.status === 'vip' ? 'vip' :
-                            selectedGuest.status === 'frequent' ? 'frequent' : 'secondary'}
+                            selectedGuest.status === 'frequent' ? 'frequent' :
+                              selectedGuest.status === 'blacklist' ? 'destructive' : 'secondary'}
                         >
                           {GUEST_STATUS_CONFIG[selectedGuest.status].label}
                         </Badge>
