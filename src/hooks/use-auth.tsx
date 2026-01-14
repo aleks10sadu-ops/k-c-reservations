@@ -27,25 +27,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [role, setRole] = useState<UserRole | null>(null)
     const [isLoading, setIsLoading] = useState(true)
     const initRef = useRef(false)
+    const mountRef = useRef(true)
 
     useEffect(() => {
+        mountRef.current = true
         if (initRef.current) return
         initRef.current = true
 
         console.log('[Auth] Initializing AuthProvider...')
 
-        const timeout = setTimeout(() => {
-            setIsLoading(prev => {
-                if (prev) {
-                    console.warn('[Auth] Initialization timed out. Forcing false.')
-                    // If we haven't even set a role, let's at least set it to 'guest'
-                    // but stay loading if we are still waiting for a network response
-                    // and only force it if absolutely stuck.
-                    return false
-                }
-                return prev
-            })
-        }, 30000)
+        // Set a global timeout to ensure we ALWAYS stop loading after some time
+        const globalTimeout = setTimeout(() => {
+            if (mountRef.current) {
+                setIsLoading(currentLoading => {
+                    if (currentLoading) {
+                        console.warn('[Auth] GLOBAL AUTH TIMEOUT - Forcing loading: false')
+                        return false
+                    }
+                    return currentLoading
+                })
+            }
+        }, 15000) // 15 seconds is more than enough even for slow 3G
 
         const fetchRole = async (u: User) => {
             try {
@@ -56,54 +58,64 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     .eq('id', u.id)
                     .single()
 
-                if (error) {
-                    console.error('[Auth] Profile fetch error details:', JSON.stringify(error, null, 2))
-                    setRole('guest')
-                } else {
-                    console.log('[Auth] Profile fetched. Role:', data?.role)
-                    setRole((data?.role as UserRole) || 'guest')
+                if (mountRef.current) {
+                    if (error) {
+                        console.error('[Auth] Profile fetch error:', error)
+                        setRole('guest')
+                    } else {
+                        console.log('[Auth] Profile fetched. Role:', data?.role)
+                        setRole((data?.role as UserRole) || 'guest')
+                    }
                 }
             } catch (err) {
                 console.error('[Auth] Unexpected error in fetchRole:', err)
-                setRole('guest')
+                if (mountRef.current) setRole('guest')
             } finally {
-                clearTimeout(timeout)
-                setIsLoading(false)
+                if (mountRef.current) {
+                    setIsLoading(false)
+                    clearTimeout(globalTimeout)
+                }
             }
         }
 
         const handleAuth = async (sessionUser: User | null) => {
+            console.log('[Auth] handleAuth user:', sessionUser?.email || 'none')
+            if (!mountRef.current) return
+
             setUser(sessionUser)
             if (sessionUser) {
-                await fetchRole(sessionUser)
+                // If we already have a role for THIS user, don't show loading spinner
+                // unless it's the very first time.
+                if (role && user?.id === sessionUser.id) {
+                    // Update silently in background
+                    fetchRole(sessionUser)
+                } else {
+                    await fetchRole(sessionUser)
+                }
             } else {
                 setRole(null)
                 setIsLoading(false)
-                clearTimeout(timeout)
+                clearTimeout(globalTimeout)
             }
         }
 
-        // Initial check
-        supabase.auth.getUser().then(({ data: { user: u } }) => {
-            console.log('[Auth] Initial getUser:', u?.email || 'none')
-            handleAuth(u)
-        })
-
+        // We use onAuthStateChange with initial session instead of manual getUser
+        // this is more reliable in newer supabase-js versions
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
             async (event, session) => {
                 console.log('[Auth] onAuthStateChange event:', event)
-                if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+
+                // Only process major auth events or the initial session
+                if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED') {
                     handleAuth(session?.user || null)
-                } else if (event === 'SIGNED_OUT') {
-                    handleAuth(null)
                 }
-                // INITIAL_SESSION is handled by the manual getUser above to avoid race
             }
         )
 
         return () => {
+            mountRef.current = false
             subscription.unsubscribe()
-            clearTimeout(timeout)
+            clearTimeout(globalTimeout)
         }
     }, [])
 

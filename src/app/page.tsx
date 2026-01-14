@@ -205,8 +205,20 @@ export default function HomePage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin text-amber-600" />
+      <div className="flex flex-col items-center justify-center min-h-screen bg-stone-50 gap-4">
+        <div className="relative">
+          <Loader2 className="h-10 w-10 animate-spin text-amber-600" />
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.5, repeat: Infinity, repeatType: 'reverse' }}
+            className="absolute inset-0 rounded-full bg-amber-200/20 blur-xl"
+          />
+        </div>
+        <div className="text-center">
+          <p className="text-stone-900 font-medium">Проверка авторизации</p>
+          <p className="text-stone-500 text-sm mt-1">Это может занять несколько секунд...</p>
+        </div>
       </div>
     )
   }

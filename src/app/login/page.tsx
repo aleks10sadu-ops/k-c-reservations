@@ -1,9 +1,10 @@
 "use client"
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { Lock, Mail, Eye, EyeOff, ArrowRight } from 'lucide-react'
+import { Lock, Mail, Eye, EyeOff, ArrowRight, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useAuth } from '@/hooks/use-auth'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -60,7 +61,33 @@ export default function LoginPage() {
       setError('Произошла ошибка')
       console.error(err)
     } finally {
-      setIsLoading(false)
+      // Small timeout to allow redirect to happen before unblocking UI if successful
+      // or to ensure the spinner shows for at least a split second to prevent flicker
+      setTimeout(() => {
+        if (mountRef.current) setIsLoading(false)
+      }, 500)
+    }
+  }
+
+  // Redirect if already logged in
+  const { user } = useAuth()
+  const mountRef = useRef(true)
+
+  useEffect(() => {
+    mountRef.current = true
+    return () => { mountRef.current = false }
+  }, [])
+
+  if (user && !isLoading) {
+    // If we have a user, we should be on the dashboard, not login.
+    // The middleware should catch this, but this is a fallback.
+    if (typeof window !== 'undefined') {
+      window.location.href = '/'
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-stone-50">
+          <Loader2 className="h-8 w-8 animate-spin text-amber-600" />
+        </div>
+      )
     }
   }
 
