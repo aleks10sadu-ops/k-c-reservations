@@ -339,7 +339,6 @@ export async function getMenuItemTypes(menuId?: string): Promise<CustomMenuItemT
     query = query.eq('menu_id', menuId)
   }
 
-  console.log('[getMenuItemTypes] Fetching types for menu:', menuId)
   const { data, error } = await query
 
   if (error) {
@@ -352,7 +351,6 @@ export async function getMenuItemTypes(menuId?: string): Promise<CustomMenuItemT
     return []
   }
 
-  console.log('[getMenuItemTypes] Fetched types:', data?.length || 0, data)
   return data || []
 }
 
@@ -380,11 +378,9 @@ export async function createMenuItemType(type: {
   order_index?: number
 }): Promise<CustomMenuItemType> {
   try {
-    console.log('[createMenuItemType] Starting with type:', JSON.stringify(type))
 
     // Используем service role client для обхода RLS в Server Actions
     const supabase = createServiceRoleClient()
-    console.log('[createMenuItemType] Supabase service role client created')
 
     const { data, error } = await supabase
       .from('menu_item_types')
@@ -392,14 +388,6 @@ export async function createMenuItemType(type: {
       .select()
       .single()
 
-    console.log('[createMenuItemType] Query result:', {
-      data: !!data, error: error ? {
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint
-      } : null
-    })
 
     if (error) {
       // Логируем полную информацию об ошибке для отладки
@@ -441,7 +429,6 @@ export async function createMenuItemType(type: {
       throw err
     }
 
-    console.log('[createMenuItemType] Success:', data.id)
     return data
   } catch (error: any) {
     // Перехватываем и перебрасываем ошибку с понятным сообщением

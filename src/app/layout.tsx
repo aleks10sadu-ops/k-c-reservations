@@ -16,13 +16,14 @@ export const metadata: Metadata = {
   icons: {
     icon: "/favicon.ico",
   },
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 5,
-    userScalable: true,
-    viewportFit: 'cover',
-  },
+}
+
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+  viewportFit: 'cover',
 }
 
 import { AuthProvider } from "@/hooks/use-auth"

@@ -9,8 +9,8 @@ import { ReservationModal } from '@/components/reservations/ReservationModal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Reservation, RESERVATION_STATUS_CONFIG, ReservationStatus } from '@/types'
-import { formatDate, formatTime } from '@/lib/utils'
-import { useHalls, useMenus, useReservations } from '@/hooks/useSupabase'
+import { formatDate, formatTime, cn } from '@/lib/utils'
+import { useHalls, useMenus, useReservations, useReservationSearch } from '@/hooks/useSupabase'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { endOfMonth, format, startOfMonth, startOfYear, endOfYear } from 'date-fns'
@@ -32,6 +32,7 @@ export default function HomePage() {
   const [isFiltersOpen, setIsFiltersOpen] = useState(false)
   const [isSearchFocused, setIsSearchFocused] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
+  const { data: searchResults, loading: searchLoading, search: performSearch, clear: clearSearchResults, hasSearched } = useReservationSearch()
   const [filters, setFilters] = useState({
     hallId: 'all',
     menuId: 'all',
@@ -58,7 +59,8 @@ export default function HomePage() {
 
   const { data: halls } = useHalls()
   const { data: menus } = useMenus()
-  const { data: reservationsForFilters } = useReservations()
+  // REMOVED: fetching all reservations for filters/search to improve performance
+  // const { data: reservationsForFilters } = useReservations()
 
   // Fetch reservations for current month
   const rangeStart = viewMode === 'year' ? startOfYear(currentDate) : startOfMonth(currentDate)
@@ -69,10 +71,7 @@ export default function HomePage() {
     endDate: format(rangeEnd, 'yyyy-MM-dd')
   })
 
-  const paymentMethods = useMemo(() => {
-    const methods = reservationsForFilters?.flatMap((r) => r.payments?.map((p) => p.payment_method) ?? []) || []
-    return Array.from(new Set(methods))
-  }, [reservationsForFilters])
+  const paymentMethods = ['cash', 'card', 'transfer']
 
   const hasActiveFilters = useMemo(() => {
     return (
@@ -141,14 +140,7 @@ export default function HomePage() {
     })
   }, [reservations, searchQuery, statusFilter, filters])
 
-  // Search results for dropdown (search all reservations, not just current month)
-  const searchResults = useMemo(() => {
-    if (!searchQuery.trim()) return []
-    return (reservationsForFilters || [])
-      .filter(reservation => matchesMultiWordSearch(reservation, searchQuery))
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .slice(0, 10) // Limit to 10 results
-  }, [reservationsForFilters, searchQuery])
+  // REMOVED: searchResults dropdown (now handled by global search)
 
   const handleReservationClick = (reservation: Reservation) => {
     setSelectedReservation(reservation)
@@ -227,15 +219,40 @@ export default function HomePage() {
     redirect('/positions')
   }
 
-  if (!user || (role !== 'admin' && role !== 'director' && role !== 'manager')) {
+  if (!user) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-xl font-semibold">Доступ ограничен</h1>
-          <p className="text-stone-500">У вас недостаточно прав для просмотра этой страницы.</p>
-          <Button onClick={() => signOut()} variant="outline" className="mt-4">
-            Выйти из системы
-          </Button>
+        <div className="text-center space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin text-amber-600 mx-auto" />
+          <p className="text-stone-500">Загрузка данных пользователя...</p>
+        </div>
+      </div>
+    )
+  }
+
+  const isAuthorized = role === 'admin' || role === 'director' || role === 'manager'
+
+  if (!isAuthorized) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-4">
+        <div className="text-center max-w-sm">
+          <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <X className="h-8 w-8" />
+          </div>
+          <h1 className="text-xl font-semibold text-stone-900">Доступ ограничен</h1>
+          <p className="mt-2 text-stone-500">
+            {role === 'guest'
+              ? 'Ваш аккаунт ожидает подтверждения администратором.'
+              : 'У вас недостаточно прав для просмотра этой страницы.'}
+          </p>
+          <div className="mt-6 flex flex-col gap-2">
+            <Button onClick={() => refetch()} variant="outline">
+              Попробовать снова
+            </Button>
+            <Button onClick={() => signOut()} variant="ghost">
+              Выйти из системы
+            </Button>
+          </div>
         </div>
       </div>
     )
@@ -327,67 +344,70 @@ export default function HomePage() {
           className="mb-6 px-2 sm:px-0"
         >
           <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-3">
-              <div className="relative" ref={searchRef}>
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400 z-10" />
+            <div className="flex flex-col sm:flex-row items-stretch gap-2">
+              <div className="relative flex-1 group" ref={searchRef}>
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-400 group-focus-within:text-amber-600 transition-colors z-10" />
                 <Input
                   placeholder="Поиск по имени, телефону или комментарию..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      performSearch(searchQuery)
+                    }
+                  }}
                   onFocus={() => setIsSearchFocused(true)}
-                  className="pl-10 pr-20"
+                  className="pl-10 pr-36 h-10 border-stone-200 focus-visible:ring-amber-500/20 focus-visible:border-amber-500 transition-all rounded-xl"
                 />
-                {searchQuery && (
-                  <button
-                    onClick={() => {
-                      setSearchQuery('')
-                      setIsSearchFocused(false)
-                    }}
-                    className="absolute right-24 top-1/2 -translate-y-1/2 p-1 hover:bg-stone-100 rounded-full text-stone-400 hover:text-stone-600 transition-colors"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
-                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                  {statusFilter !== 'all' && (
-                    <Badge
-                      variant={statusFilter === 'new' ? 'new' :
-                        statusFilter === 'in_progress' ? 'inProgress' :
-                          statusFilter === 'prepaid' ? 'prepaid' : 'paid'}
-                      className="cursor-pointer text-xs px-2 py-1"
-                      onClick={() => setStatusFilter('all')}
+                <div className="absolute right-1 top-1 bottom-1 flex items-center gap-0.5">
+                  {searchQuery && (
+                    <button
+                      onClick={() => {
+                        setSearchQuery('')
+                        setIsSearchFocused(false)
+                        clearSearchResults()
+                      }}
+                      className="p-1 px-2 hover:bg-stone-50 rounded-lg text-stone-400 hover:text-stone-600 transition-colors flex items-center justify-center mr-0.5"
+                      title="Очистить поиск"
                     >
-                      {RESERVATION_STATUS_CONFIG[statusFilter].label} ✕
-                    </Badge>
+                      <X className="h-4 w-4" />
+                    </button>
                   )}
+                  <div className="w-px h-5 bg-stone-100 mx-0.5" />
                   <Button
-                    variant={hasActiveFilters ? 'default' : 'outline'}
                     size="sm"
-                    className="gap-1 h-8"
-                    onClick={() => setIsFiltersOpen((prev) => !prev)}
+                    variant="ghost"
+                    className="h-full px-3 text-amber-600 hover:text-amber-700 hover:bg-amber-50 rounded-lg font-medium gap-1.5 transition-colors"
+                    onClick={() => performSearch(searchQuery)}
+                    disabled={searchLoading || !searchQuery.trim()}
                   >
-                    <Filter className="h-3 w-3" />
-                    <span className="hidden sm:inline">Фильтры</span>
+                    {searchLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+                    <span className="text-xs">Найти</span>
                   </Button>
                 </div>
 
-                {/* Search Results Dropdown */}
+                {/* Search Results Dropdown (now anchored to the input group) */}
                 <AnimatePresence>
-                  {isSearchFocused && searchQuery.trim() && (
+                  {isSearchFocused && (hasSearched || searchLoading) && (
                     <motion.div
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
                       className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl border border-stone-200 shadow-lg z-50 max-h-[400px] overflow-y-auto"
                     >
-                      {searchResults.length === 0 ? (
-                        <div className="p-4 text-center text-stone-500">
+                      {searchLoading ? (
+                        <div className="p-8 text-center" key="searching">
+                          <Loader2 className="h-8 w-8 animate-spin text-amber-600 mx-auto mb-2" />
+                          <p className="text-sm text-stone-500">Поиск по всей базе...</p>
+                        </div>
+                      ) : searchResults.length === 0 ? (
+                        <div className="p-4 text-center text-stone-500" key="no-results">
                           <Search className="h-8 w-8 mx-auto mb-2 text-stone-300" />
                           <p className="text-sm">Ничего не найдено</p>
                           <p className="text-xs text-stone-400 mt-1">Попробуйте изменить запрос</p>
                         </div>
                       ) : (
-                        <div className="py-2">
+                        <div className="py-2" key="results">
                           <div className="px-3 py-2 text-xs font-medium text-stone-500 border-b border-stone-100">
                             Найдено: {searchResults.length} {searchResults.length === 1 ? 'бронь' : searchResults.length < 5 ? 'брони' : 'броней'}
                           </div>
@@ -455,7 +475,78 @@ export default function HomePage() {
                   )}
                 </AnimatePresence>
               </div>
+
+              <Button
+                variant={hasActiveFilters ? 'default' : 'outline'}
+                className={cn(
+                  "h-10 px-4 rounded-xl gap-2 font-medium transition-all shadow-sm",
+                  hasActiveFilters ? "bg-amber-600 hover:bg-amber-700 border-amber-600" : "border-stone-200 text-stone-600 hover:bg-stone-50"
+                )}
+                onClick={() => setIsFiltersOpen((prev) => !prev)}
+              >
+                <Filter className="h-4 w-4" />
+                <span>Фильтры</span>
+                {hasActiveFilters && (
+                  <Badge variant="secondary" className="ml-1 bg-amber-500/20 text-white border-0 h-5 min-w-[20px] p-0 flex items-center justify-center text-[10px]">
+                    !
+                  </Badge>
+                )}
+              </Button>
             </div>
+
+            {/* Active Filters Row */}
+            <AnimatePresence>
+              {(statusFilter !== 'all' || hasActiveFilters) && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="flex flex-wrap items-center gap-2 overflow-hidden"
+                >
+                  <span className="text-xs text-stone-400 mr-1">Активные фильтры:</span>
+                  {statusFilter !== 'all' && (
+                    <Badge
+                      variant={statusFilter === 'new' ? 'new' :
+                        statusFilter === 'in_progress' ? 'inProgress' :
+                          statusFilter === 'prepaid' ? 'prepaid' : 'paid'}
+                      className="cursor-pointer text-xs px-2 py-1 gap-1 h-7 border-0"
+                      onClick={() => setStatusFilter('all')}
+                    >
+                      {RESERVATION_STATUS_CONFIG[statusFilter].label}
+                      <X className="h-3 w-3" />
+                    </Badge>
+                  )}
+                  {(filters.hallId !== 'all' || filters.menuId !== 'all') && (
+                    <>
+                      {filters.hallId !== 'all' && (
+                        <Badge variant="outline" className="text-xs px-2 py-1 gap-1 h-7 border-stone-200 bg-stone-50 text-stone-600">
+                          Зал: {halls?.find(h => h.id === filters.hallId)?.name || filters.hallId}
+                          <button onClick={() => setFilters(prev => ({ ...prev, hallId: 'all' }))}>
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-[10px] text-stone-400 hover:text-red-500 transition-colors"
+                        onClick={() => {
+                          clearSearchResults()
+                          setStatusFilter('all')
+                          setFilters(prev => ({
+                            ...prev,
+                            hallId: 'all',
+                            menuId: 'all'
+                          }))
+                        }}
+                      >
+                        Сбросить всё
+                      </Button>
+                    </>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             <AnimatePresence initial={false}>
               {isFiltersOpen && (
@@ -613,7 +704,7 @@ export default function HomePage() {
           mode={modalMode}
           initialDate={selectedDate}
         />
-      </div>
-    </PageTransition>
+      </div >
+    </PageTransition >
   )
 }

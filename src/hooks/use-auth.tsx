@@ -38,11 +38,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setIsLoading(prev => {
                 if (prev) {
                     console.warn('[Auth] Initialization timed out. Forcing false.')
+                    // If we haven't even set a role, let's at least set it to 'guest'
+                    // but stay loading if we are still waiting for a network response
+                    // and only force it if absolutely stuck.
                     return false
                 }
                 return prev
             })
-        }, 10000)
+        }, 30000)
 
         const fetchRole = async (u: User) => {
             try {
@@ -64,8 +67,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 console.error('[Auth] Unexpected error in fetchRole:', err)
                 setRole('guest')
             } finally {
-                setIsLoading(false)
                 clearTimeout(timeout)
+                setIsLoading(false)
             }
         }
 

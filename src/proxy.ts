@@ -1,13 +1,8 @@
-import { type NextRequest, NextResponse } from 'next/server'
+import { type NextRequest } from 'next/server'
+import { updateSession } from '@/lib/supabase/middleware'
 
 export async function proxy(request: NextRequest) {
-  // Временно отключаем аутентификацию для демонстрации
-  // Когда Supabase будет настроен, раскомментируйте код ниже
-  //
-  // import { updateSession } from '@/lib/supabase/middleware'
-  // return await updateSession(request)
-  //
-  return NextResponse.next({ request })
+  return await updateSession(request)
 }
 
 export const config = {
@@ -19,6 +14,6 @@ export const config = {
      * - favicon.ico (favicon file)
      * Feel free to modify this pattern to include more paths.
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|sw.js|.*\\.(?:svg|png|jpg|jpeg|gif|webp|js|map)$).*)',
   ],
 }

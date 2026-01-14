@@ -366,6 +366,87 @@ export function useReservations(filters?: {
   return { data, loading, error, refetch: fetchData }
 }
 
+export async function searchReservations(query: string) {
+  const supabase = createClient()
+  const trimmedQuery = query.trim()
+  if (!trimmedQuery) return []
+
+  try {
+    // 1. First, find guests that match the query
+    const { data: guests, error: guestError } = await supabase
+      .from('guests')
+      .select('id')
+      .or(`last_name.ilike.%${trimmedQuery}%,first_name.ilike.%${trimmedQuery}%,phone.ilike.%${trimmedQuery}%`)
+
+    if (guestError) throw guestError
+    const guestIds = guests?.map(g => g.id) || []
+
+    // 2. Then search reservations matching comments OR the found guest IDs
+    let queryBuilder = supabase
+      .from('reservations')
+      .select(`
+        *,
+        hall:halls (*),
+        table:tables (*),
+        guest:guests (*),
+        payments (*)
+      `)
+
+    if (guestIds.length > 0) {
+      queryBuilder = queryBuilder.or(`comments.ilike.%${trimmedQuery}%,guest_id.in.(${guestIds.join(',')})`)
+    } else {
+      queryBuilder = queryBuilder.ilike('comments', `%${trimmedQuery}%`)
+    }
+
+    const { data, error } = await queryBuilder
+      .order('date', { ascending: false })
+      .limit(50)
+
+    if (error) throw error
+
+    return (data || []).map((row: any) => {
+      const prepaid_amount = Array.isArray(row.payments)
+        ? row.payments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0)
+        : Number(row.prepaid_amount) || 0
+
+      return { ...row, prepaid_amount }
+    })
+  } catch (err) {
+    console.error('Error in searchReservations:', err)
+    return []
+  }
+}
+
+export function useReservationSearch() {
+  const [data, setData] = useState<Reservation[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [hasSearched, setHasSearched] = useState(false)
+
+  const search = async (query: string) => {
+    if (!query.trim()) return
+    setLoading(true)
+    setError(null)
+    setHasSearched(true)
+    try {
+      const results = await searchReservations(query)
+      setData(results as Reservation[])
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const clear = () => {
+    setData([])
+    setHasSearched(false)
+  }
+
+  return { data, loading, error, search, clear, hasSearched }
+}
+
+
 // ==================== PAYMENTS ====================
 
 export function usePayments(reservationId?: string) {

@@ -32,7 +32,7 @@ interface AuditLog {
 }
 
 export default function AuditPage() {
-    const { role } = useAuth()
+    const { role, isLoading: isAuthLoading } = useAuth()
     const [logs, setLogs] = useState<AuditLog[]>([])
     const [isLoading, setIsLoading] = useState(true)
     const [searchTerm, setSearchTerm] = useState('')
@@ -100,19 +100,30 @@ export default function AuditPage() {
         }
     }
 
-    if (isLoading) return null
+    if (isAuthLoading) {
+        return (
+            <div className="flex items-center justify-center min-h-[400px]">
+                <History className="h-8 w-8 animate-spin text-amber-600" />
+            </div>
+        )
+    }
 
     if (role !== 'director' && role !== 'manager') {
+        const isGuest = role === 'guest'
         return (
-            <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+            <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 p-4">
                 <History className="w-16 h-16 text-stone-200" />
-                <h2 className="text-xl font-semibold text-stone-900">Доступ ограничен</h2>
+                <h2 className="text-xl font-semibold text-stone-900 text-center">Доступ ограничен</h2>
                 <p className="text-stone-500 text-center max-w-md">
-                    Только управляющий или менеджер может просматривать логи аудита и отменять действия.
+                    {isGuest
+                        ? 'Ваш аккаунт ожидает подтверждения администратором.'
+                        : 'Только управляющий или менеджер может просматривать логи аудита и отменять действия.'}
                 </p>
-                <Button onClick={() => fetchLogs()} variant="outline" className="mt-4">
-                    Попробовать снова
-                </Button>
+                <div className="mt-4 flex flex-col gap-2 w-full max-w-xs">
+                    <Button onClick={() => fetchLogs()} variant="outline">
+                        Попробовать снова
+                    </Button>
+                </div>
             </div>
         )
     }

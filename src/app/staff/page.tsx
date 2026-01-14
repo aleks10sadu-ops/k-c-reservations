@@ -9,7 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useAuth } from '@/hooks/use-auth'
 
 export default function StaffPage() {
-    const { role, user } = useAuth()
+    const { role, user, isLoading: isAuthLoading } = useAuth()
+    const [isLoading, setIsLoading] = useState(false)
 
     // Mock data for demonstration
     const [staff, setStaff] = useState([
@@ -18,12 +19,20 @@ export default function StaffPage() {
         { id: '3', name: 'Анна Сидорова', role: 'chef', type: 'kitchen', rate: 3500, days: [true, true, true, true, true, false, false], email: 'anna@example.com' },
     ])
 
-    if (role === 'guest') {
+    if (isAuthLoading) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+            <div className="flex items-center justify-center min-h-[400px]">
+                <Users className="h-8 w-8 animate-spin text-amber-600" />
+            </div>
+        )
+    }
+
+    if (role === 'guest' || !role) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 p-4 text-center">
                 <Users className="w-16 h-16 text-stone-200" />
                 <h2 className="text-xl font-semibold text-stone-900">Доступ ограничен</h2>
-                <p className="text-stone-500">Обратитесь к администратору для назначения роли.</p>
+                <p className="text-stone-500">Ваш аккаунт ожидает подтверждения администратором.</p>
             </div>
         )
     }
