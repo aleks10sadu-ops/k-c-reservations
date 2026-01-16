@@ -189,8 +189,8 @@ export default function HallsPage() {
   // Get tables with their reservations
   const getTableReservation = (table: Table) => {
     return dateReservations.find(r =>
-      r.table_id === table.id ||
-      (r.table_ids && r.table_ids.includes(table.id))
+      (r.id !== focusedReservationId && r.status !== 'canceled' && r.status !== 'completed' && (r.table_id === table.id || (r.table_ids && r.table_ids.includes(table.id)))) ||
+      (r.id === focusedReservationId && (r.table_id === table.id || (r.table_ids && r.table_ids.includes(table.id))))
     )
   }
 
@@ -600,7 +600,8 @@ export default function HallsPage() {
                                       variant={reservation.status === 'new' ? 'new' :
                                         reservation.status === 'in_progress' ? 'inProgress' :
                                           reservation.status === 'prepaid' ? 'prepaid' :
-                                            reservation.status === 'paid' ? 'paid' : 'canceled'}
+                                            reservation.status === 'paid' ? 'paid' :
+                                              reservation.status === 'completed' ? 'completed' : 'canceled'}
                                     >
                                       {statusConfig.label}
                                     </Badge>

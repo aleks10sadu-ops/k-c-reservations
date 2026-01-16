@@ -201,6 +201,7 @@ export default function HomePage() {
     prepaid: reservations.filter(r => r.status === 'prepaid').length,
     paid: reservations.filter(r => r.status === 'paid').length,
     canceled: reservations.filter(r => r.status === 'canceled').length,
+    completed: reservations.filter(r => r.status === 'completed').length,
   }), [reservations])
 
   if (isLoading) {

@@ -23,9 +23,10 @@ import {
   ChevronUp,
   AlertCircle,
   Copy,
-  Printer
+  Printer,
+  MoreHorizontal
 } from 'lucide-react'
-import { Reservation, ReservationStatus, RESERVATION_STATUS_CONFIG, getMenuItemTypeLabel, MenuItemType, Guest, ReservationMenuItem, Payment, MenuItem } from '@/types'
+import { Reservation, ReservationStatus, RESERVATION_STATUS_CONFIG, getMenuItemTypeLabel, MenuItemType, Guest, ReservationMenuItem, Payment, MenuItem, ReservationMainMenuItem } from '@/types'
 import { cn, formatCurrency, formatDate, formatTime, calculatePlates, calculateTotalWeight } from '@/lib/utils'
 import {
   Dialog,
@@ -52,13 +53,26 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { DateTimePicker } from '@/components/ui/datetime-picker'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import TimeWheelPicker from '@/components/TimeWheelPicker'
 import { useHalls, useMenus, useMenuItems, useMenuItemTypes, useGuests, useTables, useLayoutItems, useCreateMutation, useUpdateMutation, useDeleteMutation, useReservations } from '@/hooks/useSupabase'
-import { updateReservationServerAction, syncReservationTablesServerAction, syncReservationMenuItemsServerAction } from '@/lib/supabase/api'
+import { updateReservationServerAction, syncReservationTablesServerAction, syncReservationMenuItemsServerAction, syncReservationMainMenuItemsServerAction } from '@/lib/supabase/api'
 import { X } from 'lucide-react'
 import { HallScheme } from '@/components/halls/HallScheme'
 import { format } from 'date-fns'
 import { AddPaymentDialog } from '@/components/payments/AddPaymentDialog'
+import { MainMenuSelector } from './MainMenuSelector'
+
+const parseWeight = (w?: string | null) => {
+  if (!w) return 0
+  const match = w.match(/(\d+)/)
+  return match ? parseInt(match[1], 10) : 0
+}
 
 interface ReservationModalProps {
   reservation: Reservation | null
@@ -119,6 +133,7 @@ export function ReservationModal({
       prepaid: 'prepaid' as const,
       paid: 'paid' as const,
       canceled: 'canceled' as const,
+      completed: 'completed' as const,
     }
     return variants[status]
   }
@@ -136,8 +151,12 @@ export function ReservationModal({
     color: '#f59e0b',
     status: 'new' as ReservationStatus,
     total_amount: 0,
-    comments: ''
+    comments: '',
+    menu_type: 'banquet' as 'banquet' | 'main_menu'
   })
+
+  // Main Menu State
+  const [mainMenuSelections, setMainMenuSelections] = useState<ReservationMainMenuItem[]>([])
 
   // New guest form
   const [showNewGuest, setShowNewGuest] = useState(false)
@@ -188,7 +207,7 @@ export function ReservationModal({
   }, [tables, draftTables])
 
   // Требуемая вместимость (количество гостей + дети)
-  const requiredCapacity = formData.guests_count + formData.children_count
+  const requiredCapacity = (Number(formData.guests_count) || 0) + (Number(formData.children_count) || 0)
 
   // Достаточно ли вместимости
   const hasEnoughCapacity = draftTables.length === 0 || selectedCapacity >= requiredCapacity
@@ -285,7 +304,8 @@ export function ReservationModal({
           color: currentReservation.color || '#f59e0b',
           status: currentReservation.status,
           total_amount: currentReservation.total_amount,
-          comments: currentReservation.comments || ''
+          comments: currentReservation.comments || '',
+          menu_type: currentReservation.menu_type || 'banquet'
         })
         const initialTables =
           currentReservation.table_ids?.length
@@ -332,6 +352,13 @@ export function ReservationModal({
           setAdHocItems([])
           setWasSaladsInitialized((initialMode as string) !== 'create')
         }
+
+        // Initialize Main Menu Items
+        if (currentReservation.menu_type === 'main_menu' && currentReservation.main_menu_items) {
+          setMainMenuSelections(currentReservation.main_menu_items)
+        } else {
+          setMainMenuSelections([])
+        }
       } else if (initialMode === 'create') {
         // Определяем hall_id - приоритет preselectedHallId, затем hall стола, затем первый зал
         let hallId = preselectedHallId || ''
@@ -355,7 +382,8 @@ export function ReservationModal({
           color: '#f59e0b',
           status: 'new',
           total_amount: 0,
-          comments: ''
+          comments: '',
+          menu_type: 'main_menu' // Default to Main Menu
         })
         // Устанавливаем выбранные столы если есть preselectedTableId
         if (preselectedTableId) {
@@ -366,6 +394,10 @@ export function ReservationModal({
           setDraftTables([])
         }
         setSelectedSalads([])
+        setMainMenuSelections([])
+        setItemOverrides({})
+        setAdHocItems([])
+        setWasSaladsInitialized(false)
       }
       setShowSchemePicker(false)
       setShowMobileTablePicker(false)
@@ -377,7 +409,7 @@ export function ReservationModal({
     })
   }, [currentReservation, initialMode, isOpen, initialDate, halls, menus, preselectedTableId, preselectedHallId, preselectedDate])
 
-  const statusOptions: ReservationStatus[] = ['new', 'in_progress', 'prepaid', 'paid', 'canceled']
+  const statusOptions: ReservationStatus[] = ['new', 'in_progress', 'prepaid', 'paid', 'canceled', 'completed']
 
   // Инициализируем selectedSalads при переходе в режим редактирования или при выборе меню
   useEffect(() => {
@@ -439,6 +471,11 @@ export function ReservationModal({
   }
 
   const computedTotal = useMemo(() => {
+    if (formData.menu_type === 'main_menu') {
+      const itemsTotal = mainMenuSelections.reduce((sum, item) => sum + (item.total_price || 0), 0)
+      return itemsTotal
+    }
+
     if (currentMenu && currentMenu.price_per_person != null) {
       const total = currentMenu.price_per_person * formData.guests_count
       return isNaN(total) ? 0 : total
@@ -450,12 +487,12 @@ export function ReservationModal({
     }
 
     return formData.total_amount || 0
-  }, [currentMenu, formData.guests_count, formData.total_amount, adHocItems])
+  }, [currentMenu, formData.guests_count, formData.total_amount, adHocItems, mainMenuSelections, formData.menu_type])
 
   const occupiedTableMap = useMemo(() => {
     const map = new Map<string, string>()
     dayReservations
-      ?.filter(r => r.id !== currentReservation?.id)
+      ?.filter(r => r.id !== currentReservation?.id && r.status !== 'canceled' && r.status !== 'completed')
       ?.forEach(r => {
         const color = r.color || '#ef4444'
         if (r.table_id) map.set(r.table_id, color)
@@ -487,6 +524,16 @@ export function ReservationModal({
 
     return result
   }, [currentMenu, menuItems, adHocItems])
+
+  const mainMenuItemsByCategory = useMemo(() => {
+    const grouped: Record<string, ReservationMainMenuItem[]> = {}
+    mainMenuSelections.forEach(item => {
+      const category = item.main_menu_item?.category_name || 'Другое'
+      if (!grouped[category]) grouped[category] = []
+      grouped[category].push(item)
+    })
+    return grouped
+  }, [mainMenuSelections])
 
   const handleMobileTableClick = (tableId: string) => {
     setDraftTables((prev) => {
@@ -537,6 +584,7 @@ export function ReservationModal({
         total_amount: Number(computedTotal),
         prepaid_amount: 0, // Reset payments for the copy
         comments: formData.comments,
+        menu_type: formData.menu_type
       }
 
       const created = await createReservation.mutate(dataToSave)
@@ -548,7 +596,14 @@ export function ReservationModal({
         }
 
         // 3. Clone menu items
-        await syncReservationMenuItemsServerAction(created.id, selectedSalads, itemOverrides, adHocItems)
+        if (formData.menu_type === 'banquet') {
+          await syncReservationMenuItemsServerAction(created.id, selectedSalads, itemOverrides, adHocItems)
+        } else {
+          await syncReservationMainMenuItemsServerAction(created.id, mainMenuSelections.map(item => ({
+            ...item,
+            reservation_id: created.id
+          })))
+        }
 
         alert(`Бронирование успешно скопировано на ${formatDate(duplicateDate)}`)
         onSaveSuccess?.()
@@ -709,7 +764,7 @@ export function ReservationModal({
       date: dateToSave,
       time: timeForDB,
       hall_id: formData.hall_id,
-      table_id: statusToSave === 'canceled' ? null : (selectedTables.length > 0 ? selectedTables[0] : (formData.table_id && formData.table_id.trim() ? formData.table_id : undefined)),
+      table_id: selectedTables.length > 0 ? selectedTables[0] : (formData.table_id && formData.table_id.trim() ? formData.table_id : undefined),
       guest_id: guestId,
       guests_count: Number(formData.guests_count) || 1,
       children_count: Number(formData.children_count) || 0,
@@ -719,6 +774,7 @@ export function ReservationModal({
       total_amount: Number(computedTotal),
       prepaid_amount: Number(currentReservation?.prepaid_amount || 0) + (mode === 'create' ? prepaymentAmount : 0), // Add new prepayment for create mode
       comments: formData.comments,
+      menu_type: formData.menu_type
     }
 
     // Формируем selected_menu_items для обновления отображения
@@ -784,14 +840,26 @@ export function ReservationModal({
       try {
         const created = await createReservation.mutate(dataToSave as any)
         if (created) {
-          const tablesToSync = statusToSave === 'canceled' ? [] : selectedTables
+          const tablesToSync = selectedTables
 
           console.log('--- Creating Reservation Sync ---')
           console.log('Tables to sync:', tablesToSync)
 
           const [tablesSyncResult, menuSyncResult] = await Promise.all([
             syncReservationTablesServerAction(created.id, tablesToSync),
-            syncReservationMenuItemsServerAction(created.id, selectedSalads, itemOverrides, adHocItems, formData.menu_id)
+            formData.menu_type === 'banquet'
+              ? syncReservationMenuItemsServerAction(created.id, selectedSalads, itemOverrides, adHocItems, formData.menu_id)
+              : syncReservationMainMenuItemsServerAction(created.id, mainMenuSelections.map(item => ({
+                main_menu_item_id: item.main_menu_item_id,
+                variant_id: item.variant_id,
+                custom_name: item.custom_name,
+                quantity: item.quantity,
+                weight_grams: item.weight_grams,
+                unit_price: item.unit_price,
+                total_price: item.total_price,
+                notes: item.notes,
+                order_index: item.order_index
+              })))
           ])
 
           if (!tablesSyncResult.success) {
@@ -820,6 +888,7 @@ export function ReservationModal({
             tables: tables.filter(t => selectedTables.includes(t.id)),
             table_ids: selectedTables,
             selected_menu_items: buildSelectedMenuItems(created.id),
+            main_menu_items: mainMenuSelections,
             prepaid_amount: dataToSave.prepaid_amount // Ensure prepaid_amount is updated
           } as Reservation;
           setLocalReservation(finalReservation)
@@ -847,14 +916,26 @@ export function ReservationModal({
 
         const result = updateResult.data
         if (result) {
-          const tablesToSync = statusToSave === 'canceled' ? [] : selectedTables
+          const tablesToSync = selectedTables
 
           console.log('--- Updating Reservation Sync ---')
           console.log('Tables to sync:', tablesToSync)
 
           const [tablesSyncResult, menuSyncResult] = await Promise.all([
             syncReservationTablesServerAction(currentReservation.id, tablesToSync),
-            syncReservationMenuItemsServerAction(currentReservation.id, selectedSalads, itemOverrides, adHocItems, formData.menu_id)
+            formData.menu_type === 'banquet'
+              ? syncReservationMenuItemsServerAction(currentReservation.id, selectedSalads, itemOverrides, adHocItems, formData.menu_id)
+              : syncReservationMainMenuItemsServerAction(currentReservation.id, mainMenuSelections.map(item => ({
+                main_menu_item_id: item.main_menu_item_id,
+                variant_id: item.variant_id,
+                custom_name: item.custom_name,
+                quantity: item.quantity,
+                weight_grams: item.weight_grams,
+                unit_price: item.unit_price,
+                total_price: item.total_price,
+                notes: item.notes,
+                order_index: item.order_index
+              })))
           ])
 
           if (!tablesSyncResult.success) {
@@ -871,9 +952,10 @@ export function ReservationModal({
             ...currentReservation,
             ...(dataToSave as any),
             status: statusToSave,
-            tables: tables.filter(t => (statusToSave === 'canceled' ? [] : selectedTables).includes(t.id)),
-            table_ids: statusToSave === 'canceled' ? [] : selectedTables,
-            selected_menu_items: buildSelectedMenuItems(currentReservation.id)
+            tables: tables.filter(t => selectedTables.includes(t.id)),
+            table_ids: selectedTables,
+            selected_menu_items: buildSelectedMenuItems(currentReservation.id),
+            main_menu_items: mainMenuSelections
           } as Reservation;
           setLocalReservation(finalReservation)
           setFormData(prev => ({ ...prev, status: statusToSave }))
@@ -1056,58 +1138,53 @@ export function ReservationModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className={cn(
-        "max-w-4xl max-h-[95vh] p-0 overflow-hidden",
-        "w-[95vw] sm:w-[90vw] md:w-[85vw]", // Добавлен md breakpoint
-        "mx-auto", // Центрирование
-        mode !== 'view' && "pb-0"
-      )}>
-        <DialogHeader className="p-4 pb-2 pr-12 sm:pr-4">
+      <DialogContent
+        showCloseButton={false}
+        className={cn(
+          "max-w-7xl sm:max-w-none max-h-[95vh] p-0 overflow-hidden",
+          "w-[95vw] sm:w-[92vw] lg:w-[90vw]",
+          "mx-auto rounded-3xl border-stone-200",
+          mode !== 'view' && "pb-0"
+        )}
+      >
+        <DialogHeader className="p-4 pb-2 border-b border-stone-50">
           {/* Compact Header */}
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex-1 min-w-0">
-              {/* Кнопка "Назад" для мобильных */}
-              <div className="flex items-center gap-2 mb-2 md:hidden">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={onClose}
-                  className="p-1 h-8 w-8"
-                >
-                  ← Назад
-                </Button>
-              </div>
-              <DialogTitle className="text-lg font-bold text-stone-900">
-                {mode === 'create' ? 'Новое бронирование' : 'Бронирование'}
-              </DialogTitle>
-              {currentReservation && mode !== 'create' && (
-                <div className="mt-1 space-y-1">
-                  <p className="text-sm font-medium text-stone-700">
-                    {currentReservation.guest?.last_name} {currentReservation.guest?.first_name}
-                  </p>
-                  <p className="text-xs text-stone-500">
-                    {formatDate(currentReservation.date)} в {formatTime(currentReservation.time)}
-                  </p>
-                  <Badge variant={getStatusVariant(currentReservation?.status || formData.status)} className="text-xs">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex-1 min-w-0 flex items-center gap-2">
+              {/* Кнопка "Назад" для мобильных - теперь инлайн */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onClose}
+                className="h-8 w-8 px-0 text-stone-500 lg:hidden shrink-0"
+              >
+                ←
+              </Button>
+              <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+                <DialogTitle className="text-sm sm:text-base font-black text-stone-900 uppercase tracking-tight truncate">
+                  {mode === 'create' ? 'Новая' : 'Бронь'}
+                </DialogTitle>
+                {currentReservation && (
+                  <Badge variant={getStatusVariant(currentReservation?.status || formData.status)} className="text-[8px] sm:text-[9px] h-4 sm:h-5 font-black uppercase pt-0.5 shrink-0">
                     {RESERVATION_STATUS_CONFIG[currentReservation?.status || formData.status].label}
                   </Badge>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
-            {/* Action Buttons - всегда справа */}
-            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            {/* Action Buttons */}
+            <div className="flex items-center gap-1 shrink-0">
               {reservation && mode !== 'create' && (
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
                       size="sm"
-                      className="gap-1 sm:gap-2 h-8 sm:h-9 text-stone-600 hover:text-amber-600 hover:border-amber-200"
+                      className="gap-2 h-9 text-stone-600 hover:text-amber-600 hover:border-amber-200 hidden sm:flex"
                       onClick={() => setDuplicateDate(formData.date)}
                     >
-                      <Copy className="h-3 w-3 sm:h-4 sm:w-4" />
-                      <span className="hidden sm:inline text-xs sm:text-sm">Копия</span>
+                      <Copy className="h-4 w-4" />
+                      <span className="text-sm">Копия</span>
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-80 p-4" align="end">
@@ -1148,11 +1225,11 @@ export function ReservationModal({
                   variant="outline"
                   size="sm"
                   onClick={() => window.open(`/reservations/${reservation.id}/print`, '_blank')}
-                  className="gap-1 sm:gap-2 h-8 sm:h-9 border-stone-200 hover:bg-stone-50"
+                  className="gap-2 h-9 border-stone-200 hover:bg-stone-50 hidden sm:flex"
                   title="Распечатать карточку"
                 >
-                  <Printer className="h-3 w-3 sm:h-4 sm:w-4" />
-                  <span className="hidden sm:inline text-xs sm:text-sm">Печать</span>
+                  <Printer className="h-4 w-4" />
+                  <span className="text-sm">Печать</span>
                 </Button>
               )}
 
@@ -1161,10 +1238,10 @@ export function ReservationModal({
                   variant="outline"
                   size="sm"
                   onClick={() => setMode('edit')}
-                  className="gap-1 sm:gap-2 h-8 sm:h-9"
+                  className="gap-1 sm:gap-2 h-8 sm:h-9 hidden sm:flex"
                 >
                   <Settings className="h-3 w-3 sm:h-4 sm:w-4" />
-                  <span className="hidden sm:inline text-xs sm:text-sm">Изменить</span>
+                  <span className="inline text-xs sm:text-sm">Изм.</span>
                 </Button>
               )}
 
@@ -1172,766 +1249,595 @@ export function ReservationModal({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="text-stone-400 hover:text-rose-600 hover:bg-rose-50 h-8 w-8 sm:h-9 sm:w-9"
-                  onClick={handleDelete}
-                  disabled={isLoading}
-                  title="Удалить бронь"
+                  className="text-stone-400 hover:text-rose-600 hover:bg-rose-50 h-8 w-8 sm:h-9 sm:w-9 hidden sm:flex"
                 >
                   {deleteReservation.loading ? (
-                    <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    <Trash2 className="h-3 w-3 sm:h-4 sm:w-4" />
+                    <Trash2 className="h-4 w-4" />
                   )}
                 </Button>
               )}
+
+              {/* Mobile Actions Dropdown */}
+              {reservation && mode === 'view' && (
+                <div className="sm:hidden">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-stone-400">
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuItem onClick={() => setMode('edit')} className="gap-2">
+                        <Settings className="h-4 w-4" /> Изменить
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => window.open(`/reservations/${reservation.id}/print`, '_blank')} className="gap-2">
+                        <Printer className="h-4 w-4" /> Печать
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setDuplicateDate(formData.date)} className="gap-2">
+                        <Copy className="h-4 w-4" /> Копировать
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleDelete} className="text-red-600 focus:text-red-700 gap-2">
+                        <Trash2 className="h-4 w-4" /> Удалить
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              )}
+
+              {/* Custom Close Button */}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onClose}
+                className="h-8 w-8 sm:h-9 sm:w-9 text-stone-400 hover:bg-stone-50 rounded-full ml-1"
+              >
+                <X className="h-4 w-4" />
+              </Button>
             </div>
           </div>
         </DialogHeader>
 
         <ScrollArea className={cn(
-          mode === 'view' ? "max-h-[calc(80vh-140px)]" : "max-h-[calc(95vh-200px)]",
-          mode !== 'view' && "pb-20"
+          "flex-1 w-full",
+          mode === 'view' ? "h-[calc(90vh-80px)]" : "h-[calc(90vh-160px)]",
         )}>
-          <div className="modal-content space-y-4 break-anywhere">
-            {/* Status Selection - Only show when editing */}
-            {mode !== 'view' && (
-              <div className="space-y-3 modal-form-section">
-                <Label className="text-sm font-medium">Статус бронирования</Label>
-                <div className="flex flex-wrap gap-2">
-                  {statusOptions.map((status) => {
-                    const config = RESERVATION_STATUS_CONFIG[status]
-                    const isSelected = formData.status === status
-                    return (
-                      <motion.button
-                        key={status}
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={() => handleStatusChange(status)}
-                        className={cn(
-                          "px-3 py-2 rounded-lg text-sm font-medium border-2 transition-all",
-                          isSelected ? "shadow-md" : "opacity-60 hover:opacity-100"
-                        )}
-                        style={{
-                          backgroundColor: isSelected ? config.bgColor : 'transparent',
-                          borderColor: config.borderColor,
-                          color: config.color,
-                        }}
-                      >
-                        {config.label}
-                      </motion.button>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Guest Information */}
-            <div className="space-y-4 modal-form-section">
-              <h3 className="font-semibold text-stone-900 flex items-center gap-2 border-b border-stone-200 pb-2">
-                <User className="h-4 w-4 shrink-0" />
-                Информация о госте
-              </h3>
-              {mode === 'view' ? (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                    <div>
-                      <Label className="text-xs text-stone-500">ФИО</Label>
-                      <p className="mt-1 font-medium text-stone-900 break-anywhere">
-                        {currentReservation?.guest?.last_name} {currentReservation?.guest?.first_name} {currentReservation?.guest?.middle_name}
-                      </p>
-                    </div>
-                    <div>
-                      <Label className="text-xs text-stone-500 flex items-center gap-2">
-                        <Phone className="h-3.5 w-3.5 shrink-0" />
-                        Телефон
-                      </Label>
-                      <p className="mt-1 text-stone-900 break-anywhere">{currentReservation?.guest?.phone}</p>
+          <div className="p-4 sm:p-6 lg:p-8 pb-32 sm:pb-40">
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 lg:gap-8 items-start">
+              {/* Left Column: Core Info */}
+              <div className="lg:col-span-2 space-y-6">
+                {/* Status Selection - Moved to sidebar */}
+                {mode !== 'view' && (
+                  <div className="bg-white border border-stone-200 rounded-2xl p-6 shadow-sm space-y-4">
+                    <Label className="text-xs font-bold text-stone-500 uppercase tracking-widest pl-1">Статус бронирования</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {statusOptions.map((status) => {
+                        const config = RESERVATION_STATUS_CONFIG[status]
+                        const isSelected = formData.status === status
+                        return (
+                          <motion.button
+                            key={status}
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => handleStatusChange(status)}
+                            className={cn(
+                              "px-2 sm:px-3 py-2 sm:py-2.5 rounded-xl text-[10px] sm:text-xs font-bold border-2 transition-all text-center leading-tight",
+                              isSelected ? "shadow-md ring-2 ring-offset-1 ring-amber-100" : "opacity-60 hover:opacity-100 grayscale-[0.5]"
+                            )}
+                            style={{
+                              backgroundColor: isSelected ? config.bgColor : 'transparent',
+                              borderColor: config.borderColor,
+                              color: config.color,
+                            }}
+                          >
+                            {config.label}
+                          </motion.button>
+                        )
+                      })}
                     </div>
                   </div>
-                  {currentReservation?.guest?.notes && (
-                    <div className="p-3 bg-stone-50 border border-stone-100 rounded-xl mt-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <MessageSquare className="h-3.5 w-3.5 text-stone-400" />
-                        <span className="text-[10px] font-semibold text-stone-500 uppercase tracking-tighter">Заметки о госте</span>
+                )}
+
+                {/* Guest Information Card */}
+                <div className="bg-white border border-stone-200 rounded-3xl p-4 sm:p-6 shadow-sm space-y-4 sm:space-y-5">
+                  <div className="flex items-center justify-between border-b border-stone-50 pb-3 sm:pb-4">
+                    <h3 className="font-black text-stone-900 flex items-center gap-2 sm:gap-3 text-sm sm:text-base">
+                      <div className="p-1.5 sm:p-2 bg-amber-50 rounded-lg sm:rounded-xl">
+                        <User className="h-4 w-4 sm:h-5 sm:w-5 text-amber-600" />
                       </div>
-                      <p className="text-sm text-stone-600 whitespace-pre-wrap leading-relaxed">{currentReservation.guest.notes}</p>
+                      Гость
+                    </h3>
+                    {mode !== 'view' && !showNewGuest && (
+                      <Button variant="ghost" size="sm" onClick={() => setShowNewGuest(true)} className="text-amber-600 font-bold text-[10px] h-7 sm:h-8 px-2 sm:px-3">
+                        <Plus className="h-3.5 w-3.5 mr-0.5 sm:mr-1" />
+                        <span className="hidden sm:inline">Новый</span>
+                        <span className="sm:hidden uppercase">Новый</span>
+                      </Button>
+                    )}
+                  </div>
+
+                  {mode === 'view' ? (
+                    <div className="space-y-3 sm:space-y-4">
+                      <div className="grid grid-cols-1 gap-3 sm:gap-4">
+                        <div className="bg-stone-50 p-3 sm:p-4 rounded-xl sm:rounded-2xl">
+                          <Label className="text-[9px] sm:text-[10px] text-stone-400 font-black uppercase tracking-widest pl-1 mb-1 block">ФИО Гостя</Label>
+                          <p className="font-black text-stone-900 text-base sm:text-lg leading-tight">
+                            {currentReservation?.guest?.last_name} {currentReservation?.guest?.first_name}
+                          </p>
+                          <p className="text-stone-500 font-medium text-xs sm:text-sm mt-0.5 sm:mt-1">
+                            {currentReservation?.guest?.middle_name}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3 sm:gap-4 bg-stone-50 p-3 sm:p-4 rounded-xl sm:rounded-2xl">
+                          <div className="p-1.5 sm:p-2 bg-white rounded-lg sm:rounded-xl shadow-sm">
+                            <Phone className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-stone-400" />
+                          </div>
+                          <div>
+                            <Label className="text-[9px] sm:text-[10px] text-stone-400 font-black uppercase tracking-widest block mb-0.5">Телефон</Label>
+                            <p className="font-bold text-stone-900 text-sm sm:text-base">{currentReservation?.guest?.phone}</p>
+                          </div>
+                        </div>
+                      </div>
+                      {currentReservation?.guest?.notes && (
+                        <div className="p-3 sm:p-4 bg-amber-50/50 border border-amber-100 rounded-xl sm:rounded-2xl">
+                          <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
+                            <MessageSquare className="h-3.5 w-3.5 text-amber-600" />
+                            <span className="text-[9px] sm:text-[10px] font-black text-amber-700 uppercase tracking-widest">Заметки о госте</span>
+                          </div>
+                          <p className="text-xs sm:text-sm text-stone-700 font-medium italic leading-relaxed">{currentReservation.guest.notes}</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {!showNewGuest ? (
+                        <>
+                          <GuestCombobox
+                            guests={guests}
+                            value={formData.guest_id}
+                            onChange={(v) => setFormData({ ...formData, guest_id: v })}
+                          />
+                          {isGuestBlacklisted && (
+                            <div className="p-4 bg-red-50 border-2 border-red-100 rounded-2xl flex items-center gap-3 text-red-800 animate-pulse">
+                              <AlertCircle className="h-6 w-6 text-red-600 shrink-0" />
+                              <p className="text-sm font-black uppercase tracking-tight">В чёрном списке!</p>
+                            </div>
+                          )}
+                          {selectedGuestObj?.notes && (
+                            <div className="p-4 bg-stone-50 border border-stone-200 rounded-2xl">
+                              <div className="flex items-center gap-2 mb-2">
+                                <MessageSquare className="h-4 w-4 text-stone-400" />
+                                <span className="text-[10px] font-black text-stone-500 uppercase tracking-widest">Информация</span>
+                              </div>
+                              <p className="text-sm text-stone-700 font-medium italic">{selectedGuestObj.notes}</p>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="space-y-4 p-5 rounded-3xl bg-stone-50/50 border border-stone-100 shadow-inner">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                              <Label className="text-[10px] font-black text-stone-400 uppercase tracking-widest px-1">Фамилия *</Label>
+                              <Input
+                                placeholder="Петров"
+                                value={newGuestData.last_name}
+                                onChange={(e) => setNewGuestData({ ...newGuestData, last_name: e.target.value })}
+                                className="bg-white rounded-xl border-stone-200 h-11 px-4 font-bold"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label className="text-[10px] font-black text-stone-400 uppercase tracking-widest px-1">Имя *</Label>
+                              <Input
+                                placeholder="Иван"
+                                value={newGuestData.first_name}
+                                onChange={(e) => setNewGuestData({ ...newGuestData, first_name: e.target.value })}
+                                className="bg-white rounded-xl border-stone-200 h-11 px-4 font-bold"
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-[10px] font-black text-stone-400 uppercase tracking-widest px-1">Телефон *</Label>
+                            <Input
+                              placeholder="+7 (___) ___ - __ - __"
+                              value={newGuestData.phone}
+                              onChange={(e) => {
+                                let val = e.target.value
+                                if (val === '9') val = '+79'
+                                if (val === '8') val = '+7'
+                                setNewGuestData({ ...newGuestData, phone: val })
+                              }}
+                              className={cn("bg-white rounded-xl border-stone-200 h-11 px-4 font-bold", matchingGuest && "border-amber-400 ring-2 ring-amber-100")}
+                            />
+                            {matchingGuest && (
+                              <motion.div
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                className={cn(
+                                  "mt-3 p-4 border-2 rounded-2xl flex items-center justify-between shadow-sm",
+                                  matchingGuest.status === 'blacklist' ? "bg-red-50 border-red-200" : "bg-amber-50 border-amber-200"
+                                )}
+                              >
+                                <div className="text-xs">
+                                  <p className={cn("font-black mb-1", matchingGuest.status === 'blacklist' ? "text-red-900" : "text-amber-900")}>
+                                    {matchingGuest.status === 'blacklist' ? "БЛОКИРОВКА" : "НАЙДЕН В БАЗЕ"}
+                                  </p>
+                                  <p className="font-bold text-stone-800">
+                                    {matchingGuest.last_name} {matchingGuest.first_name}
+                                  </p>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant={matchingGuest.status === 'blacklist' ? "destructive" : "default"}
+                                  className={cn("h-8 px-4 font-black text-[10px]", matchingGuest.status === 'blacklist' ? "" : "bg-amber-600 hover:bg-amber-700")}
+                                  disabled={matchingGuest.status === 'blacklist'}
+                                  onClick={() => {
+                                    setFormData(prev => ({ ...prev, guest_id: matchingGuest.id }))
+                                    setShowNewGuest(false)
+                                    setNewGuestData({ first_name: '', last_name: '', phone: '' })
+                                  }}
+                                >
+                                  {matchingGuest.status === 'blacklist' ? "ЗАПРЕТИТЬ" : "ВЫБРАТЬ"}
+                                </Button>
+                              </motion.div>
+                            )}
+                          </div>
+                          <Button variant="ghost" size="sm" onClick={() => setShowNewGuest(false)} className="w-full text-stone-400 font-bold hover:text-stone-600">
+                            Вернуться к списку
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  {!showNewGuest ? (
-                    <>
-                      <GuestCombobox
-                        guests={guests}
-                        value={formData.guest_id}
-                        onChange={(v) => setFormData({ ...formData, guest_id: v })}
-                      />
-                      {isGuestBlacklisted && (
-                        <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-red-700 mt-2">
-                          <AlertCircle className="h-5 w-5 shrink-0" />
-                          <p className="text-sm font-bold">Этот гость находится в чёрном списке</p>
+
+                {/* Reservation Details Card */}
+                <div className="bg-white border border-stone-200 rounded-3xl p-3.5 sm:p-6 shadow-sm space-y-4 sm:space-y-6">
+                  <h3 className="font-black text-stone-900 flex items-center gap-2 sm:gap-3 text-sm sm:text-base border-b border-stone-50 pb-3 sm:pb-4">
+                    <div className="p-1.5 sm:p-2 bg-amber-50 rounded-lg sm:rounded-xl">
+                      <Calendar className="h-4 w-4 sm:h-5 sm:w-5 text-amber-600" />
+                    </div>
+                    Условия бронирования
+                  </h3>
+
+                  <div className="grid grid-cols-2 gap-x-4 sm:gap-x-6 gap-y-4 sm:gap-y-6">
+                    {/* Date */}
+                    <div>
+                      <Label className="text-[9px] sm:text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1 sm:mb-1.5 block px-1">Дата</Label>
+                      {mode === 'view' ? (
+                        <div className="h-10 sm:h-12 flex items-center bg-stone-50 rounded-xl px-3 sm:px-4 font-bold text-stone-900 text-sm sm:text-base border border-stone-100 italic">
+                          {formatDate(formData.date)}
                         </div>
-                      )}
-                      {selectedGuestObj?.notes && (
-                        <div className="p-3 bg-stone-50 border border-stone-200 rounded-xl mt-2">
-                          <div className="flex items-center gap-2 mb-1">
-                            <MessageSquare className="h-4 w-4 text-stone-400" />
-                            <span className="text-xs font-medium text-stone-500 uppercase tracking-wider">Заметки о госте</span>
-                          </div>
-                          <p className="text-sm text-stone-700 whitespace-pre-wrap">{selectedGuestObj.notes}</p>
-                        </div>
-                      )}
-                      <Button variant="outline" size="sm" onClick={() => setShowNewGuest(true)}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        Новый гость
-                      </Button>
-                    </>
-                  ) : (
-                    <div className="space-y-3 p-4 rounded-xl bg-stone-50">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <Label>Фамилия *</Label>
-                          <Input
-                            value={newGuestData.last_name}
-                            onChange={(e) => setNewGuestData({ ...newGuestData, last_name: e.target.value })}
-                          />
-                        </div>
-                        <div>
-                          <Label>Имя *</Label>
-                          <Input
-                            value={newGuestData.first_name}
-                            onChange={(e) => setNewGuestData({ ...newGuestData, first_name: e.target.value })}
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <Label>Телефон *</Label>
-                        <Input
-                          value={newGuestData.phone}
-                          onChange={(e) => {
-                            let val = e.target.value
-                            if (val === '9') val = '+79'
-                            if (val === '8') val = '+7'
-                            setNewGuestData({ ...newGuestData, phone: val })
-                          }}
-                          className={cn(matchingGuest && "border-amber-500 ring-amber-500")}
+                      ) : (
+                        <DateTimePicker
+                          value={formData.date}
+                          onChange={(date) => setFormData({ ...formData, date })}
+                          dateOnly={true}
                         />
-                        {matchingGuest && (
-                          <motion.div
-                            initial={{ opacity: 0, y: -5 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className={cn(
-                              "mt-2 p-3 border rounded-lg flex items-center justify-between",
-                              matchingGuest.status === 'blacklist' ? "bg-red-50 border-red-200" : "bg-amber-50 border-amber-200"
-                            )}
+                      )}
+                    </div>
+
+                    {/* Time */}
+                    <div>
+                      <Label className="text-[9px] sm:text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1 sm:mb-1.5 block px-1">Время</Label>
+                      {mode === 'view' ? (
+                        <div className="h-10 sm:h-12 flex items-center bg-stone-50 rounded-xl px-3 sm:px-4 font-bold text-stone-900 text-sm sm:text-base border border-stone-100 italic">
+                          {formatTime(formData.time)}
+                        </div>
+                      ) : (
+                        <TimeWheelPicker
+                          value={formData.time}
+                          onChange={(time) => setFormData({ ...formData, time })}
+                          className="h-10 sm:h-12"
+                        />
+                      )}
+                    </div>
+
+                    {/* Hall */}
+                    <div className="col-span-2">
+                      <Label className="text-[9px] sm:text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1 sm:mb-1.5 block px-1">Зал и локация</Label>
+                      {mode === 'view' ? (
+                        <div className="h-10 sm:h-12 flex items-center bg-stone-50 rounded-xl px-3 sm:px-4 font-bold text-stone-900 text-sm sm:text-base border border-stone-100 italic">
+                          <MapPin className="h-4 w-4 text-stone-400 mr-2" />
+                          {halls.find(h => h.id === formData.hall_id)?.name}
+                        </div>
+                      ) : (
+                        <Select
+                          value={formData.hall_id}
+                          onValueChange={(v) => {
+                            setFormData({ ...formData, hall_id: v, table_id: '' })
+                            setSelectedTables([])
+                            setDraftTables([])
+                            setShowSchemePicker(false)
+                          }}
+                        >
+                          <SelectTrigger className="h-10 sm:h-12 rounded-xl border-stone-200 font-bold bg-white text-sm">
+                            <SelectValue placeholder="Выберите зал" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {halls.map(hall => (
+                              <SelectItem key={hall.id} value={hall.id} className="font-medium">
+                                {hall.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+
+                    {/* Tables */}
+                    <div className="col-span-2">
+                      <Label className="text-[9px] sm:text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1 sm:mb-1.5 block px-1">Столы</Label>
+                      <div className="flex items-center gap-2 sm:gap-3">
+                        <div className="flex-1 min-h-[2.5rem] sm:min-h-[3rem] py-2 sm:py-3 flex flex-wrap items-center gap-1.5 sm:gap-2 bg-stone-50 rounded-xl px-3 sm:px-4 border border-stone-100 italic">
+                          {mode === 'view' ? (
+                            currentReservation?.tables?.length ? (
+                              currentReservation.tables.map(t => (
+                                <Badge key={t.id} variant="secondary" className="bg-white h-6 sm:h-7 px-2 sm:px-3 text-[10px] sm:text-xs">
+                                  Стол {t.number}
+                                </Badge>
+                              ))
+                            ) : <span className="text-stone-400 text-xs sm:text-sm font-medium">Не закреплены</span>
+                          ) : (
+                            selectedTables.length > 0 ? (
+                              tables.filter(t => selectedTables.includes(t.id)).map(t => (
+                                <Badge key={t.id} variant="secondary" className="bg-amber-100 text-amber-700 border-amber-200 font-bold h-6 sm:h-7 px-2 sm:px-3 text-[10px] sm:text-xs">
+                                  Стол {t.number}
+                                </Badge>
+                              ))
+                            ) : <span className="text-stone-400 text-xs sm:text-sm font-medium">Выберите на схеме</span>
+                          )}
+                        </div>
+                        {mode !== 'view' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => isMobile ? setShowMobileTablePicker(true) : setShowDesktopTablePicker(true)}
+                            className="h-10 sm:h-12 rounded-xl px-3 sm:px-4 border-amber-200 font-black text-[10px] text-amber-700 hover:bg-amber-50"
                           >
-                            <div className="text-sm">
-                              <p className={cn("font-medium", matchingGuest.status === 'blacklist' ? "text-red-900" : "text-amber-900")}>
-                                Гость найден: {matchingGuest.status === 'blacklist' && "(ЧЁРНЫЙ СПИСОК)"}
-                              </p>
-                              <p className={cn(matchingGuest.status === 'blacklist' ? "text-red-800" : "text-amber-800")}>
-                                {matchingGuest.last_name} {matchingGuest.first_name}
-                              </p>
-                              {matchingGuest.notes && (
-                                <div className="mt-2 pt-2 border-t border-amber-100 italic text-stone-600 line-clamp-2">
-                                  "{matchingGuest.notes}"
-                                </div>
-                              )}
-                              {matchingGuest.status === 'blacklist' && (
-                                <p className="text-xs font-bold text-red-600 mt-1 uppercase">Этот гость в чёрном списке</p>
-                              )}
-                            </div>
-                            <Button
-                              size="sm"
-                              variant={matchingGuest.status === 'blacklist' ? "destructive" : "default"}
-                              className={matchingGuest.status === 'blacklist' ? "" : "bg-amber-600 hover:bg-amber-700 text-white"}
-                              disabled={matchingGuest.status === 'blacklist'}
-                              onClick={() => {
-                                setFormData(prev => ({ ...prev, guest_id: matchingGuest.id }))
-                                setShowNewGuest(false)
-                                setNewGuestData({ first_name: '', last_name: '', phone: '' })
+                            СХЕМА
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Guest counts */}
+                    <div>
+                      <Label className="text-[9px] sm:text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1 sm:mb-1.5 block px-1">Взрослых</Label>
+                      {mode === 'view' ? (
+                        <div className="h-10 sm:h-12 flex items-center justify-center bg-stone-50 rounded-xl font-black text-lg text-stone-900 border border-stone-100 italic">
+                          {formData.guests_count}
+                        </div>
+                      ) : (
+                        <Input
+                          type="number"
+                          min={1}
+                          value={formData.guests_count || ''}
+                          onChange={(e) => setFormData({ ...formData, guests_count: parseInt(e.target.value) || 0 })}
+                          className="h-10 sm:h-12 rounded-xl text-center font-black text-lg bg-stone-50 border-stone-100"
+                        />
+                      )}
+                    </div>
+                    <div>
+                      <Label className="text-[9px] sm:text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1 sm:mb-1.5 block px-1">Детей</Label>
+                      {mode === 'view' ? (
+                        <div className="h-10 sm:h-12 flex items-center justify-center bg-stone-50 rounded-xl font-black text-lg text-stone-900 border border-stone-100 italic">
+                          {formData.children_count || 0}
+                        </div>
+                      ) : (
+                        <Input
+                          type="number"
+                          min={0}
+                          value={formData.children_count || ''}
+                          onChange={(e) => setFormData({ ...formData, children_count: parseInt(e.target.value) || 0 })}
+                          className="h-10 sm:h-12 rounded-xl text-center font-black text-lg bg-stone-50 border-stone-100"
+                        />
+                      )}
+                    </div>
+
+                    {/* Color Preset Selector */}
+                    <div className="col-span-2 pt-2">
+                      <Label className="text-[9px] sm:text-[10px] font-black text-stone-400 uppercase tracking-widest mb-3 block px-1">Цветовая метка</Label>
+                      <div className="flex flex-wrap gap-2 sm:gap-3.5 px-0.5 py-1">
+                        {COLOR_PRESETS.map((c) => (
+                          <button
+                            key={c}
+                            disabled={mode === 'view'}
+                            type="button"
+                            className={cn(
+                              "w-6 h-6 sm:w-8 sm:h-8 rounded-full transition-all relative ring-offset-2 ring-offset-white",
+                              formData.color === c ? "scale-110 ring-2 ring-stone-300" : "hover:scale-105 opacity-80"
+                            )}
+                            style={{ backgroundColor: c }}
+                            onClick={() => setFormData({ ...formData, color: c })}
+                          >
+                            {formData.color === c && (
+                              <div className="absolute inset-[-4px] rounded-full border-2 border-stone-200 scale-110" />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column: Menu & Billing */}
+              <div className="lg:col-span-3 space-y-6">
+                {/* Menu Section Card */}
+                <div className="bg-white border border-stone-200 rounded-3xl p-4 sm:p-6 shadow-sm space-y-5 sm:space-y-6">
+                  <h3 className="font-black text-stone-900 flex items-center gap-3 text-base border-b border-stone-50 pb-4">
+                    <div className="p-2 bg-amber-50 rounded-xl">
+                      <ChefHat className="h-5 w-5 text-amber-600" />
+                    </div>
+                    Состав заказа
+                  </h3>
+
+                  {/* Menu Type Switcher */}
+                  {mode !== 'view' && (
+                    <div className="flex p-1.5 bg-stone-100 rounded-2xl">
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, menu_type: 'main_menu' })}
+                        className={cn(
+                          "flex-1 py-2.5 px-4 text-xs font-black rounded-xl transition-all uppercase tracking-widest",
+                          formData.menu_type === 'main_menu'
+                            ? "bg-white text-stone-900 shadow-sm ring-1 ring-stone-200"
+                            : "text-stone-400 hover:text-stone-600"
+                        )}
+                      >
+                        Основное
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, menu_type: 'banquet' })}
+                        className={cn(
+                          "flex-1 py-2.5 px-4 text-xs font-black rounded-xl transition-all uppercase tracking-widest",
+                          formData.menu_type === 'banquet'
+                            ? "bg-white text-stone-900 shadow-sm ring-1 ring-stone-200"
+                            : "text-stone-400 hover:text-stone-600"
+                        )}
+                      >
+                        Банкетное
+                      </button>
+                    </div>
+                  )}
+
+                  {/* BANQUET MENU MODE */}
+                  {formData.menu_type === 'banquet' && (
+                    <div className="space-y-4">
+                      <div className="p-5 rounded-3xl bg-amber-50 border border-amber-100 shadow-sm">
+                        <div className="flex items-center justify-between flex-wrap gap-4">
+                          <div className="flex-1">
+                            {currentMenu ? (
+                              <>
+                                <p className="font-black text-amber-900 text-lg">{currentMenu.name}</p>
+                                <p className="text-sm text-amber-600 font-bold uppercase tracking-tight">
+                                  {formatCurrency(currentMenu.price_per_person)} / ЧЕЛОВЕК
+                                </p>
+                              </>
+                            ) : (
+                              <p className="font-black text-amber-900">Меню не выбрано</p>
+                            )}
+                          </div>
+                          {mode !== 'view' && (
+                            <Select
+                              value={formData.menu_id}
+                              onValueChange={(v) => {
+                                if (v !== formData.menu_id) {
+                                  setFormData({ ...formData, menu_id: v })
+                                  setSelectedSalads([])
+                                  setItemOverrides({})
+                                }
                               }}
                             >
-                              {matchingGuest.status === 'blacklist' ? "ЗАБЛОКИРОВАНО" : "Выбрать"}
-                            </Button>
-                          </motion.div>
-                        )}
-                      </div>
-                      <Button variant="outline" size="sm" onClick={() => setShowNewGuest(false)}>
-                        Выбрать существующего
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Reservation Details */}
-            <div className="space-y-4 modal-form-section">
-              <h3 className="font-semibold text-stone-900 flex items-center gap-2 border-b border-stone-200 pb-2">
-                <Calendar className="h-4 w-4 shrink-0" />
-                Детали бронирования
-              </h3>
-              <div className="space-y-4">
-                {/* Mobile layout: 3 rows x 2 cols */}
-                <div className="space-y-4 sm:hidden">
-                  {/* Row 1: Date & Time */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="flex items-center gap-2 text-sm">
-                        <Calendar className="h-4 w-4 shrink-0" />
-                        Дата
-                      </Label>
-                      {mode === 'view' ? (
-                        <p className="mt-2 font-medium break-anywhere">{formatDate(currentReservation?.date || '')}</p>
-                      ) : (
-                        <DateTimePicker
-                          value={formData.date}
-                          onChange={(date) => setFormData({ ...formData, date })}
-                          dateOnly={true}
-                          className="mt-2"
-                        />
-                      )}
-                    </div>
-
-                    <div>
-                      <Label className="flex items-center gap-2 text-sm">
-                        <Clock className="h-4 w-4 shrink-0" />
-                        Время
-                      </Label>
-                      {mode === 'view' ? (
-                        <p className="mt-2 font-medium break-anywhere">{formatTime(currentReservation?.time)}</p>
-                      ) : (
-                        <TimeWheelPicker
-                          value={formData.time}
-                          onChange={(time) => setFormData({ ...formData, time })}
-                          className="mt-2"
-                        />
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Row 2: Guests & Children */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="flex items-center gap-2 text-sm">
-                        <Users className="h-4 w-4 shrink-0" />
-                        Гостей
-                      </Label>
-                      {mode === 'view' ? (
-                        <p className="mt-2 text-xl font-bold text-stone-900 break-anywhere">{currentReservation?.guests_count}</p>
-                      ) : (
-                        <Input
-                          type="number"
-                          min={1}
-                          value={formData.guests_count}
-                          onChange={(e) => setFormData({ ...formData, guests_count: e.target.value === '' ? ('' as any) : parseInt(e.target.value) })}
-                          className="mt-2"
-                        />
-                      )}
-                    </div>
-
-                    <div>
-                      <Label className="flex items-center gap-2 text-sm">
-                        <Baby className="h-4 w-4 shrink-0" />
-                        Детей
-                      </Label>
-                      {mode === 'view' ? (
-                        <p className="mt-2 text-xl font-bold text-stone-900 break-anywhere">{currentReservation?.children_count || 0}</p>
-                      ) : (
-                        <Input
-                          type="number"
-                          min={0}
-                          value={formData.children_count}
-                          onChange={(e) => setFormData({ ...formData, children_count: e.target.value === '' ? ('' as any) : parseInt(e.target.value) })}
-                          className="mt-2"
-                        />
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Row 3: Hall & Tables */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="flex items-center gap-2 text-sm">
-                        <MapPin className="h-4 w-4 shrink-0" />
-                        Зал
-                      </Label>
-                      {mode === 'view' ? (
-                        <p className="mt-2 break-anywhere">{currentReservation?.hall?.name}</p>
-                      ) : (
-                        <Select
-                          value={formData.hall_id}
-                          onValueChange={(v) => {
-                            setFormData({ ...formData, hall_id: v, table_id: '' })
-                            setSelectedTables([])
-                            setDraftTables([])
-                            setShowSchemePicker(false)
-                          }}
-                        >
-                          <SelectTrigger className="mt-2">
-                            <SelectValue placeholder="Выберите зал" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {halls.map(hall => (
-                              <SelectItem key={hall.id} value={hall.id}>
-                                {hall.name} (до {hall.capacity} чел.)
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    </div>
-
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <Label className="flex items-center gap-2 text-sm">
-                          <MapPin className="h-4 w-4 shrink-0" />
-                          Столы
-                        </Label>
-                        {mode !== 'view' && (
-                          <Button
-                            type="button"
-                            variant={(showSchemePicker || showMobileTablePicker || showDesktopTablePicker) ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => {
-                              if (isMobile) {
-                                setShowMobileTablePicker(true)
-                              } else {
-                                setShowDesktopTablePicker(true)
-                              }
-                            }}
-                            className="text-xs"
-                          >
-                            {(showSchemePicker || showMobileTablePicker || showDesktopTablePicker) ? 'Скрыть схему' : 'Выбрать на схеме'}
-                          </Button>
-                        )}
-                      </div>
-                      <p className="mt-2 break-anywhere text-sm text-stone-600">
-                        {mode === 'view' ? (
-                          currentReservation?.tables?.length
-                            ? currentReservation.tables.map((t) => `Стол ${t.number}`).join(', ')
-                            : currentReservation?.table?.number
-                              ? `Стол ${currentReservation.table.number}`
-                              : 'Не выбраны'
-                        ) : (
-                          selectedTables.length > 0
-                            ? tables.filter(t => selectedTables.includes(t.id)).map(t => `Стол ${t.number}`).join(', ')
-                            : 'Не выбраны'
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Desktop layout: 2 rows x 3 cols */}
-                <div className="hidden sm:block">
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <Label className="flex items-center gap-2 text-sm">
-                        <Calendar className="h-4 w-4 shrink-0" />
-                        Дата
-                      </Label>
-                      {mode === 'view' ? (
-                        <p className="mt-2 font-medium break-anywhere">{formatDate(currentReservation?.date || '')}</p>
-                      ) : (
-                        <DateTimePicker
-                          value={formData.date}
-                          onChange={(date) => setFormData({ ...formData, date })}
-                          dateOnly={true}
-                          className="mt-2"
-                        />
-                      )}
-                    </div>
-
-                    <div>
-                      <Label className="flex items-center gap-2 text-sm">
-                        <Clock className="h-4 w-4 shrink-0" />
-                        Время
-                      </Label>
-                      {mode === 'view' ? (
-                        <p className="mt-2 font-medium break-anywhere">{formatTime(currentReservation?.time)}</p>
-                      ) : (
-                        <TimeWheelPicker
-                          value={formData.time}
-                          onChange={(time) => setFormData({ ...formData, time })}
-                          className="mt-2"
-                        />
-                      )}
-                    </div>
-
-                    <div>
-                      <Label className="flex items-center gap-2 text-sm">
-                        <MapPin className="h-4 w-4 shrink-0" />
-                        Зал
-                      </Label>
-                      {mode === 'view' ? (
-                        <p className="mt-2 break-anywhere">{currentReservation?.hall?.name}</p>
-                      ) : (
-                        <Select
-                          value={formData.hall_id}
-                          onValueChange={(v) => {
-                            setFormData({ ...formData, hall_id: v, table_id: '' })
-                            setSelectedTables([])
-                            setDraftTables([])
-                            setShowSchemePicker(false)
-                          }}
-                        >
-                          <SelectTrigger className="mt-2">
-                            <SelectValue placeholder="Выберите зал" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {halls.map(hall => (
-                              <SelectItem key={hall.id} value={hall.id}>
-                                {hall.name} (до {hall.capacity} чел.)
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    </div>
-
-                    <div>
-                      <Label className="flex items-center gap-2 text-sm">
-                        <Users className="h-4 w-4 shrink-0" />
-                        Гостей
-                      </Label>
-                      {mode === 'view' ? (
-                        <p className="mt-2 text-xl font-bold text-stone-900 break-anywhere">{currentReservation?.guests_count}</p>
-                      ) : (
-                        <Input
-                          type="number"
-                          min={1}
-                          value={formData.guests_count}
-                          onChange={(e) => setFormData({ ...formData, guests_count: e.target.value === '' ? ('' as any) : parseInt(e.target.value) })}
-                          className="mt-2"
-                        />
-                      )}
-                    </div>
-
-                    <div>
-                      <Label className="flex items-center gap-2 text-sm">
-                        <Baby className="h-4 w-4 shrink-0" />
-                        Детей
-                      </Label>
-                      {mode === 'view' ? (
-                        <p className="mt-2 text-xl font-bold text-stone-900 break-anywhere">{currentReservation?.children_count || 0}</p>
-                      ) : (
-                        <Input
-                          type="number"
-                          min={0}
-                          value={formData.children_count}
-                          onChange={(e) => setFormData({ ...formData, children_count: e.target.value === '' ? ('' as any) : parseInt(e.target.value) })}
-                          className="mt-2"
-                        />
-                      )}
-                    </div>
-
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <Label className="flex items-center gap-2 text-sm">
-                          <MapPin className="h-4 w-4 shrink-0" />
-                          Столы
-                        </Label>
-                        {mode !== 'view' && (
-                          <Button
-                            type="button"
-                            variant={(showSchemePicker || showMobileTablePicker || showDesktopTablePicker) ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => {
-                              if (isMobile) {
-                                setShowMobileTablePicker(true)
-                              } else {
-                                setShowDesktopTablePicker(true)
-                              }
-                            }}
-                            className="text-xs"
-                          >
-                            {(showSchemePicker || showMobileTablePicker || showDesktopTablePicker) ? 'Скрыть схему' : 'Выбрать на схеме'}
-                          </Button>
-                        )}
-                      </div>
-                      <p className="mt-2 break-anywhere text-sm text-stone-600">
-                        {mode === 'view' ? (
-                          currentReservation?.tables?.length
-                            ? currentReservation.tables.map((t) => `Стол ${t.number}`).join(', ')
-                            : currentReservation?.table?.number
-                              ? `Стол ${currentReservation.table.number}`
-                              : 'Не выбраны'
-                        ) : (
-                          selectedTables.length > 0
-                            ? tables.filter(t => selectedTables.includes(t.id)).map(t => `Стол ${t.number}`).join(', ')
-                            : 'Не выбраны'
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Color Picker */}
-                <div className="space-y-3">
-                  <Label className="text-sm">Цвет бронирования</Label>
-                  <div className="flex flex-col gap-3">
-                    {/* Preset colors in grid */}
-                    <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
-                      {COLOR_PRESETS.map((c) => (
-                        <button
-                          key={c}
-                          type="button"
-                          className={cn(
-                            "h-6 w-6 sm:h-5 sm:w-5 rounded-full border-2 touch-manipulation",
-                            formData.color === c ? "ring-2 ring-offset-1 ring-amber-500 border-stone-300" : "border-stone-200"
+                              <SelectTrigger className="w-full sm:w-[200px] h-11 rounded-xl bg-white border-amber-200 font-black text-xs uppercase text-amber-900">
+                                <SelectValue placeholder="ВЫБРАТЬ МЕНЮ" />
+                              </SelectTrigger>
+                              <SelectContent className="rounded-2xl shadow-xl border-stone-200">
+                                {menus.map(menu => (
+                                  <SelectItem key={menu.id} value={menu.id} className="font-bold py-3">
+                                    {menu.name} ({formatCurrency(menu.price_per_person)})
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           )}
-                          style={{ backgroundColor: c }}
-                          onClick={() => setFormData({ ...formData, color: c })}
-                          title={`Выбрать цвет ${c}`}
-                        />
-                      ))}
-                    </div>
-                    {/* Custom color picker */}
-                    <div className="flex items-center gap-2">
-                      <Label className="text-xs text-stone-600">Или выберите свой:</Label>
-                      <Input
-                        type="color"
-                        value={formData.color}
-                        onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                        className="h-8 w-12 p-1"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Menu Section */}
-            {(mode === 'edit' || currentMenu) && (
-              <div className="space-y-4 modal-form-section">
-                <h3 className="font-semibold text-stone-900 flex items-center gap-2 border-b border-stone-200 pb-2">
-                  <ChefHat className="h-4 w-4 shrink-0" />
-                  Меню: {currentMenu?.name || 'Не выбрано'}
-                </h3>
-
-                <div className="space-y-4">
-                  {/* Menu Header */}
-                  <div className="p-4 rounded-xl bg-amber-50 border border-amber-200">
-                    <div className="flex items-center justify-between flex-wrap gap-4">
-                      <div className="flex-1">
-                        {currentMenu ? (
-                          <>
-                            <p className="font-semibold text-amber-900 break-anywhere">{currentMenu.name}</p>
-                            <p className="text-sm text-amber-700 break-anywhere">
-                              {formatCurrency(currentMenu.price_per_person)}/чел.
-                            </p>
-                          </>
-                        ) : (
-                          <p className="font-semibold text-amber-900">Меню не выбрано</p>
-                        )}
+                        </div>
                       </div>
-                      {mode !== 'view' && (
-                        <Select
-                          value={formData.menu_id}
-                          onValueChange={(v) => {
-                            if (v !== formData.menu_id) {
-                              setFormData({ ...formData, menu_id: v })
-                              // Очищаем выбранные селективные позиции и переопределения при смене меню
-                              setSelectedSalads([])
-                              setItemOverrides({})
-                            }
-                          }}
-                        >
-                          <SelectTrigger className="w-full sm:w-[180px]">
-                            <SelectValue placeholder="Выберите меню" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {menus.map(menu => (
-                              <SelectItem key={menu.id} value={menu.id}>
-                                {menu.name} - {formatCurrency(menu.price_per_person)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    </div>
-                  </div>
 
-                  {/* Menu Items */}
-                  {(currentMenu || adHocItems.length > 0 || (showMenuEdit && mode !== 'view')) && (
-                    <AnimatePresence>
-                      {(mode === 'view' || showMenuEdit) && (
-                        <motion.div
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: 'auto' }}
-                          exit={{ opacity: 0, height: 0 }}
-                          className="space-y-3"
-                        >
+                      {/* Menu Items List */}
+                      {(currentMenu || adHocItems.length > 0) && (
+                        <div className="space-y-4">
                           {(Object.keys(menuItemsByType) as string[]).map((type) => {
                             const items = menuItemsByType[type]
                             if (!items?.length) return null
 
                             const typeLabelPlural = getMenuItemTypeLabel(type as MenuItemType, customTypes, true)
-                            const firstItem = items[0]
-                            const isSelectableGroup = !(!('menu_id' in firstItem) || !(firstItem as MenuItem).is_selectable)
-                            const platesCount = calculatePlates(formData.guests_count)
-
                             return (
-                              <div key={type} className="rounded-lg border border-stone-200 overflow-hidden">
-                                <div className="bg-stone-50 px-4 py-2 flex items-center justify-between">
-                                  <span className="font-medium text-stone-900 break-anywhere flex-1">
-                                    {typeLabelPlural}
-                                  </span>
-                                  <span className="text-sm text-stone-500 shrink-0">
-                                    {platesCount} тарелок
-                                  </span>
+                              <div key={type} className="space-y-2">
+                                <div className="flex items-center justify-between gap-4 px-1">
+                                  <h4 className="text-[10px] font-black text-stone-400 uppercase tracking-[0.2em]">{typeLabelPlural}</h4>
+                                  {formData.guests_count > 0 && (
+                                    <span className="text-[9px] font-black text-amber-700 uppercase italic whitespace-nowrap shrink-0">
+                                      {calculatePlates(formData.guests_count)} ТАР.
+                                    </span>
+                                  )}
                                 </div>
-                                <div className="divide-y divide-stone-100">
+                                <div className="space-y-1.5">
                                   {items.map((item, idx) => {
                                     const isAdHoc = !('menu_id' in item)
                                     const itemId = isAdHoc ? (item as ReservationMenuItem).id : (item as MenuItem).id
-                                    const itemName = isAdHoc ? (item as ReservationMenuItem).name : (item as MenuItem).name
-                                    const itemWeight = isAdHoc ? (item as ReservationMenuItem).weight_per_person : (item as MenuItem).weight_per_person
                                     const isSelectable = !isAdHoc && (item as MenuItem).is_selectable
 
                                     let isSelected: boolean
-                                    if (isAdHoc) {
-                                      isSelected = true
-                                    } else if (!isSelectable) {
+                                    if (isAdHoc || !isSelectable) {
                                       isSelected = true
                                     } else if (showMenuEdit) {
                                       isSelected = selectedSalads.includes(itemId)
                                     } else if (mode === 'view' && currentReservation?.selected_menu_items?.length) {
-                                      isSelected = currentReservation.selected_menu_items.some(
-                                        rmi => rmi.menu_item_id === itemId && rmi.is_selected
-                                      )
+                                      isSelected = currentReservation.selected_menu_items.some(rmi => rmi.menu_item_id === itemId && rmi.is_selected)
                                     } else {
                                       isSelected = selectedSalads.includes(itemId) || (selectedSalads.length === 0 && idx < ((item as MenuItem).max_selections || items.length))
                                     }
 
+                                    if (!isSelected && mode === 'view' && !showMenuEdit) return null
+
                                     const displayWeight = isAdHoc
                                       ? (item as ReservationMenuItem).weight_per_person
                                       : (itemOverrides[itemId]?.weight_per_person ?? (item as MenuItem).weight_per_person)
-
                                     const displayName = isAdHoc
                                       ? (item as ReservationMenuItem).name
                                       : (itemOverrides[itemId]?.name ?? (item as MenuItem).name)
 
                                     return (
-                                      <div
-                                        key={isAdHoc ? `adhoc-${itemId}-${idx}` : itemId}
-                                        className={cn(
-                                          "px-4 py-3 flex items-center justify-between gap-4 group",
-                                          !isSelected && "opacity-50"
-                                        )}
-                                      >
+                                      <div key={isAdHoc ? `adhoc-${itemId}-${idx}` : itemId} className={cn(
+                                        "px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between gap-2 sm:gap-4 rounded-2xl bg-stone-50 transition-all",
+                                        !isSelected && "opacity-40 grayscale"
+                                      )}>
                                         <div className="flex items-center gap-3 flex-1 min-w-0">
                                           {isSelectable && showMenuEdit && (
                                             <Checkbox
                                               checked={isSelected}
                                               onCheckedChange={(checked) => {
                                                 if (checked) {
-                                                  if (!selectedSalads.includes(itemId)) {
-                                                    setSelectedSalads([...selectedSalads, itemId])
-                                                  }
+                                                  if (!selectedSalads.includes(itemId)) setSelectedSalads([...selectedSalads, itemId])
                                                 } else {
                                                   setSelectedSalads(selectedSalads.filter(id => id !== itemId))
                                                 }
                                               }}
+                                              className="h-5 w-5 rounded-md border-stone-300 data-[state=checked]:bg-amber-600 data-[state=checked]:border-amber-600"
                                             />
                                           )}
-                                          <div className="flex flex-col flex-1 min-w-0">
-                                            <span className={cn(
-                                              "text-sm break-anywhere",
-                                              isSelected ? "text-stone-900" : "text-stone-400"
-                                            )}>
-                                              {showMenuEdit && mode !== 'view' ? (
-                                                <Input
-                                                  className="h-8 py-1 px-2 text-sm"
-                                                  value={displayName ?? ''}
-                                                  onChange={(e) => {
-                                                    if (isAdHoc) {
-                                                      const newAdHoc = [...adHocItems]
-                                                      const adItem = newAdHoc.find(ai => ai.id === itemId)
-                                                      if (adItem) adItem.name = e.target.value
-                                                      setAdHocItems(newAdHoc)
-                                                    } else {
-                                                      setItemOverrides({
-                                                        ...itemOverrides,
-                                                        [itemId]: { ...itemOverrides[itemId], name: e.target.value }
-                                                      })
-                                                    }
-                                                  }}
-                                                />
-                                              ) : (
-                                                displayName
-                                              )}
-                                            </span>
+                                          <div className="flex-1">
+                                            {showMenuEdit && mode !== 'view' ? (
+                                              <Input
+                                                className="h-9 font-bold bg-white text-sm rounded-lg"
+                                                value={displayName ?? ''}
+                                                onChange={(e) => {
+                                                  if (isAdHoc) {
+                                                    const newAdHoc = [...adHocItems]
+                                                    const adItem = newAdHoc.find(ai => ai.id === itemId)
+                                                    if (adItem) adItem.name = e.target.value
+                                                    setAdHocItems(newAdHoc)
+                                                  } else {
+                                                    setItemOverrides({ ...itemOverrides, [itemId]: { ...itemOverrides[itemId], name: e.target.value } })
+                                                  }
+                                                }}
+                                              />
+                                            ) : (
+                                              <p className="font-bold text-stone-800 text-sm leading-tight">{displayName}</p>
+                                            )}
                                           </div>
                                         </div>
-                                        <div className="flex items-center gap-4 text-sm text-stone-500 shrink-0">
-                                          <div className="flex items-center gap-1">
-                                            {showMenuEdit && mode !== 'view' ? (
-                                              <Input
-                                                type="number"
-                                                className="h-8 w-16 py-1 px-2 text-sm"
-                                                value={displayWeight ?? 0}
-                                                onChange={(e) => {
-                                                  const val = parseInt(e.target.value) || 0
-                                                  if (isAdHoc) {
-                                                    const newAdHoc = [...adHocItems]
-                                                    const adItem = newAdHoc.find(ai => ai.id === itemId)
-                                                    if (adItem) adItem.weight_per_person = val
-                                                    setAdHocItems(newAdHoc)
-                                                  } else {
-                                                    setItemOverrides({
-                                                      ...itemOverrides,
-                                                      [itemId]: { ...itemOverrides[itemId], weight_per_person: val }
-                                                    })
-                                                  }
-                                                }}
-                                              />
-                                            ) : (
-                                              <span>{displayWeight}</span>
-                                            )}
-                                            <span>г/чел</span>
+                                        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+                                          <div className="flex flex-col items-end gap-0.5">
+                                            <div className="bg-white px-1.5 sm:px-2 py-0.5 rounded-lg border border-stone-100 text-[9px] sm:text-[10px] font-black text-stone-400 uppercase leading-none">
+                                              {displayWeight}г
+                                            </div>
                                           </div>
-                                          <div className="flex items-center gap-1">
-                                            {showMenuEdit && mode !== 'view' ? (
-                                              <Input
-                                                type="number"
-                                                className="h-8 w-20 py-1 px-2 text-sm text-right"
-                                                value={isAdHoc ? ((item as ReservationMenuItem).price ?? 0) : (itemOverrides[itemId]?.price ?? (item as MenuItem).price ?? 0)}
-                                                onChange={(e) => {
-                                                  const val = parseFloat(e.target.value) || 0
-                                                  if (isAdHoc) {
-                                                    const newAdHoc = [...adHocItems]
-                                                    const adItem = newAdHoc.find(ai => ai.id === itemId)
-                                                    if (adItem) adItem.price = val
-                                                    setAdHocItems(newAdHoc)
-                                                  } else {
-                                                    setItemOverrides({
-                                                      ...itemOverrides,
-                                                      [itemId]: { ...itemOverrides[itemId], price: val }
-                                                    })
-                                                  }
-                                                }}
-                                              />
-                                            ) : (
-                                              <span>{isAdHoc ? ((item as ReservationMenuItem).price ?? 0) : (itemOverrides[itemId]?.price ?? (item as MenuItem).price ?? 0)}</span>
-                                            )}
-                                            <span>₽</span>
-                                          </div>
-                                          <span className="font-medium whitespace-nowrap min-w-[50px] text-right">
-                                            {calculateTotalWeight(displayWeight || 0, formData.guests_count)}г
-                                          </span>
                                           {isAdHoc && showMenuEdit && mode !== 'view' && (
-                                            <Button
-                                              variant="ghost"
-                                              size="icon"
-                                              className="h-8 w-8 text-stone-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                                              onClick={() => {
-                                                setAdHocItems(adHocItems.filter(ai => ai.id !== itemId))
-                                              }}
-                                            >
+                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-stone-300 hover:text-red-500 rounded-full" onClick={() => setAdHocItems(adHocItems.filter(ai => ai.id !== itemId))}>
                                               <Trash2 className="h-4 w-4" />
                                             </Button>
                                           )}
@@ -1939,244 +1845,325 @@ export function ReservationModal({
                                       </div>
                                     )
                                   })}
-
-                                  {showMenuEdit && mode !== 'view' && (
-                                    <div className="px-4 py-2 bg-stone-50/50">
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-8 text-stone-500 hover:text-amber-600 gap-1 w-full justify-center"
-                                        onClick={() => {
-                                          const newItem: ReservationMenuItem = {
-                                            id: `new-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                                            reservation_id: currentReservation?.id || '',
-                                            menu_item_id: null,
-                                            is_selected: true,
-                                            name: '',
-                                            weight_per_person: 0,
-                                            price: 0,
-                                            type: type,
-                                            order_index: (adHocItems.length + 1) * 10
-                                          }
-                                          setAdHocItems([...adHocItems, newItem])
-                                        }}
-                                      >
-                                        <Plus className="h-3.5 w-3.5" />
-                                        <span>Добавить позицию</span>
-                                      </Button>
-                                    </div>
-                                  )}
                                 </div>
                               </div>
                             )
                           })}
+                        </div>
+                      )}
 
-                          {showMenuEdit && mode !== 'view' && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="w-full border-dashed text-stone-500 hover:text-amber-600 border-stone-300 gap-2 h-10"
-                              onClick={() => {
-                                const sectionName = prompt('Введите название нового раздела (например: Фрукты, Напитки):')
-                                if (sectionName) {
-                                  const newItem: ReservationMenuItem = {
-                                    id: `new-${Date.now()}`,
-                                    reservation_id: currentReservation?.id || '',
-                                    menu_item_id: null,
-                                    is_selected: true,
-                                    name: '',
-                                    weight_per_person: 0,
-                                    price: 0,
-                                    type: sectionName,
-                                    order_index: (adHocItems.length + 1) * 10
-                                  }
-                                  setAdHocItems([...adHocItems, newItem])
-                                }
-                              }}
-                            >
-                              <Plus className="h-4 w-4" />
-                              <span>Добавить свой раздел</span>
-                            </Button>
+                      {mode !== 'view' && currentMenu && (
+                        <div className="pt-2">
+                          <Button variant="outline" size="sm" onClick={handleToggleMenuEdit} className="w-full h-11 rounded-xl border-stone-200 font-bold text-stone-500 hover:bg-stone-50 hover:text-amber-600">
+                            <Settings className="h-4 w-4 mr-2" />
+                            {showMenuEdit ? 'ЗАВЕРШИТЬ РЕДАКТИРОВАНИЕ' : 'НАСТРОИТЬ ПОЗИЦИИ'}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* MAIN MENU MODE */}
+                  {formData.menu_type === 'main_menu' && (
+                    <div className="space-y-6">
+                      {mode !== 'view' && (
+                        <MainMenuSelector
+                          onSelectItem={(item, variant) => {
+                            const unitWeight = variant
+                              ? (variant.weight_grams || parseWeight(variant.weight) || 0)
+                              : (item.weight_grams || parseWeight(item.weight) || 0)
+                            const newItem: ReservationMainMenuItem = {
+                              id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                              reservation_id: currentReservation?.id || '',
+                              main_menu_item_id: item.id,
+                              main_menu_item: item,
+                              variant_id: variant?.id,
+                              variant: variant,
+                              quantity: 1,
+                              weight_grams: unitWeight,
+                              unit_price: variant ? (variant.price || 0) : (item.price || 0),
+                              total_price: variant ? (variant.price || 0) : (item.price || 0),
+                              order_index: mainMenuSelections.length
+                            }
+
+                            const existingIndex = mainMenuSelections.findIndex(
+                              s => s.main_menu_item_id === item.id && s.variant_id === variant?.id
+                            )
+
+                            if (existingIndex >= 0) {
+                              const updated = [...mainMenuSelections]
+                              updated[existingIndex].quantity += 1
+                              const unitW = updated[existingIndex].variant
+                                ? (updated[existingIndex].variant?.weight_grams || parseWeight(updated[existingIndex].variant?.weight) || 0)
+                                : (updated[existingIndex].main_menu_item?.weight_grams || parseWeight(updated[existingIndex].main_menu_item?.weight) || 0)
+                              updated[existingIndex].weight_grams = updated[existingIndex].quantity * unitW
+                              updated[existingIndex].total_price = updated[existingIndex].quantity * updated[existingIndex].unit_price
+                              setMainMenuSelections(updated)
+                            } else {
+                              setMainMenuSelections([...mainMenuSelections, newItem])
+                            }
+                          }}
+                        />
+                      )}
+
+                      <div className="space-y-5">
+                        {Object.entries(mainMenuItemsByCategory).map(([category, items]) => (
+                          <div key={category} className="space-y-3">
+                            <h4 className="text-[10px] font-black text-stone-400 uppercase tracking-[0.2em] px-1">{category}</h4>
+                            <div className="space-y-2">
+                              {items.map((item) => {
+                                const idx = mainMenuSelections.findIndex(s => s.id === item.id)
+                                return (
+                                  <div key={item.id} className="flex flex-col sm:flex-row justify-between sm:items-center bg-stone-50 p-2.5 sm:p-4 rounded-2xl border border-stone-100 hover:border-amber-100 transition-colors gap-2.5 sm:gap-4">
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-black text-stone-900 text-xs sm:text-sm leading-tight mb-1">
+                                        {item.main_menu_item?.name}
+                                        {item.variant && <span className="text-amber-600 font-bold ml-1">({item.variant.name})</span>}
+                                      </p>
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-[9px] sm:text-[10px] font-bold text-stone-400 uppercase tracking-tight">
+                                          {item.weight_grams || (item.variant ? parseWeight(item.variant.weight) : parseWeight(item.main_menu_item?.weight)) || 0}г
+                                        </span>
+                                        <span className="h-0.5 w-0.5 sm:h-1 sm:w-1 bg-stone-300 rounded-full" />
+                                        <span className="text-[9px] sm:text-[10px] font-bold text-amber-700 uppercase tracking-tight">{formatCurrency(item.unit_price)}</span>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center justify-between sm:justify-end gap-2.5 sm:gap-4 border-t sm:border-t-0 pt-2 sm:pt-0 border-stone-100/50">
+                                      {mode !== 'view' && (
+                                        <div className="flex items-center bg-white border border-stone-200 rounded-xl overflow-hidden shadow-sm h-8 sm:h-10">
+                                          <button
+                                            type="button"
+                                            className="w-8 sm:w-9 h-full flex items-center justify-center text-stone-400 hover:bg-stone-50 transition-colors font-black text-sm"
+                                            onClick={() => {
+                                              const updated = [...mainMenuSelections]
+                                              if (updated[idx].quantity > 1) {
+                                                updated[idx].quantity -= 1
+                                                const unitW = updated[idx].variant
+                                                  ? (updated[idx].variant?.weight_grams || parseWeight(updated[idx].variant?.weight) || 0)
+                                                  : (updated[idx].main_menu_item?.weight_grams || parseWeight(updated[idx].main_menu_item?.weight) || 0)
+                                                updated[idx].weight_grams = updated[idx].quantity * unitW
+                                                updated[idx].total_price = updated[idx].quantity * updated[idx].unit_price
+                                                setMainMenuSelections(updated)
+                                              } else {
+                                                setMainMenuSelections(mainMenuSelections.filter((_, i) => i !== idx))
+                                              }
+                                            }}
+                                          >
+                                            -
+                                          </button>
+                                          <span className="w-7 sm:w-8 text-center text-xs sm:text-sm font-black text-stone-900">{item.quantity}</span>
+                                          <button
+                                            type="button"
+                                            className="w-8 sm:w-9 h-full flex items-center justify-center text-stone-400 hover:bg-stone-50 transition-colors font-black text-sm"
+                                            onClick={() => {
+                                              const updated = [...mainMenuSelections]
+                                              updated[idx].quantity += 1
+                                              const unitW = updated[idx].variant
+                                                ? (updated[idx].variant?.weight_grams || parseWeight(updated[idx].variant?.weight) || 0)
+                                                : (updated[idx].main_menu_item?.weight_grams || parseWeight(updated[idx].main_menu_item?.weight) || 0)
+                                              updated[idx].weight_grams = updated[idx].quantity * unitW
+                                              updated[idx].total_price = updated[idx].quantity * updated[idx].unit_price
+                                              setMainMenuSelections(updated)
+                                            }}
+                                          >
+                                            +
+                                          </button>
+                                        </div>
+                                      )}
+                                      <div className="text-right min-w-[60px] sm:min-w-[80px]">
+                                        <p className="font-black text-stone-900 text-xs sm:text-sm">{formatCurrency(item.total_price)}</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                        {mainMenuSelections.length === 0 && (
+                          <div className="text-center py-12 rounded-3xl bg-stone-50 border-2 border-dashed border-stone-100 group">
+                            <div className="bg-white h-16 w-16 rounded-full flex items-center justify-center mx-auto shadow-sm mb-4 border border-stone-100 group-hover:scale-110 transition-transform">
+                              <ChefHat className="h-8 w-8 text-stone-300" />
+                            </div>
+                            <p className="font-black text-stone-400 uppercase tracking-widest text-[10px]">Меню не заполнено</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Payments Card */}
+                {currentReservation?.payments && currentReservation.payments.length > 0 && (
+                  <div className="bg-white border border-stone-200 rounded-3xl p-6 shadow-sm space-y-5">
+                    <h3 className="font-black text-stone-900 flex items-center gap-3 text-base border-b border-stone-50 pb-4">
+                      <div className="p-2 bg-emerald-50 rounded-xl">
+                        <CreditCard className="h-5 w-5 text-emerald-600" />
+                      </div>
+                      История оплат
+                    </h3>
+                    <div className="space-y-2">
+                      {currentReservation.payments.map((payment) => (
+                        <div
+                          key={payment.id}
+                          className="flex items-center justify-between p-4 rounded-2xl bg-emerald-50/50 border border-emerald-100/50"
+                        >
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className="font-black text-emerald-900 text-lg leading-none">
+                                {formatCurrency(payment.amount)}
+                              </p>
+                              <Badge variant="outline" className="bg-white text-[9px] font-black border-emerald-100 text-emerald-600 uppercase h-5 px-1.5 pt-0.5">
+                                {payment.payment_method === 'cash' ? 'Наличные' : payment.payment_method === 'card' ? 'Картой' : 'Перевод'}
+                              </Badge>
+                            </div>
+                            <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-tight opacity-70">
+                              {formatDate(payment.payment_date)}
+                            </p>
+                          </div>
+                          {payment.notes && (
+                            <div className="max-w-[150px] text-right">
+                              <p className="text-[10px] font-medium text-emerald-600 italic line-clamp-1">"{payment.notes}"</p>
+                            </div>
                           )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Comments Card */}
+                {(currentReservation?.comments || mode !== 'view') && (
+                  <div className="bg-white border border-stone-200 rounded-3xl p-6 shadow-sm space-y-5">
+                    <h3 className="font-black text-stone-900 flex items-center gap-3 text-base border-b border-stone-50 pb-4">
+                      <div className="p-2 bg-stone-50 rounded-xl">
+                        <MessageSquare className="h-5 w-5 text-stone-500" />
+                      </div>
+                      Комментарии
+                    </h3>
+                    <div>
+                      {mode === 'view' ? (
+                        <div className="p-5 rounded-2xl bg-stone-50 border border-stone-100 italic text-sm text-stone-600 leading-relaxed font-medium">
+                          {currentReservation?.comments || 'Комментарии отсуствуют'}
+                        </div>
+                      ) : (
+                        <Textarea
+                          placeholder="Важные детали заказа, пожелания гостя..."
+                          value={formData.comments}
+                          onChange={(e) => setFormData({ ...formData, comments: e.target.value })}
+                          className="min-h-[100px] rounded-2xl border-stone-200 focus:ring-amber-500 font-medium text-sm p-4 bg-stone-50/30"
+                        />
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Total Summary Card */}
+                <div className="bg-amber-50/50 text-stone-900 border border-amber-100 rounded-3xl p-8 shadow-sm space-y-6 relative overflow-hidden group">
+                  {/* Background Gradient Effect */}
+                  <div className="absolute top-0 right-0 w-64 h-64 bg-amber-600/5 rounded-full blur-[80px] -mr-32 -mt-32 transition-transform duration-700 group-hover:scale-110" />
+
+                  <div className="relative z-10 flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.2em] text-amber-600/60 block mb-1 sm:mb-2 px-1">Финальный расчет</span>
+                      <h4 className="text-2xl sm:text-3xl lg:text-4xl font-black tabular-nums tracking-tight flex items-baseline flex-wrap gap-x-2">
+                        {(() => {
+                          const paid = mode === 'create' ? prepaymentAmount : (currentReservation?.prepaid_amount || 0)
+                          const balance = Math.max(0, computedTotal - paid)
+                          return formatCurrency(balance)
+                        })()}
+                        <span className="text-[10px] sm:text-xs text-amber-600 uppercase font-bold tracking-widest font-black">К ОПЛАТЕ</span>
+                      </h4>
+                    </div>
+
+                    {mode !== 'create' && currentReservation && (
+                      <Button
+                        variant="ghost"
+                        onClick={() => setIsPaymentDialogOpen(true)}
+                        className="h-10 w-10 sm:h-12 sm:w-12 rounded-xl sm:rounded-2xl bg-white border border-amber-200 hover:bg-amber-100 text-amber-600 p-0 shadow-sm shrink-0"
+                      >
+                        <Plus className="h-5 w-5 sm:h-6 sm:w-6" />
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="relative z-10 grid grid-cols-2 gap-3 sm:gap-4 pt-4 border-t border-amber-200/50">
+                    <div className="space-y-0.5 sm:space-y-1">
+                      <span className="text-[8px] sm:text-[9px] font-black text-stone-400 uppercase tracking-widest block px-1">Общая сумма</span>
+                      <p className="text-base sm:text-lg font-black tabular-nums">{formatCurrency(computedTotal)}</p>
+                    </div>
+                    <div className="space-y-0.5 sm:space-y-1 text-right">
+                      <span className="text-[8px] sm:text-[9px] font-black text-stone-400 uppercase tracking-widest block px-1">Внесено</span>
+                      <p className="text-base sm:text-lg font-black tabular-nums text-emerald-600">
+                        {formatCurrency(mode === 'create' ? prepaymentAmount : (currentReservation?.prepaid_amount || 0))}
+                      </p>
+                    </div>
+                  </div>
+
+                  {(() => {
+                    const paid = mode === 'create' ? prepaymentAmount : (currentReservation?.prepaid_amount || 0)
+                    const surplus = Math.max(0, paid - computedTotal)
+                    if (surplus > 0) {
+                      return (
+                        <div className="relative z-10 mt-4 p-4 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-between">
+                          <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Переплата</span>
+                          <span className="text-lg font-black text-emerald-600">{formatCurrency(surplus)}</span>
+                        </div>
+                      )
+                    }
+                    return null
+                  })()}
+
+                  {mode === 'create' && (
+                    <div className="relative z-10 space-y-3 pt-2">
+                      <Label className="text-[10px] font-black text-stone-400 uppercase tracking-widest px-1">Внести предоплату при создании</Label>
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          placeholder="0"
+                          value={prepaymentAmount || ''}
+                          onChange={(e) => setPrepaymentAmount(parseFloat(e.target.value) || 0)}
+                          className="h-14 bg-white border-stone-200 rounded-2xl text-xl font-black text-stone-900 pl-11 focus:ring-amber-500/50"
+                        />
+                        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 font-bold text-lg">₽</div>
+                      </div>
+                      {prepaymentAmount > computedTotal && computedTotal > 0 && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="p-3 rounded-xl bg-amber-50 border border-amber-100 text-[10px] font-black text-amber-600 uppercase flex items-center gap-2"
+                        >
+                          <AlertCircle className="h-4 w-4" />
+                          Предоплата превышает итоговую сумму
                         </motion.div>
                       )}
-                    </AnimatePresence>
-                  )}
-
-                  {mode !== 'view' && currentMenu && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleToggleMenuEdit}
-                      className="w-full min-h-[44px]"
-                    >
-                      <Settings className="h-4 w-4 mr-2" />
-                      {showMenuEdit ? 'Скрыть позиции' : 'Изменить позиции'}
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Payments */}
-            {currentReservation?.payments && currentReservation.payments.length > 0 && (
-              <div className="space-y-4">
-                <h3 className="font-semibold text-stone-900 flex items-center gap-2 border-b border-stone-200 pb-2">
-                  <CreditCard className="h-4 w-4 shrink-0" />
-                  Предоплаты
-                </h3>
-                <div className="space-y-3">
-                  {currentReservation.payments.map((payment) => (
-                    <div
-                      key={payment.id}
-                      className="flex items-center justify-between p-3 sm:p-4 rounded-lg bg-green-50 border border-green-200"
-                    >
-                      <div className="flex-1">
-                        <p className="font-semibold text-green-900 break-anywhere">
-                          {formatCurrency(payment.amount)}
-                        </p>
-                        <p className="text-sm text-green-700 break-anywhere">
-                          {formatDate(payment.payment_date)} • {
-                            payment.payment_method === 'cash' ? 'Наличные' :
-                              payment.payment_method === 'card' ? 'Картой' : 'Перевод'
-                          }
-                        </p>
-                      </div>
-                      {payment.notes && (
-                        <p className="text-sm text-green-600 break-anywhere shrink-0">{payment.notes}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Comments */}
-            {(currentReservation?.comments || mode !== 'view') && (
-              <div className="space-y-4">
-                <h3 className="font-semibold text-stone-900 flex items-center gap-2 border-b border-stone-200 pb-2">
-                  <MessageSquare className="h-4 w-4 shrink-0" />
-                  Комментарии
-                </h3>
-                <div>
-                  {mode === 'view' ? (
-                    <div className="p-3 rounded-lg bg-stone-50 text-sm text-stone-600 leading-relaxed break-anywhere">
-                      {currentReservation?.comments || 'Нет комментариев'}
-                    </div>
-                  ) : (
-                    <Textarea
-                      placeholder="Добавьте комментарии к заказу..."
-                      value={formData.comments}
-                      onChange={(e) => setFormData({ ...formData, comments: e.target.value })}
-                      className="min-h-[80px]"
-                    />
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Total Amount & Payment Info */}
-            <div className="bg-stone-50 p-4 rounded-xl space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-stone-600 font-medium">Итого к оплате</span>
-                <div className="text-right">
-                  <span className="text-xl sm:text-2xl font-bold text-amber-600">
-                    {(() => {
-                      const paid = mode === 'create' ? prepaymentAmount : (currentReservation?.prepaid_amount || 0)
-                      const balance = Math.max(0, computedTotal - paid)
-                      return formatCurrency(balance)
-                    })()}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-stone-500">Сумма до вычета</span>
-                <span className="font-semibold text-stone-600">
-                  {formatCurrency(computedTotal)}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-stone-500">Оплачено</span>
-                <span className="font-semibold text-green-600">
-                  {formatCurrency(mode === 'create' ? prepaymentAmount : (currentReservation?.prepaid_amount || 0))}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm border-t border-stone-200 pt-2">
-                {(() => {
-                  const paid = mode === 'create' ? prepaymentAmount : (currentReservation?.prepaid_amount || 0)
-                  const surplus = Math.max(0, paid - computedTotal)
-
-                  if (surplus > 0) {
-                    return (
-                      <>
-                        <span className="text-stone-500">Излишек</span>
-                        <span className="font-bold text-emerald-600">
-                          {formatCurrency(surplus)}
-                        </span>
-                      </>
-                    )
-                  }
-
-                  return null
-                })()}
-              </div>
-
-              {mode !== 'create' && currentReservation && (
-                <Button
-                  variant="outline"
-                  className="w-full mt-2 border-dashed border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-700"
-                  onClick={() => setIsPaymentDialogOpen(true)}
-                >
-                  + Добавить оплату
-                </Button>
-              )}
-
-              {mode === 'create' && (
-                <div className="pt-2 border-t border-stone-200">
-                  <Label className="text-stone-600 mb-1.5 block">Внести предоплату (₽)</Label>
-                  <Input
-                    type="number"
-                    placeholder="0"
-                    value={prepaymentAmount || ''}
-                    onChange={(e) => setPrepaymentAmount(parseFloat(e.target.value) || 0)}
-                  />
-                  {prepaymentAmount > computedTotal && computedTotal > 0 && (
-                    <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2 text-xs text-amber-800">
-                      <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-                      <div>
-                        <p className="font-semibold">Внимание: Превышение суммы</p>
-                        <p>Предоплата больше итоговой суммы. Излишек составит {formatCurrency(prepaymentAmount - computedTotal)}.</p>
-                      </div>
                     </div>
                   )}
                 </div>
-              )}
+              </div>
             </div>
           </div>
         </ScrollArea>
 
-        {/* Footer Actions */}
+        {/* Sticky Footer */}
         {mode !== 'view' && (
-          <div className="sticky bottom-0 flex items-center justify-between gap-3 p-4 border-t border-stone-200 bg-white/95 backdrop-blur-sm">
+          <div className="sticky bottom-0 flex items-center justify-between gap-4 p-5 sm:p-6 border-t border-stone-100 bg-white/95 backdrop-blur-md z-50 rounded-b-3xl">
             {mode === 'edit' && currentReservation ? (
               <Button
-                variant="destructive"
+                variant="ghost"
                 onClick={handleDelete}
                 disabled={isLoading}
-                size={isMobile ? "sm" : "default"}
+                className="h-12 w-12 rounded-2xl text-stone-300 hover:text-red-500 hover:bg-red-50"
               >
-                {deleteReservation.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                <span className={isMobile ? "hidden" : "inline"}>Удалить</span>
+                {deleteReservation.loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Trash2 className="h-5 w-5" />}
               </Button>
             ) : <div />}
 
-            <div className="flex items-center gap-2 ml-auto">
+            <div className="flex items-center gap-2 sm:gap-3">
               <Button
-                variant="outline"
+                variant="ghost"
                 onClick={onClose}
-                size={isMobile ? "sm" : "default"}
+                className="h-11 sm:h-12 px-4 sm:px-6 rounded-2xl font-black text-[10px] sm:text-xs text-stone-400 uppercase tracking-widest hover:bg-stone-50 hover:text-stone-600 transition-all"
               >
                 Отмена
               </Button>
@@ -2184,18 +2171,18 @@ export function ReservationModal({
                 onClick={handleSave}
                 disabled={isLoading || isGuestBlacklisted}
                 className={cn(
-                  "gap-2",
-                  isGuestBlacklisted && "bg-stone-400 opacity-50 cursor-not-allowed"
+                  "h-11 sm:h-12 px-5 sm:px-8 rounded-2xl font-black text-[10px] sm:text-xs uppercase tracking-wider sm:tracking-[0.2em] shadow-lg shadow-amber-500/20 transition-all active:scale-95",
+                  isGuestBlacklisted ? "bg-stone-100 text-stone-400" : "bg-amber-600 hover:bg-amber-700 text-white"
                 )}
-                size={isMobile ? "sm" : "default"}
               >
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                {isGuestBlacklisted ? 'В чёрном списке' : 'Сохранить'}
+                {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1 sm:mr-2" /> : <Save className="h-4 w-4 mr-1 sm:mr-2" />}
+                {isGuestBlacklisted ? 'ЧС' : 'Сохранить'}
               </Button>
             </div>
           </div>
         )}
       </DialogContent>
+
       <AddPaymentDialog
         open={isPaymentDialogOpen}
         onOpenChange={setIsPaymentDialogOpen}

@@ -11,7 +11,10 @@ import {
   Payment,
   Table,
   LayoutItem,
-  CustomMenuItemType
+  CustomMenuItemType,
+  MainMenuCategory,
+  MainMenuItem,
+  MainMenuItemVariant
 } from '@/types'
 
 // Generic hook for fetching data
@@ -208,6 +211,35 @@ export function useMenuItemTypes(menuId?: string) {
   )
 }
 
+// ==================== MAIN MENU ====================
+
+export function useMainMenuCategories() {
+  return useSupabaseQuery<MainMenuCategory>(
+    'main_menu_categories',
+    '*',
+    undefined,
+    { column: 'order_index' }
+  )
+}
+
+export function useMainMenuItems(categoryId?: string) {
+  return useSupabaseQuery<MainMenuItem>(
+    'main_menu_items',
+    '*, variants:main_menu_item_variants(*)',
+    categoryId ? { category_id: categoryId } : undefined,
+    { column: 'order_index' }
+  )
+}
+
+export function useMainMenuItemVariants(itemId?: string) {
+  return useSupabaseQuery<MainMenuItemVariant>(
+    'main_menu_item_variants',
+    '*',
+    itemId ? { item_id: itemId } : undefined,
+    { column: 'order_index' }
+  )
+}
+
 // ==================== GUESTS ====================
 
 export function useGuests() {
@@ -262,6 +294,14 @@ export function useReservations(filters?: {
             type,
             order_index,
             menu_item:menu_items (*)
+          ),
+            main_menu_items:reservation_main_menu_items (
+            *,
+            main_menu_item:main_menu_items (
+              *,
+              category:main_menu_categories (name)
+            ),
+            variant:main_menu_item_variants (*)
           )
         `)
 
@@ -320,7 +360,20 @@ export function useReservations(filters?: {
           ? row.payments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0)
           : Number(row.prepaid_amount) || 0
 
-        return { ...row, tables, table_ids, selected_menu_items, prepaid_amount }
+        const main_menu_items = (row.main_menu_items || []).map((item: any) => {
+          const main_menu_item = item.main_menu_item ? {
+            ...item.main_menu_item,
+            category_name: item.main_menu_item.category?.name
+          } : undefined;
+
+          return {
+            ...item,
+            main_menu_item,
+            variant: item.variant
+          };
+        })
+
+        return { ...row, tables, table_ids, selected_menu_items, main_menu_items, prepaid_amount }
       })
       setData(normalized as Reservation[])
     } catch (err: any) {
@@ -414,7 +467,15 @@ export async function searchReservations(query: string) {
         hall:halls (*),
         table:tables (*),
         guest:guests (*),
-        payments (*)
+        payments (*),
+        main_menu_items:reservation_main_menu_items (
+          *,
+          main_menu_item:main_menu_items (
+            *,
+            category:main_menu_categories (name)
+          ),
+          variant:main_menu_item_variants (*)
+        )
       `)
 
     if (guestIds.length > 0) {
@@ -434,7 +495,20 @@ export async function searchReservations(query: string) {
         ? row.payments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0)
         : Number(row.prepaid_amount) || 0
 
-      return { ...row, prepaid_amount }
+      const main_menu_items = (row.main_menu_items || []).map((item: any) => {
+        const main_menu_item = item.main_menu_item ? {
+          ...item.main_menu_item,
+          category_name: item.main_menu_item.category?.name
+        } : undefined;
+
+        return {
+          ...item,
+          main_menu_item,
+          variant: item.variant
+        };
+      })
+
+      return { ...row, main_menu_items, prepaid_amount }
     })
   } catch (err) {
     console.error('Error in searchReservations:', err)
@@ -612,13 +686,8 @@ export function useDeleteMutation(tableName: string) {
     } catch (err: any) {
       const errorMessage = err?.message || err?.error?.message || `Не удалось удалить запись из ${tableName}`
       setError(errorMessage)
-      console.error(`Error deleting ${tableName}:`, {
-        error: err,
-        message: err?.message,
-        code: err?.code,
-        details: err?.details,
-        hint: err?.hint
-      })
+      console.error(`Error deleting ${tableName}:`, err)
+      console.error('Error details:', JSON.stringify(err, null, 2))
       return false
     } finally {
       setLoading(false)

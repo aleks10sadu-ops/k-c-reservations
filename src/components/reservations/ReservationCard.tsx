@@ -21,6 +21,7 @@ export function ReservationCard({ reservation, onClick, compact = false }: Reser
     prepaid: 'prepaid' as const,
     paid: 'paid' as const,
     canceled: 'canceled' as const,
+    completed: 'completed' as const,
   }[reservation.status]
 
   // Получаем номера столов
@@ -96,8 +97,19 @@ export function ReservationCard({ reservation, onClick, compact = false }: Reser
           <Badge variant={statusVariant} className="text-xs sm:text-sm px-2 py-1 sm:px-3 sm:py-1">
             {statusConfig.label}
           </Badge>
-          <div className="text-sm text-stone-500">
-            {formatDate(reservation.date)}
+          <div className="flex items-center gap-2">
+            <div className="text-sm text-stone-500">
+              {formatDate(reservation.date)}
+            </div>
+            {reservation.status === 'canceled' ? (
+              <Badge variant="canceled" className="rounded-full px-2 py-0.5 font-black uppercase tracking-tighter text-[8px]">
+                ОТМЕНЕНА
+              </Badge>
+            ) : reservation.status === 'completed' ? (
+              <Badge variant="completed" className="rounded-full px-2 py-0.5 font-black uppercase tracking-tighter text-[8px]">
+                УСПЕШНО
+              </Badge>
+            ) : null}
           </div>
         </div>
         <div className="text-right">

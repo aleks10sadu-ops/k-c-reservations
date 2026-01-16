@@ -21,6 +21,7 @@ const badgeVariants = cva(
         canceled: "border-rose-200 bg-rose-50 text-rose-700",
         vip: "border-amber-300 bg-amber-100 text-amber-800",
         frequent: "border-purple-200 bg-purple-50 text-purple-700",
+        completed: "border-purple-300 bg-purple-50 text-purple-700",
       },
     },
     defaultVariants: {
@@ -31,7 +32,7 @@ const badgeVariants = cva(
 
 export interface BadgeProps
   extends React.HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof badgeVariants> {}
+  VariantProps<typeof badgeVariants> { }
 
 function Badge({ className, variant, ...props }: BadgeProps) {
   return (

@@ -5,6 +5,7 @@ export type ReservationStatus =
   | 'prepaid'       // Предоплата внесена - Нежный голубой
   | 'paid'          // Полностью оплачено - Нежный зелёный
   | 'canceled'      // Отмена брони - Нежный красный
+  | 'completed'     // Успешно - Приятный фиолетовый
 
 // Статусы гостей
 export type GuestStatus =
@@ -153,6 +154,68 @@ export interface Payment {
   created_at: string
 }
 
+// Тип меню бронирования
+export type ReservationMenuType = 'banquet' | 'main_menu'
+
+// Категория основного меню
+export interface MainMenuCategory {
+  id: string
+  name: string
+  note?: string
+  order_index: number
+  items?: MainMenuItem[]
+  created_at?: string
+}
+
+// Позиция основного меню
+export interface MainMenuItem {
+  id: string
+  category_id: string
+  category?: MainMenuCategory
+  category_name?: string
+  name: string
+  description?: string
+  weight?: string
+  weight_grams?: number
+  price?: number
+  price_per_100g?: number
+  min_portion_grams?: number
+  has_variants: boolean
+  variants?: MainMenuItemVariant[]
+  order_index: number
+  created_at?: string
+}
+
+// Вариант позиции (напр. Цезарь с курицей/креветками/лососем)
+export interface MainMenuItemVariant {
+  id: string
+  item_id: string
+  name: string
+  weight?: string
+  weight_grams?: number
+  price?: number
+  order_index: number
+  created_at?: string
+}
+
+// Выбранная позиция из основного меню в бронировании
+export interface ReservationMainMenuItem {
+  id: string
+  reservation_id: string
+  main_menu_item_id?: string
+  main_menu_item?: MainMenuItem
+  variant_id?: string
+  variant?: MainMenuItemVariant
+  custom_name?: string
+  quantity: number
+  weight_grams?: number
+  unit_price: number
+  total_price: number
+  notes?: string
+  order_index: number
+  created_at?: string
+}
+
 // Бронирование
 export interface Reservation {
   id: string
@@ -168,9 +231,11 @@ export interface Reservation {
   guest?: Guest
   guests_count: number
   children_count: number
-  menu_id: string
+  menu_type: ReservationMenuType
+  menu_id?: string
   menu?: Menu
   selected_menu_items: ReservationMenuItem[]
+  main_menu_items?: ReservationMainMenuItem[]
   status: ReservationStatus
   color?: string
   total_amount: number
@@ -238,6 +303,12 @@ export const RESERVATION_STATUS_CONFIG: Record<ReservationStatus, {
     color: '#B91C1C',
     bgColor: '#FEE2E2',
     borderColor: '#FCA5A5',
+  },
+  completed: {
+    label: 'Успешно',
+    color: '#7C3AED',
+    bgColor: '#EDE9FE',
+    borderColor: '#C4B5FD',
   },
 }
 

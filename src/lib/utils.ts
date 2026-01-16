@@ -1,83 +1,45 @@
-import { type ClassValue, clsx } from "clsx"
+import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function formatCurrency(amount: number): string {
+export function formatCurrency(amount: number | undefined | null) {
+  if (amount === undefined || amount === null) return '0 ₽'
   return new Intl.NumberFormat('ru-RU', {
     style: 'currency',
     currency: 'RUB',
-    minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(amount)
 }
 
-export function formatDate(date: Date | string): string {
-  const d = typeof date === 'string' ? new Date(date) : date
-  if (Number.isNaN(d.getTime())) return ''
-  return new Intl.DateTimeFormat('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  }).format(d)
+export function formatDate(date: string | Date | undefined | null) {
+  if (!date) return ''
+  return new Date(date).toLocaleDateString('ru-RU')
 }
 
-export function formatTime(time: string | Date | undefined): string {
+export function formatTime(time: string | undefined | null) {
   if (!time) return ''
-
-  // Если время уже в формате HH:mm, возвращаем как есть
-  if (typeof time === 'string' && time.match(/^\d{2}:\d{2}$/)) {
-    return time
-  }
-
-  // Если время в формате HH:mm:ss, убираем секунды
-  if (typeof time === 'string' && time.match(/^\d{2}:\d{2}:\d{2}$/)) {
-    return time.substring(0, 5) // Возвращаем только HH:mm
-  }
-
-  // Если время в формате с датой или timestamp, извлекаем время
-  if (typeof time === 'string' && time.includes('T')) {
-    try {
-      const date = new Date(time)
-      if (!Number.isNaN(date.getTime())) {
-        const hours = String(date.getHours()).padStart(2, '0')
-        const minutes = String(date.getMinutes()).padStart(2, '0')
-        return `${hours}:${minutes}`
-      }
-    } catch {
-      // Игнорируем ошибку и продолжаем
-    }
-  }
-
-  // Если это Date объект
-  if (time instanceof Date && !Number.isNaN(time.getTime())) {
-    const hours = String(time.getHours()).padStart(2, '0')
-    const minutes = String(time.getMinutes()).padStart(2, '0')
-    return `${hours}:${minutes}`
-  }
-
-  // Если ничего не подошло, возвращаем как есть
-  return String(time)
+  return time.slice(0, 5)
 }
 
-export function formatPhone(phone: string): string {
+export function calculatePlates(guests: number) {
+  // Logic for plates calculation based on guests (placeholder logic)
+  return Math.ceil(guests / 4)
+}
+
+export function calculateTotalWeight(weight: number, guests: number) {
+  return (weight * guests)
+}
+
+export function formatPhone(phone: string | undefined | null) {
+  if (!phone) return ''
+  // Remove all non-digit characters
   const cleaned = phone.replace(/\D/g, '')
-  if (cleaned.length === 12) {
-    return `+${cleaned.slice(0, 3)} (${cleaned.slice(3, 5)}) ${cleaned.slice(5, 8)}-${cleaned.slice(8, 10)}-${cleaned.slice(10)}`
-  }
-  if (cleaned.length === 10) {
-    return `+38 (${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6, 8)}-${cleaned.slice(8)}`
+  // Format as Russian phone number
+  if (cleaned.length === 11) {
+    return `+${cleaned[0]} (${cleaned.slice(1, 4)}) ${cleaned.slice(4, 7)}-${cleaned.slice(7, 9)}-${cleaned.slice(9, 11)}`
   }
   return phone
 }
-
-export function calculatePlates(guests: number): number {
-  return Math.ceil(guests / 6)
-}
-
-export function calculateTotalWeight(weightPerPerson: number, guests: number): number {
-  return weightPerPerson * guests
-}
-

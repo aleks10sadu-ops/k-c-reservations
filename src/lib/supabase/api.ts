@@ -882,11 +882,18 @@ function normalizeReservation(row: any): Reservation {
     ? row.payments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0)
     : Number(row.prepaid_amount) || 0;
 
+  const main_menu_items = (row.main_menu_items || []).map((item: any) => ({
+    ...item,
+    main_menu_item: item.main_menu_item,
+    variant: item.variant
+  }));
+
   return {
     ...row,
     tables,
     table_ids,
     selected_menu_items,
+    main_menu_items,
     prepaid_amount
   };
 }
@@ -918,6 +925,11 @@ export async function getReservations(filters?: {
       selected_menu_items:reservation_menu_items (
         *,
         menu_item:menu_items (*)
+      ),
+      main_menu_items:reservation_main_menu_items (
+        *,
+        main_menu_item:main_menu_items (*),
+        variant:main_menu_item_variants (*)
       )
     `)
 
@@ -968,6 +980,11 @@ export async function getReservationById(id: string): Promise<Reservation | null
       selected_menu_items:reservation_menu_items (
         *,
         menu_item:menu_items (*)
+      ),
+      main_menu_items:reservation_main_menu_items (
+        *,
+        main_menu_item:main_menu_items (*),
+        variant:main_menu_item_variants (*)
       )
     `)
     .eq('id', id)
@@ -1012,6 +1029,11 @@ export async function createReservation(reservation: {
       selected_menu_items:reservation_menu_items (
         *,
         menu_item:menu_items (*)
+      ),
+      main_menu_items:reservation_main_menu_items (
+        *,
+        main_menu_item:main_menu_items (*),
+        variant:main_menu_item_variants (*)
       )
     `)
     .single()
@@ -1048,6 +1070,11 @@ export async function updateReservation(id: string, updates: Partial<Reservation
       selected_menu_items:reservation_menu_items (
         *,
         menu_item:menu_items (*)
+      ),
+      main_menu_items:reservation_main_menu_items (
+        *,
+        main_menu_item:main_menu_items (*),
+        variant:main_menu_item_variants (*)
       )
     `)
     .single()
@@ -1135,3 +1162,47 @@ export async function deletePayment(id: string): Promise<boolean> {
   return true
 }
 
+
+export async function syncReservationMainMenuItemsServerAction(
+  reservationId: string,
+  items: any[]
+) {
+  try {
+    const supabase = createServiceRoleClient()
+
+    // 1. Clear existing items
+    const { error: deleteError } = await supabase
+      .from('reservation_main_menu_items')
+      .delete()
+      .eq('reservation_id', reservationId)
+
+    if (deleteError) throw deleteError
+
+    // 2. Insert new items
+    if (items.length > 0) {
+      const payload = items.map(item => ({
+        reservation_id: reservationId,
+        main_menu_item_id: item.main_menu_item_id || null,
+        variant_id: item.variant_id || null,
+        custom_name: item.custom_name,
+        quantity: item.quantity,
+        weight_grams: item.weight_grams,
+        unit_price: item.unit_price,
+        total_price: item.total_price,
+        notes: item.notes,
+        order_index: item.order_index
+      }))
+
+      const { error: insertError } = await supabase
+        .from('reservation_main_menu_items')
+        .insert(payload)
+
+      if (insertError) throw insertError
+    }
+
+    return { success: true }
+  } catch (error: any) {
+    console.error('syncReservationMainMenuItemsServerAction error:', error)
+    return { success: false, error: error.message || 'Unknown error' }
+  }
+}

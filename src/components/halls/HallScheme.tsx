@@ -42,7 +42,7 @@ export function HallScheme({
   requiredCapacity = 0,
 }: HallSchemeProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  
+
   // Zoom и Pan state
   const [zoom, setZoom] = useState(0.8)
   const [pan, setPan] = useState({ x: 0, y: 0 })
@@ -83,10 +83,20 @@ export function HallScheme({
   const handleZoomOut = () => setZoom(z => Math.max(0.3, z - 0.15))
 
   // Wheel zoom
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault()
-    const delta = e.deltaY > 0 ? -0.08 : 0.08
-    setZoom(z => Math.max(0.3, Math.min(2, z + delta)))
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const handleWheelNative = (e: WheelEvent) => {
+      e.preventDefault()
+      const delta = e.deltaY > 0 ? -0.08 : 0.08
+      setZoom(z => Math.max(0.3, Math.min(2, z + delta)))
+    }
+
+    container.addEventListener('wheel', handleWheelNative, { passive: false })
+    return () => {
+      container.removeEventListener('wheel', handleWheelNative)
+    }
   }, [])
 
   // Pan handlers
@@ -156,7 +166,7 @@ export function HallScheme({
   // Клик по столу
   const handleTableClick = (table: Table, e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation()
-    
+
     if (mode === 'select' && onSelectTable) {
       onSelectTable(table.id)
     } else if (mode === 'view' && onClick) {
@@ -166,7 +176,7 @@ export function HallScheme({
 
   // Получить бронирование для стола
   const getTableReservation = useCallback((table: Table): Reservation | undefined => {
-    return reservations.find(r => 
+    return reservations.find(r =>
       r.table_ids?.includes(table.id) || r.table_id === table.id
     )
   }, [reservations])
@@ -234,7 +244,6 @@ export function HallScheme({
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        onWheel={handleWheel}
         onClick={mode === 'view' ? onClick : undefined}
         data-background="true"
       >
@@ -282,12 +291,12 @@ export function HallScheme({
             const occupiedColor = occupiedTableMap.get(table.id)
             const reservation = getTableReservation(table)
             const statusConfig = reservation ? RESERVATION_STATUS_CONFIG[reservation.status] : null
-            
+
             // Определяем стили
             let bgColor = 'white'
             let borderColor = '#D1D5DB'
             let textColor = '#374151'
-            
+
             if (mode === 'select') {
               if (isSelected) {
                 bgColor = '#fef3c7'
@@ -301,7 +310,7 @@ export function HallScheme({
               borderColor = reservation.color || statusConfig?.borderColor || '#D1D5DB'
               textColor = statusConfig?.color || '#374151'
             }
-            
+
             return (
               <motion.div
                 key={table.id}
@@ -328,13 +337,7 @@ export function HallScheme({
                   borderColor: borderColor,
                   color: textColor,
                 }}
-                onClick={(e) => handleTableClick(table, e)}
-                onTouchEnd={(e) => {
-                  e.stopPropagation()
-                  if (mode === 'select' && onSelectTable) {
-                    onSelectTable(table.id)
-                  }
-                }}
+                onTap={(e) => handleTableClick(table, e as any)}
               >
                 <span className="font-bold text-lg leading-tight">{table.number}</span>
                 {/* Вместимость стола */}
@@ -343,7 +346,7 @@ export function HallScheme({
                     {table.capacity} чел
                   </span>
                 )}
-                
+
                 {/* Индикатор занятости */}
                 {mode === 'select' && occupiedColor && (
                   <div
@@ -352,7 +355,7 @@ export function HallScheme({
                     title="Занято другим бронированием"
                   />
                 )}
-                
+
                 {/* Индикатор бронирования в режиме view */}
                 {mode !== 'select' && reservation && (
                   <span

@@ -19,27 +19,43 @@ export default async function PrintReservationPage({ params }: PageProps) {
 
     const customTypes = reservation.menu_id ? await getMenuItemTypes(reservation.menu_id) : []
 
-    // Группировка позиций меню по типу с дедупликацией по названию и весу
-    const menuItemsByType: Record<string, ReservationMenuItem[]> = {}
+    // Группировка позиций меню по типу
+    const menuItemsByType: Record<string, (any)[]> = {}
     const seenItems = new Set<string>()
 
-    reservation.selected_menu_items?.forEach(item => {
-        // Показываем только выбранные позиции
-        if (!item.is_selected && item.menu_item_id) return
+    if (reservation.menu_type === 'main_menu') {
+        reservation.main_menu_items?.forEach(item => {
+            const name = item.custom_name || item.main_menu_item?.name || 'Unknown'
+            const variantName = item.variant?.name ? ` (${item.variant.name})` : ''
+            const type = item.main_menu_item?.category?.name || item.main_menu_item?.category_name || 'Основное меню'
 
-        const name = item.name || item.menu_item?.name || 'Unknown'
-        const weight = item.weight_per_person || item.menu_item?.weight_per_person || 0
-        const type = item.type || (item.menu_item?.type) || 'Other'
-
-        // Создаем уникальный ключ для дедупликации (тип + название + вес)
-        const itemKey = `${type}|${name}|${weight}`
-
-        if (!seenItems.has(itemKey)) {
             if (!menuItemsByType[type]) menuItemsByType[type] = []
-            menuItemsByType[type].push(item)
-            seenItems.add(itemKey)
-        }
-    })
+            menuItemsByType[type].push({
+                ...item,
+                displayName: name + variantName,
+                displayWeight: item.weight_grams ? `${item.weight_grams}г` : (item.main_menu_item?.weight || ''),
+                displayTotalWeight: item.weight_grams ? `${item.weight_grams * item.quantity}г` : ''
+            })
+        })
+    } else {
+        reservation.selected_menu_items?.forEach(item => {
+            // Показываем только выбранные позиции
+            if (!item.is_selected && item.menu_item_id) return
+
+            const name = item.name || item.menu_item?.name || 'Unknown'
+            const weight = item.weight_per_person || item.menu_item?.weight_per_person || 0
+            const type = item.type || (item.menu_item?.type) || 'Other'
+
+            // Создаем уникальный ключ для дедупликации (тип + название + вес)
+            const itemKey = `${type}|${name}|${weight}`
+
+            if (!seenItems.has(itemKey)) {
+                if (!menuItemsByType[type]) menuItemsByType[type] = []
+                menuItemsByType[type].push(item)
+                seenItems.add(itemKey)
+            }
+        })
+    }
 
     const sortedTypes = Object.keys(menuItemsByType).sort()
 
@@ -117,12 +133,12 @@ export default async function PrintReservationPage({ params }: PageProps) {
             {/* Menu - Two Columns if possible */}
             <div className="mb-4">
                 <h2 className="text-[11px] font-black uppercase tracking-widest text-black border-b border-stone-200 pb-1 mb-2 flex items-center gap-1">
-                    <ChefHat className="h-3 w-3" /> Меню: {reservation.menu?.name || 'Индивидуально'}
+                    <ChefHat className="h-3 w-3" /> Меню: {reservation.menu_type === 'main_menu' ? 'Основное меню' : (reservation.menu?.name || 'Индивидуально')}
                 </h2>
 
                 <div className="columns-2 gap-4 space-y-3">
                     {sortedTypes.map(type => {
-                        const label = getMenuItemTypeLabel(type as MenuItemType, customTypes, true)
+                        const label = reservation.menu_type === 'main_menu' ? type : getMenuItemTypeLabel(type as MenuItemType, customTypes, true)
                         const items = menuItemsByType[type]
 
                         return (
@@ -133,6 +149,18 @@ export default async function PrintReservationPage({ params }: PageProps) {
                                 <table className="w-full text-[12px]">
                                     <tbody className="divide-y divide-stone-100">
                                         {items.map((item, idx) => {
+                                            if (reservation.menu_type === 'main_menu') {
+                                                return (
+                                                    <tr key={item.id || idx}>
+                                                        <td className="py-1 pr-2 text-black font-medium">{item.displayName}</td>
+                                                        <td className="py-1 text-right text-stone-700 whitespace-nowrap">{item.quantity} шт.</td>
+                                                        <td className="py-1 text-right font-black w-14 whitespace-nowrap text-black">
+                                                            {formatCurrency(item.total_price)}
+                                                        </td>
+                                                    </tr>
+                                                )
+                                            }
+
                                             const name = item.name || item.menu_item?.name
                                             const weight = item.weight_per_person || item.menu_item?.weight_per_person || 0
                                             return (
