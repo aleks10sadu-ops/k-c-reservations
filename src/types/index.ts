@@ -267,6 +267,44 @@ export interface CalendarDay {
   reservations: Reservation[]
 }
 
+// Персонал: Роли
+export interface StaffRole {
+  id: string
+  name: string
+  description?: string
+  created_at?: string
+}
+
+// Персонал: Сотрудник
+export interface StaffMember {
+  id: string
+  profile_id?: string
+  role_id: string
+  role?: StaffRole
+  name: string
+  email?: string
+  base_rate: number
+  is_active: boolean
+  created_at?: string
+  updated_at?: string
+}
+
+// Персонал: Смена
+export type ShiftType = 'full' | 'half' | 'none'
+
+export interface StaffShift {
+  id: string
+  staff_id: string
+  date: string
+  shift_type: ShiftType
+  override_rate?: number
+  bonus: number
+  fine: number
+  notes?: string
+  created_at?: string
+  updated_at?: string
+}
+
 // Статусы бронирования с цветами
 export const RESERVATION_STATUS_CONFIG: Record<ReservationStatus, {
   label: string

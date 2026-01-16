@@ -1249,6 +1249,7 @@ export function ReservationModal({
                 <Button
                   variant="ghost"
                   size="icon"
+                  onClick={handleDelete}
                   className="text-stone-400 hover:text-rose-600 hover:bg-rose-50 h-8 w-8 sm:h-9 sm:w-9 hidden sm:flex"
                 >
                   {deleteReservation.loading ? (
@@ -1660,6 +1661,32 @@ export function ReservationModal({
                     </div>
                   </div>
                 </div>
+
+                {/* Comments Card - Moved to left column conditionally for Banquets */}
+                {formData.menu_type === 'banquet' && (currentReservation?.comments || mode !== 'view') && (
+                  <div className="bg-white border border-stone-200 rounded-3xl p-6 shadow-sm space-y-5">
+                    <h3 className="font-black text-stone-900 flex items-center gap-3 text-base border-b border-stone-50 pb-4">
+                      <div className="p-2 bg-stone-50 rounded-xl">
+                        <MessageSquare className="h-5 w-5 text-stone-500" />
+                      </div>
+                      Комментарии
+                    </h3>
+                    <div>
+                      {mode === 'view' ? (
+                        <div className="p-5 rounded-2xl bg-stone-50 border border-stone-100 italic text-sm text-stone-600 leading-relaxed font-medium">
+                          {currentReservation?.comments || 'Комментарии отсуствуют'}
+                        </div>
+                      ) : (
+                        <Textarea
+                          placeholder="Важные детали заказа, пожелания гостя..."
+                          value={formData.comments}
+                          onChange={(e) => setFormData({ ...formData, comments: e.target.value })}
+                          className="min-h-[100px] rounded-2xl border-stone-200 focus:ring-amber-500 font-medium text-sm p-4 bg-stone-50/30"
+                        />
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Right Column: Menu & Billing */}
@@ -2032,8 +2059,9 @@ export function ReservationModal({
                   </div>
                 )}
 
-                {/* Comments Card */}
-                {(currentReservation?.comments || mode !== 'view') && (
+
+                {/* Comments Card - Shown on right for Main Menu */}
+                {formData.menu_type === 'main_menu' && (currentReservation?.comments || mode !== 'view') && (
                   <div className="bg-white border border-stone-200 rounded-3xl p-6 shadow-sm space-y-5">
                     <h3 className="font-black text-stone-900 flex items-center gap-3 text-base border-b border-stone-50 pb-4">
                       <div className="p-2 bg-stone-50 rounded-xl">
@@ -2162,7 +2190,71 @@ export function ReservationModal({
             <div className="flex items-center gap-2 sm:gap-3">
               <Button
                 variant="ghost"
-                onClick={onClose}
+                onClick={() => {
+                  if (mode === 'edit') {
+                    setMode('view')
+                    // Reset to original data
+                    if (currentReservation) {
+                      setFormData({
+                        date: currentReservation.date,
+                        time: currentReservation.time,
+                        hall_id: currentReservation.hall_id,
+                        table_id: currentReservation.table_id || '',
+                        guest_id: currentReservation.guest_id,
+                        guests_count: currentReservation.guests_count,
+                        children_count: currentReservation.children_count,
+                        menu_id: currentReservation.menu_id || menus[0]?.id || '',
+                        color: currentReservation.color || '#f59e0b',
+                        status: currentReservation.status,
+                        total_amount: currentReservation.total_amount,
+                        comments: currentReservation.comments || '',
+                        menu_type: currentReservation.menu_type || 'banquet'
+                      })
+                      const initialTables =
+                        currentReservation.table_ids?.length
+                          ? currentReservation.table_ids
+                          : currentReservation.tables?.length
+                            ? currentReservation.tables.map((t) => t.id)
+                            : currentReservation.table_id
+                              ? [currentReservation.table_id]
+                              : []
+                      setSelectedTables(initialTables)
+                      setDraftTables(initialTables)
+
+                      if (currentReservation.selected_menu_items?.length) {
+                        const selectedIds = currentReservation.selected_menu_items
+                          .filter(rmi => rmi.is_selected && rmi.menu_item_id)
+                          .map(rmi => rmi.menu_item_id as string)
+                        setSelectedSalads(selectedIds)
+
+                        const overrides: Record<string, Partial<ReservationMenuItem>> = {}
+                        const adHoc: ReservationMenuItem[] = []
+
+                        currentReservation.selected_menu_items.forEach(rmi => {
+                          if (rmi.menu_item_id) {
+                            if (rmi.weight_per_person || rmi.name || rmi.order_index || rmi.price) {
+                              overrides[rmi.menu_item_id] = {
+                                weight_per_person: rmi.weight_per_person,
+                                name: rmi.name,
+                                order_index: rmi.order_index,
+                                price: rmi.price
+                              }
+                            }
+                          } else {
+                            adHoc.push(rmi)
+                          }
+                        })
+                        setItemOverrides(overrides)
+                        setAdHocItems(adHoc)
+                      }
+                      if (currentReservation.menu_type === 'main_menu' && currentReservation.main_menu_items) {
+                        setMainMenuSelections(currentReservation.main_menu_items)
+                      }
+                    }
+                  } else {
+                    onClose()
+                  }
+                }}
                 className="h-11 sm:h-12 px-4 sm:px-6 rounded-2xl font-black text-[10px] sm:text-xs text-stone-400 uppercase tracking-widest hover:bg-stone-50 hover:text-stone-600 transition-all"
               >
                 Отмена

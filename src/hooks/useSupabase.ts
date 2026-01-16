@@ -14,7 +14,10 @@ import {
   CustomMenuItemType,
   MainMenuCategory,
   MainMenuItem,
-  MainMenuItemVariant
+  MainMenuItemVariant,
+  StaffRole,
+  StaffMember,
+  StaffShift
 } from '@/types'
 
 // Generic hook for fetching data
@@ -557,6 +560,87 @@ export function usePayments(reservationId?: string) {
   )
 }
 
+// ==================== STAFF ====================
+
+export function useStaffRoles() {
+  return useSupabaseQuery<StaffRole>(
+    'staff_roles',
+    '*',
+    undefined,
+    { column: 'name' }
+  )
+}
+
+export function useStaff(roleId?: string) {
+  return useSupabaseQuery<StaffMember>(
+    'staff',
+    '*, role:staff_roles (*)',
+    roleId ? { role_id: roleId } : undefined,
+    { column: 'name' }
+  )
+}
+
+export function useStaffShifts(filters?: {
+  staff_id?: string
+  startDate?: string
+  endDate?: string
+}) {
+  const [data, setData] = useState<StaffShift[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchData = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const supabase = createClient()
+      let query = supabase.from('staff_shifts').select('*')
+
+      if (filters?.staff_id) {
+        query = query.eq('staff_id', filters.staff_id)
+      }
+      if (filters?.startDate) {
+        query = query.gte('date', filters.startDate)
+      }
+      if (filters?.endDate) {
+        query = query.lte('date', filters.endDate)
+      }
+
+      const { data: result, error: queryError } = await query.order('date')
+
+      if (queryError) throw queryError
+      setData(result as StaffShift[])
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }, [JSON.stringify(filters)])
+
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
+
+  useEffect(() => {
+    const supabase = createClient()
+    const channel = supabase
+      .channel('staff_shifts_changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'staff_shifts' },
+        () => fetchData()
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [fetchData])
+
+  return { data, loading, error, refetch: fetchData }
+}
+
 // ==================== MUTATIONS ====================
 
 export function useCreateMutation<T>(tableName: string) {
@@ -582,14 +666,7 @@ export function useCreateMutation<T>(tableName: string) {
         .single()
 
       if (mutationError) {
-        const errorDetails = {
-          code: mutationError.code,
-          message: mutationError.message,
-          details: mutationError.details,
-          hint: mutationError.hint,
-          data
-        }
-        console.error(`[useCreateMutation] Error creating ${tableName}:`, errorDetails)
+        console.error(`[useCreateMutation] Error creating ${tableName}:`, JSON.stringify(mutationError, null, 2))
         setError(mutationError.message || `Не удалось создать запись в ${tableName}`)
         throw mutationError
       }
@@ -603,13 +680,7 @@ export function useCreateMutation<T>(tableName: string) {
     } catch (err: any) {
       const errorMessage = err?.message || err?.error?.message || `Не удалось создать запись в ${tableName}`
       setError(errorMessage)
-      console.error(`Error creating ${tableName}:`, {
-        error: err,
-        message: err?.message,
-        code: err?.code,
-        details: err?.details,
-        hint: err?.hint
-      })
+      console.error(`Error creating ${tableName}:`, JSON.stringify(err, Object.getOwnPropertyNames(err), 2))
       return null
     } finally {
       setLoading(false)

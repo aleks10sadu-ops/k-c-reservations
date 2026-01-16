@@ -218,30 +218,30 @@ export default function HallsPage() {
               <p className="mt-1 text-stone-500">Схема расположения столов и текущие брони</p>
             </div>
 
-            <div className="flex flex-wrap gap-3 items-center justify-end">
+            <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3">
               <Button
                 variant="outline"
                 size="lg"
-                className="gap-2"
+                className="flex-1 sm:flex-none gap-2 px-3 sm:px-6 text-sm sm:text-base"
                 onClick={() => {
                   setEditingHall(null)
                   setHallForm({ name: '', capacity: 0, description: '' })
                   setIsHallDialogOpen(true)
                 }}
               >
-                <Plus className="h-5 w-5" />
-                Добавить зал
+                <Plus className="h-4 w-4 sm:h-5 sm:w-5" />
+                <span className="whitespace-nowrap">Добавить зал</span>
               </Button>
               {selectedHall && (
                 <Button
                   size="lg"
-                  className="gap-2 shadow-lg shadow-amber-500/25"
+                  className="flex-1 sm:flex-none gap-2 px-3 sm:px-6 text-sm sm:text-base shadow-lg shadow-amber-500/25"
                   onClick={() => {
                     resetEditorView()
                     setIsEditorOpen(true)
                   }}
                 >
-                  Редактор схемы
+                  <span className="whitespace-nowrap">Редактор схемы</span>
                 </Button>
               )}
             </div>
@@ -279,104 +279,106 @@ export default function HallsPage() {
                     className="grid grid-cols-1 lg:grid-cols-3 gap-6"
                   >
                     {/* Hall Info */}
-                    <Card>
-                      <CardHeader className="flex flex-col gap-2">
-                        <div className="flex items-center justify-between gap-3">
-                          <CardTitle className="flex items-center gap-2">
-                            <MapPin className="h-5 w-5 text-amber-600" />
-                            {hall.name}
-                          </CardTitle>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => {
-                                setEditingHall(hall)
-                                setHallForm({
-                                  name: hall.name,
-                                  capacity: hall.capacity,
-                                  description: hall.description || ''
-                                })
-                                setIsHallDialogOpen(true)
-                              }}
-                              className="text-stone-500 hover:text-stone-800"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-stone-400 hover:text-rose-600"
-                              onClick={async () => {
-                                if (!confirm('Удалить этот зал и его столы?')) return
-                                const deleted = await deleteHall.mutate(hall.id)
-                                if (deleted) {
-                                  if (selectedHallId === hall.id) {
-                                    const nextHall = halls.find(h => h.id !== hall.id)
-                                    setSelectedHallId(nextHall?.id ?? null)
+                    <div className="order-3 lg:order-none">
+                      <Card>
+                        <CardHeader className="flex flex-col gap-2">
+                          <div className="flex items-center justify-between gap-3">
+                            <CardTitle className="flex items-center gap-2">
+                              <MapPin className="h-5 w-5 text-amber-600" />
+                              {hall.name}
+                            </CardTitle>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                  setEditingHall(hall)
+                                  setHallForm({
+                                    name: hall.name,
+                                    capacity: hall.capacity,
+                                    description: hall.description || ''
+                                  })
+                                  setIsHallDialogOpen(true)
+                                }}
+                                className="text-stone-500 hover:text-stone-800"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-stone-400 hover:text-rose-600"
+                                onClick={async () => {
+                                  if (!confirm('Удалить этот зал и его столы?')) return
+                                  const deleted = await deleteHall.mutate(hall.id)
+                                  if (deleted) {
+                                    if (selectedHallId === hall.id) {
+                                      const nextHall = halls.find(h => h.id !== hall.id)
+                                      setSelectedHallId(nextHall?.id ?? null)
+                                    }
+                                  } else {
+                                    alert('Не удалось удалить зал. Удалите связанные бронирования или попробуйте позже.')
                                   }
-                                } else {
-                                  alert('Не удалось удалить зал. Удалите связанные бронирования или попробуйте позже.')
-                                }
-                              }}
-                              disabled={deleteHall.loading}
-                              title="Удалить зал"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                                }}
+                                disabled={deleteHall.loading}
+                                title="Удалить зал"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="flex items-center gap-3 text-stone-600">
-                          <Users className="h-5 w-5" />
-                          <span>Вместимость: до {hall.capacity} человек</span>
-                        </div>
-
-                        <p className="text-stone-500">{hall.description}</p>
-
-                        <div className="pt-4 border-t border-stone-200">
-                          <h4 className="font-medium text-stone-900 mb-2">Столы ({hallTables.length})</h4>
-                          <div className="flex flex-wrap gap-2">
-                            {hallTables.map((table) => {
-                              const reservation = getTableReservation(table)
-                              return (
-                                <Badge
-                                  key={table.id}
-                                  variant={reservation ?
-                                    (reservation.status === 'paid' ? 'paid' :
-                                      reservation.status === 'prepaid' ? 'prepaid' :
-                                        reservation.status === 'in_progress' ? 'inProgress' :
-                                          reservation.status === 'canceled' ? 'canceled' : 'new')
-                                    : 'outline'
-                                  }
-                                  onClick={() => {
-                                    setEditingTable(table)
-                                    setTableForm({
-                                      hall_id: hall.id,
-                                      number: table.number,
-                                      capacity: table.capacity,
-                                      position_x: table.position_x,
-                                      position_y: table.position_y,
-                                      width: table.width,
-                                      height: table.height,
-                                      shape: table.shape,
-                                    })
-                                    setIsTableDialogOpen(true)
-                                  }}
-                                  className="cursor-pointer"
-                                >
-                                  Стол {table.number} ({table.capacity} чел.)
-                                </Badge>
-                              )
-                            })}
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          <div className="flex items-center gap-3 text-stone-600">
+                            <Users className="h-5 w-5" />
+                            <span>Вместимость: до {hall.capacity} человек</span>
                           </div>
-                        </div>
-                      </CardContent>
-                    </Card>
+
+                          <p className="text-stone-500">{hall.description}</p>
+
+                          <div className="pt-4 border-t border-stone-200">
+                            <h4 className="font-medium text-stone-900 mb-2">Столы ({hallTables.length})</h4>
+                            <div className="flex flex-wrap gap-2">
+                              {hallTables.map((table) => {
+                                const reservation = getTableReservation(table)
+                                return (
+                                  <Badge
+                                    key={table.id}
+                                    variant={reservation ?
+                                      (reservation.status === 'paid' ? 'paid' :
+                                        reservation.status === 'prepaid' ? 'prepaid' :
+                                          reservation.status === 'in_progress' ? 'inProgress' :
+                                            reservation.status === 'canceled' ? 'canceled' : 'new')
+                                      : 'outline'
+                                    }
+                                    onClick={() => {
+                                      setEditingTable(table)
+                                      setTableForm({
+                                        hall_id: hall.id,
+                                        number: table.number,
+                                        capacity: table.capacity,
+                                        position_x: table.position_x,
+                                        position_y: table.position_y,
+                                        width: table.width,
+                                        height: table.height,
+                                        shape: table.shape,
+                                      })
+                                      setIsTableDialogOpen(true)
+                                    }}
+                                    className="cursor-pointer"
+                                  >
+                                    Стол {table.number} ({table.capacity} чел.)
+                                  </Badge>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
 
                     {/* Floor Plan */}
-                    <div className="lg:col-span-2 order-first lg:order-none">
+                    <div className="lg:col-span-2 order-1 lg:order-none">
                       <Card className="h-full">
                         <CardHeader>
                           <CardTitle className="flex items-center justify-between gap-3">
@@ -540,78 +542,73 @@ export default function HallsPage() {
                         </div>
                       </Card>
                     </div>
-                  </motion.div>
 
-                  {/* Today's reservations for this hall */}
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                    className="mt-6"
-                  >
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>
-                          Бронирования на {format(new Date(selectedDate), 'd MMMM yyyy', { locale: ru })}
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        {reservationsLoading ? (
-                          <div className="flex items-center justify-center py-8">
-                            <Loader2 className="h-6 w-6 animate-spin text-amber-600" />
-                          </div>
-                        ) : dateReservations.filter(r => r.hall_id === hall.id).length === 0 ? (
-                          <p className="text-center py-8 text-stone-500">
-                            Нет бронирований на эту дату
-                          </p>
-                        ) : (
-                          <div className="divide-y divide-stone-100">
-                            {dateReservations
-                              .filter(r => r.hall_id === hall.id)
-                              .sort((a, b) => a.time.localeCompare(b.time))
-                              .map((reservation) => {
-                                const statusConfig = RESERVATION_STATUS_CONFIG[reservation.status]
-                                return (
-                                  <div
-                                    key={reservation.id}
-                                    className={cn(
-                                      "py-3 flex items-center justify-between cursor-pointer rounded-lg px-2 transition-all -mx-2 my-1",
-                                      focusedReservationId === reservation.id
-                                        ? "bg-amber-50 shadow-sm ring-1 ring-amber-200"
-                                        : "hover:bg-stone-50"
-                                    )}
-                                    onClick={() => setFocusedReservationId(focusedReservationId === reservation.id ? null : reservation.id)}
-                                  >
-                                    <div className="flex items-center gap-4">
-                                      <div
-                                        className="w-2 h-10 rounded-full"
-                                        style={{ backgroundColor: statusConfig.borderColor }}
-                                      />
-                                      <div>
-                                        <p className="font-medium text-stone-900">
-                                          {reservation.guest?.last_name} {reservation.guest?.first_name}
-                                        </p>
-                                        <p className="text-sm text-stone-500">
-                                          {formatTime(reservation.time)} • {reservation.guests_count} гостей
-                                        </p>
-                                      </div>
-                                    </div>
-                                    <Badge
-                                      variant={reservation.status === 'new' ? 'new' :
-                                        reservation.status === 'in_progress' ? 'inProgress' :
-                                          reservation.status === 'prepaid' ? 'prepaid' :
-                                            reservation.status === 'paid' ? 'paid' :
-                                              reservation.status === 'completed' ? 'completed' : 'canceled'}
+                    {/* Today's reservations for this hall - Moved into grid and reordered */}
+                    <div className="lg:col-span-3 order-2 lg:order-none mt-0 lg:mt-6">
+                      <Card>
+                        <CardHeader>
+                          <CardTitle>
+                            Бронирования на {format(new Date(selectedDate), 'd MMMM yyyy', { locale: ru })}
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          {reservationsLoading ? (
+                            <div className="flex items-center justify-center py-8">
+                              <Loader2 className="h-6 w-6 animate-spin text-amber-600" />
+                            </div>
+                          ) : dateReservations.filter(r => r.hall_id === hall.id).length === 0 ? (
+                            <p className="text-center py-8 text-stone-500">
+                              Нет бронирований на эту дату
+                            </p>
+                          ) : (
+                            <div className="divide-y divide-stone-100">
+                              {dateReservations
+                                .filter(r => r.hall_id === hall.id)
+                                .sort((a, b) => a.time.localeCompare(b.time))
+                                .map((reservation) => {
+                                  const statusConfig = RESERVATION_STATUS_CONFIG[reservation.status]
+                                  return (
+                                    <div
+                                      key={reservation.id}
+                                      className={cn(
+                                        "py-3 flex items-center justify-between cursor-pointer rounded-lg px-2 transition-all -mx-2 my-1",
+                                        focusedReservationId === reservation.id
+                                          ? "bg-amber-50 shadow-sm ring-1 ring-amber-200"
+                                          : "hover:bg-stone-50"
+                                      )}
+                                      onClick={() => setFocusedReservationId(focusedReservationId === reservation.id ? null : reservation.id)}
                                     >
-                                      {statusConfig.label}
-                                    </Badge>
-                                  </div>
-                                )
-                              })}
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
+                                      <div className="flex items-center gap-4">
+                                        <div
+                                          className="w-2 h-10 rounded-full"
+                                          style={{ backgroundColor: statusConfig.borderColor }}
+                                        />
+                                        <div>
+                                          <p className="font-medium text-stone-900">
+                                            {reservation.guest?.last_name} {reservation.guest?.first_name}
+                                          </p>
+                                          <p className="text-sm text-stone-500">
+                                            {formatTime(reservation.time)} • {reservation.guests_count} гостей
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <Badge
+                                        variant={reservation.status === 'new' ? 'new' :
+                                          reservation.status === 'in_progress' ? 'inProgress' :
+                                            reservation.status === 'prepaid' ? 'prepaid' :
+                                              reservation.status === 'paid' ? 'paid' :
+                                                reservation.status === 'completed' ? 'completed' : 'canceled'}
+                                      >
+                                        {statusConfig.label}
+                                      </Badge>
+                                    </div>
+                                  )
+                                })}
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </div>
                   </motion.div>
                 </TabsContent>
               )
@@ -1751,12 +1748,14 @@ export default function HallsPage() {
               Закрыть
             </Button>
             {(() => {
-              const tableReservations = dateReservations.filter(r =>
+              const activeTableReservations = dateReservations.filter(r =>
+                r.status !== 'canceled' &&
+                r.status !== 'completed' &&
                 (r.table_ids?.includes(selectedTableForInfo?.id || '') || r.table_id === selectedTableForInfo?.id)
               )
 
-              if (tableReservations.length === 0) {
-                // Стол свободен - кнопка создания брони
+              if (activeTableReservations.length === 0) {
+                // Стол свободен от активных броней - кнопка создания брони
                 return (
                   <Button onClick={() => {
                     // Находим зал для этого стола
@@ -1775,7 +1774,7 @@ export default function HallsPage() {
                 )
               }
 
-              // Есть брони - можно кликнуть на конкретную бронь выше
+              // Есть активные брони - нельзя добавить новую через эту кнопку
               return null
             })()}
           </div>
