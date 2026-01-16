@@ -109,9 +109,11 @@ export function PrintableReservation({
                             <div key={type} className="break-inside-avoid mb-2">
                                 <div className="bg-stone-50 px-2 py-0.5 mb-1 flex justify-between items-center border-l-2 border-stone-300">
                                     <span className="font-bold uppercase text-[9px] tracking-wider">{label}</span>
-                                    <span className="text-[9px] font-black text-stone-400 uppercase italic whitespace-nowrap shrink-0">
-                                        {calculatePlates(reservation.guests_count)} ТАРЕЛКИ
-                                    </span>
+                                    {reservation.menu_type === 'banquet' && (
+                                        <span className="text-[9px] font-black text-stone-400 uppercase italic whitespace-nowrap shrink-0">
+                                            {calculatePlates(reservation.guests_count)} ТАРЕЛКИ
+                                        </span>
+                                    )}
                                 </div>
                                 <table className="w-full text-[10px]">
                                     <tbody className="divide-y divide-stone-50">

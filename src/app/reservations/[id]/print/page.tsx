@@ -145,6 +145,11 @@ export default async function PrintReservationPage({ params }: PageProps) {
                             <div key={type} className="break-inside-avoid mb-3">
                                 <div className="bg-stone-50 px-2 py-0.5 mb-1 flex justify-between items-center border-l-2 border-black">
                                     <span className="font-bold uppercase text-[11px] tracking-wider text-black">{label}</span>
+                                    {reservation.menu_type === 'banquet' && (
+                                        <span className="text-[10px] font-black text-stone-600 uppercase italic whitespace-nowrap shrink-0">
+                                            {calculatePlates(reservation.guests_count)} ТАРЕЛКИ
+                                        </span>
+                                    )}
                                 </div>
                                 <table className="w-full text-[12px]">
                                     <tbody className="divide-y divide-stone-100">
