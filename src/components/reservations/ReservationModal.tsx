@@ -230,8 +230,11 @@ export function ReservationModal({
   const matchingGuest = useMemo(() => {
     if (!newGuestData.phone || newGuestData.phone.length < 6) return null
     // Normalize user input for comparison (e.g. matching +7 and 8)
-    // But since we auto-format to +7, exact match is main target
-    return guests.find(g => g.phone === newGuestData.phone)
+    const normalizedInput = newGuestData.phone.replace(/\D/g, '').replace(/^8/, '7')
+    return guests.find(g => {
+      const normalizedGuest = g.phone.replace(/\D/g, '').replace(/^8/, '7')
+      return normalizedGuest === normalizedInput
+    })
   }, [newGuestData.phone, guests])
 
   // Mutations
@@ -643,7 +646,12 @@ export function ReservationModal({
 
     // 1. Create/Get Guest
     if (showNewGuest && newGuestData.first_name && newGuestData.last_name && newGuestData.phone) {
-      const existingGuest = guests.find(g => g.phone === newGuestData.phone)
+      const normalizedInput = newGuestData.phone.replace(/\D/g, '').replace(/^8/, '7')
+      const existingGuest = guests.find(g => {
+        const normalizedGuest = g.phone.replace(/\D/g, '').replace(/^8/, '7')
+        return normalizedGuest === normalizedInput
+      })
+
       if (existingGuest) {
         if (confirm(`Гость с телефоном ${newGuestData.phone} уже существует: ${existingGuest.last_name} ${existingGuest.first_name}. Привязать бронь к этому гостю?`)) {
           guestId = existingGuest.id
@@ -676,7 +684,7 @@ export function ReservationModal({
 
     const guestObj = guests.find(g => g.id === guestId)
     if (guestObj?.status === 'blacklist') {
-      alert('Этот гость находится в чёрном списке. Бронирование невозможно.')
+      alert('Данный гость находится в чёрном списке, на него невозможно выполнить бронь')
       return
     }
 
@@ -1494,7 +1502,7 @@ export function ReservationModal({
                               >
                                 <div className="text-xs">
                                   <p className={cn("font-black mb-1", matchingGuest.status === 'blacklist' ? "text-red-900" : "text-amber-900")}>
-                                    {matchingGuest.status === 'blacklist' ? "БЛОКИРОВКА" : "НАЙДЕН В БАЗЕ"}
+                                    {matchingGuest.status === 'blacklist' ? "ГОСТЬ В ЧЁРНОМ СПИСКЕ" : "НАЙДЕН В БАЗЕ"}
                                   </p>
                                   <p className="font-bold text-stone-800">
                                     {matchingGuest.last_name} {matchingGuest.first_name}
@@ -1504,14 +1512,13 @@ export function ReservationModal({
                                   size="sm"
                                   variant={matchingGuest.status === 'blacklist' ? "destructive" : "default"}
                                   className={cn("h-8 px-4 font-black text-[10px]", matchingGuest.status === 'blacklist' ? "" : "bg-amber-600 hover:bg-amber-700")}
-                                  disabled={matchingGuest.status === 'blacklist'}
                                   onClick={() => {
                                     setFormData(prev => ({ ...prev, guest_id: matchingGuest.id }))
                                     setShowNewGuest(false)
                                     setNewGuestData({ first_name: '', last_name: '', phone: '' })
                                   }}
                                 >
-                                  {matchingGuest.status === 'blacklist' ? "ЗАПРЕТИТЬ" : "ВЫБРАТЬ"}
+                                  ВЫБРАТЬ
                                 </Button>
                               </motion.div>
                             )}
