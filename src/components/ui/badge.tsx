@@ -15,7 +15,7 @@ const badgeVariants = cva(
           "border-transparent bg-red-500 text-white shadow",
         outline: "text-stone-900 border-stone-200",
         new: "border-stone-300 bg-stone-100 text-stone-600",
-        inProgress: "border-amber-200 bg-amber-50 text-amber-700",
+        inProgress: "border-blue-200 bg-blue-50 text-blue-700",
         prepaid: "border-blue-200 bg-blue-50 text-blue-700",
         paid: "border-green-200 bg-green-50 text-green-700",
         canceled: "border-rose-200 bg-rose-50 text-rose-700",

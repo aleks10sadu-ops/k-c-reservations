@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
   Hall,
@@ -17,20 +17,43 @@ import {
   MainMenuItemVariant,
   StaffRole,
   StaffMember,
-  StaffShift
+  StaffShift,
+  HealthBook,
+  HallLayoutTemplate,
+  HallDateLayout
 } from '@/types'
 
+// Global Event for cross-hook synchronization
+const DATA_CHANGE_EVENT = 'supabase-data-change'
+
+export function notifyDataChange(tableName: string) {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(DATA_CHANGE_EVENT, { detail: { tableName } }))
+  }
+}
+
 // Generic hook for fetching data
-function useSupabaseQuery<T>(
-  tableName: string,
+export function useSupabaseQuery<T>(
+  tableName: string | string[],
   selectQuery: string = '*',
-  filters?: Record<string, any>,
+  filters?: any,
   orderBy?: { column: string; ascending?: boolean },
-  skip?: boolean  // Если true, запрос не выполняется и возвращается пустой массив
+  skip: boolean = false
 ) {
   const [data, setData] = useState<T[]>([])
   const [loading, setLoading] = useState(!skip)
   const [error, setError] = useState<string | null>(null)
+
+  const tableNames = useMemo(() =>
+    Array.isArray(tableName) ? tableName : [tableName],
+    [JSON.stringify(tableName)]
+  )
+  const primaryTable = tableNames[0]
+  const memoizedTableName = JSON.stringify(tableName)
+
+  // Use stringified deps for the callback to prevent recreation on new object literals
+  const filterStr = JSON.stringify(filters)
+  const orderStr = JSON.stringify(orderBy)
 
   const fetchData = useCallback(async (signal?: AbortSignal) => {
     // Пропускаем запрос если skip=true
@@ -45,7 +68,7 @@ function useSupabaseQuery<T>(
 
     try {
       const supabase = createClient()
-      let query = supabase.from(tableName).select(selectQuery)
+      let query = supabase.from(primaryTable).select(selectQuery)
 
       if (filters) {
         Object.entries(filters).forEach(([key, value]) => {
@@ -57,11 +80,6 @@ function useSupabaseQuery<T>(
 
       if (orderBy) {
         query = query.order(orderBy.column, { ascending: orderBy.ascending ?? true })
-      }
-
-      // Логируем для menu_item_types
-      if (tableName === 'menu_item_types') {
-        console.log(`[useSupabaseQuery] Fetching ${tableName} with filters:`, filters)
       }
 
       if (signal) {
@@ -77,21 +95,12 @@ function useSupabaseQuery<T>(
         }
 
         // Detailed error logging for REAL errors
-        console.error(`[useSupabaseQuery] PostgREST Error fetching ${tableName}:`,
+        console.error(`[useSupabaseQuery] PostgREST Error fetching ${primaryTable}:`,
           JSON.stringify(queryError, Object.getOwnPropertyNames(queryError), 2)
         )
         throw queryError
       }
 
-      // Логируем для menu_item_types
-      if (tableName === 'menu_item_types') {
-        console.log(`[useSupabaseQuery] Fetched ${tableName}:`, result?.length || 0, 'items', result)
-        if (result?.length === 0 && filters?.menu_id) {
-          console.warn(`[useSupabaseQuery] No types found for menu_id:`, filters.menu_id)
-        }
-      }
-
-      // Явно приводим ответ к ожидаемому типу данных
       setData((result || []) as T[])
     } catch (err: any) {
       // Ignore abort errors
@@ -113,7 +122,16 @@ function useSupabaseQuery<T>(
         setLoading(false)
       }
     }
-  }, [tableName, selectQuery, JSON.stringify(filters), JSON.stringify(orderBy), skip])
+  }, [primaryTable, selectQuery, filterStr, orderStr, skip])
+
+  const fetchTimerRef = useRef<NodeJS.Timeout | null>(null)
+
+  const debouncedFetch = useCallback(() => {
+    if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current)
+    fetchTimerRef.current = setTimeout(() => {
+      fetchData()
+    }, 50) // Small debounce to batch multiple relevant changes
+  }, [fetchData])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -121,27 +139,46 @@ function useSupabaseQuery<T>(
 
     return () => {
       controller.abort()
+      if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current)
     }
   }, [fetchData])
 
   // Subscribe to realtime changes
   useEffect(() => {
+    if (skip) return
+
     const supabase = createClient()
-    const channel = supabase
-      .channel(`${tableName}_changes`)
-      .on(
+    const channel = supabase.channel(`${primaryTable}_multi_changes`)
+
+    tableNames.forEach((table: string) => {
+      channel.on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: tableName },
-        () => {
-          fetchData()
-        }
+        { event: '*', schema: 'public', table },
+        () => debouncedFetch()
       )
-      .subscribe()
+    })
+
+    channel.subscribe()
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [tableName, fetchData])
+  }, [memoizedTableName, fetchData, skip, primaryTable])
+
+  // Subscribe to global data change events (manual triggers)
+  useEffect(() => {
+    const handleGlobalChange = (event: any) => {
+      const changedTable = event.detail?.tableName
+      if (changedTable === '*' || tableNames.includes(changedTable)) {
+        debouncedFetch()
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener(DATA_CHANGE_EVENT, handleGlobalChange)
+      return () => window.removeEventListener(DATA_CHANGE_EVENT, handleGlobalChange)
+    }
+  }, [memoizedTableName, fetchData])
 
   return { data, loading, error, refetch: fetchData }
 }
@@ -150,7 +187,7 @@ function useSupabaseQuery<T>(
 
 export function useHalls() {
   return useSupabaseQuery<Hall>(
-    'halls',
+    ['halls', 'tables'],
     '*, tables (*)',
     undefined,
     { column: 'name' }
@@ -176,12 +213,36 @@ export function useTables(hallId?: string | null, loadAll?: boolean) {
 
 // ==================== LAYOUT ITEMS ====================
 
-export function useLayoutItems(hallId?: string) {
+export function useLayoutItems(hall_id?: string) {
   return useSupabaseQuery<LayoutItem>(
     'layout_items',
     '*',
-    hallId ? { hall_id: hallId } : undefined,
+    hall_id ? { hall_id } : undefined,
     { column: 'created_at' }
+  )
+}
+
+// ==================== HALL LAYOUTS & TEMPLATES ====================
+
+export function useHallLayoutTemplates(hallId?: string) {
+  return useSupabaseQuery<HallLayoutTemplate>(
+    'hall_layout_templates',
+    '*',
+    hallId ? { hall_id: hallId } : undefined,
+    { column: 'name' }
+  )
+}
+
+export function useHallDateLayouts(hallId?: string, date?: string) {
+  const filters: any = {}
+  if (hallId) filters.hall_id = hallId
+  if (date) filters.date = date
+
+  return useSupabaseQuery<HallDateLayout>(
+    'hall_date_layouts',
+    '*',
+    Object.keys(filters).length > 0 ? filters : undefined,
+    { column: 'date' }
   )
 }
 
@@ -189,7 +250,7 @@ export function useLayoutItems(hallId?: string) {
 
 export function useMenus() {
   return useSupabaseQuery<Menu>(
-    'menus',
+    ['menus', 'menu_items'],
     '*, items:menu_items (*)',
     { is_active: true },
     { column: 'name' }
@@ -395,7 +456,7 @@ export function useReservations(filters?: {
   useEffect(() => {
     const supabase = createClient()
     const channel = supabase
-      .channel('reservations_all_changes')
+      .channel('reservations_realtime')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'reservations' },
@@ -411,6 +472,16 @@ export function useReservations(filters?: {
         { event: '*', schema: 'public', table: 'reservation_tables' },
         () => fetchData()
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'reservation_menu_items' },
+        () => fetchData()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'reservation_main_menu_items' },
+        () => fetchData()
+      )
       .subscribe()
 
     return () => {
@@ -418,29 +489,18 @@ export function useReservations(filters?: {
     }
   }, [fetchData])
 
-  // Subscribe to realtime changes
+  // Subscribe to global data change events (manual triggers)
   useEffect(() => {
-    const supabase = createClient()
-    const channel = supabase
-      .channel('reservations_changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'reservations' },
-        () => {
-          fetchData()
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'payments' },
-        () => {
-          fetchData()
-        }
-      )
-      .subscribe()
+    const handleGlobalChange = (event: any) => {
+      const relevantTables = ['reservations', 'payments', 'reservation_tables', 'reservation_menu_items', 'reservation_main_menu_items']
+      if (event.detail?.tableName === '*' || relevantTables.includes(event.detail?.tableName)) {
+        fetchData()
+      }
+    }
 
-    return () => {
-      supabase.removeChannel(channel)
+    if (typeof window !== 'undefined') {
+      window.addEventListener(DATA_CHANGE_EVENT, handleGlobalChange)
+      return () => window.removeEventListener(DATA_CHANGE_EVENT, handleGlobalChange)
     }
   }, [fetchData])
 
@@ -573,7 +633,7 @@ export function useStaffRoles() {
 
 export function useStaff(roleId?: string) {
   return useSupabaseQuery<StaffMember>(
-    'staff',
+    ['staff', 'staff_roles'],
     '*, role:staff_roles (*)',
     roleId ? { role_id: roleId } : undefined,
     { column: 'name' }
@@ -622,10 +682,11 @@ export function useStaffShifts(filters?: {
     fetchData()
   }, [fetchData])
 
+  // Subscribe to changes
   useEffect(() => {
     const supabase = createClient()
     const channel = supabase
-      .channel('staff_shifts_changes')
+      .channel('staff_shifts_realtime')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'staff_shifts' },
@@ -638,7 +699,30 @@ export function useStaffShifts(filters?: {
     }
   }, [fetchData])
 
+  // Subscribe to global data change events (manual triggers)
+  useEffect(() => {
+    const handleGlobalChange = (event: any) => {
+      if (event.detail?.tableName === 'staff_shifts' || event.detail?.tableName === '*') {
+        fetchData()
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener(DATA_CHANGE_EVENT, handleGlobalChange)
+      return () => window.removeEventListener(DATA_CHANGE_EVENT, handleGlobalChange)
+    }
+  }, [fetchData])
+
   return { data, loading, error, refetch: fetchData }
+}
+
+export function useHealthBooks() {
+  return useSupabaseQuery<HealthBook>(
+    'health_books',
+    '*, staff:staff (*)',
+    undefined,
+    { column: 'expires_at' }
+  )
 }
 
 // ==================== MUTATIONS ====================
@@ -676,6 +760,7 @@ export function useCreateMutation<T>(tableName: string) {
         console.log(`[useCreateMutation] Created ${tableName}:`, result)
       }
 
+      notifyDataChange(tableName)
       return result
     } catch (err: any) {
       const errorMessage = err?.message || err?.error?.message || `Не удалось создать запись в ${tableName}`
@@ -723,11 +808,45 @@ export function useUpdateMutation<T>(tableName: string) {
         console.log(`[useUpdateMutation] Updated ${tableName}:`, result)
       }
 
+      notifyDataChange(tableName)
       return result
     } catch (err: any) {
       const msg = err?.message || err?.error?.message || 'Unknown error'
       setError(msg)
       console.error(`Error updating ${tableName}:`, err, JSON.stringify(err, null, 2))
+      return null
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return { mutate, loading, error }
+}
+
+export function useUpsertMutation<T>(tableName: string, conflictColumns: string[]) {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const mutate = async (data: Partial<T> | Partial<T>[]): Promise<T[] | null> => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const supabase = createClient()
+      const { data: result, error: mutationError } = await supabase
+        .from(tableName)
+        .upsert(data, { onConflict: conflictColumns.join(',') })
+        .select()
+
+      if (mutationError) {
+        console.error(`[useUpsertMutation] Error in ${tableName}:`, mutationError)
+        throw mutationError
+      }
+
+      notifyDataChange(tableName)
+      return result
+    } catch (err: any) {
+      setError(err.message || 'Ошибка при сохранении')
       return null
     } finally {
       setLoading(false)
@@ -753,6 +872,7 @@ export function useDeleteMutation(tableName: string) {
         .eq('id', id)
 
       if (mutationError) throw mutationError
+      notifyDataChange(tableName)
       return true
     } catch (err: any) {
       const errorMessage = err?.message || err?.error?.message || `Не удалось удалить запись из ${tableName}`

@@ -348,7 +348,10 @@ export function MainMenuManager() {
             <Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>{editingCategory ? 'Редактировать категорию' : 'Новая категория'}</DialogTitle>
+                        <DialogTitle>{editingCategory ? 'Редактировать категорию' : 'Добавить категорию'}</DialogTitle>
+                        <DialogDescription>
+                            Укажите название категории для основного меню
+                        </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
                         <div className="space-y-2">
@@ -378,7 +381,10 @@ export function MainMenuManager() {
             <Dialog open={isItemDialogOpen} onOpenChange={setIsItemDialogOpen}>
                 <DialogContent className="max-w-lg">
                     <DialogHeader>
-                        <DialogTitle>{editingItem ? 'Редактировать блюдо' : 'Новое блюдо'}</DialogTitle>
+                        <DialogTitle>{editingItem ? 'Редактировать блюдо' : 'Добавить блюдо'}</DialogTitle>
+                        <DialogDescription>
+                            Заполните информацию о блюде и его вариантах
+                        </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
                         <div className="space-y-2">

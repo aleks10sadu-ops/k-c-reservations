@@ -58,6 +58,7 @@ export function AddPaymentDialog({
     }, [reservationId])
 
     const updateReservation = useUpdateMutation<Reservation>('reservations')
+    const createPayment = useCreateMutation<Payment>('payments')
 
     const selectedReservation = reservation || availableReservations.find(r => r.id === selectedReservationId)
     const remainingToPay = selectedReservation
@@ -68,13 +69,10 @@ export function AddPaymentDialog({
 
     const handleAddPayment = async () => {
         if (!selectedReservationId || !amount) return
+        setLoading(true)
 
-        // Create payment
-        let result: Payment | null = null
         try {
-            setLoading(true)
-            const supabase = createClient()
-
+            // Create payment
             const payload = {
                 reservation_id: selectedReservationId,
                 amount: amount,
@@ -83,70 +81,50 @@ export function AddPaymentDialog({
                 notes: notes || undefined
             }
 
-            const { data, error } = await supabase
-                .from('payments')
-                .insert(payload)
-                .select()
-                .single()
+            const result = await createPayment.mutate(payload)
 
-            if (error) {
-                console.error('SUPABASE ERROR:', error)
-                alert(`Ошибка при создании оплаты: ${error.message}`)
-                return
+            if (result) {
+                // Status update logic
+                // We need to fetch the LATEST reservation data to check totals
+                const supabase = createClient()
+                const { data: updatedReservation } = await supabase
+                    .from('reservations')
+                    .select('prepaid_amount, total_amount, status')
+                    .eq('id', selectedReservationId)
+                    .single()
+
+                if (updatedReservation) {
+                    // If prepaid_amount became > 0 (was 0), set to prepaid
+                    // We can't easily check "was 0" without previous data, but logic is:
+                    // If status is 'new'/'in_progress' and now has money -> 'prepaid'
+                    // If fully paid -> 'paid'
+
+                    let newStatus = updatedReservation.status
+
+                    if (updatedReservation.prepaid_amount >= updatedReservation.total_amount) {
+                        newStatus = 'paid'
+                    } else if (updatedReservation.prepaid_amount > 0 && (newStatus === 'new' || newStatus === 'in_progress')) {
+                        newStatus = 'prepaid'
+                    }
+
+                    if (newStatus !== updatedReservation.status) {
+                        await updateReservation.mutate(selectedReservationId, {
+                            status: newStatus
+                        })
+                    }
+                }
+
+                setAmount(0)
+                setNotes('')
+                setPaymentMethod('card')
+                // Only clear ID if it wasn't fixed props
+                if (!reservationId) setSelectedReservationId('')
+
+                onOpenChange(false)
+                if (onSuccess) onSuccess()
             }
-
-            result = data // mimic compatibility with rest of function
-
-            // Status update logic matches previous flow...
-            // const { data: updatedReservation } = await supabase ... (existing logic below works with same supabase client)
-        } catch (e) {
-            console.error('Unexpected error during payment creation:', e)
-            alert(`Произошла непредвиденная ошибка: ${e instanceof Error ? e.message : String(e)}`)
-            return
         } finally {
             setLoading(false)
-        }
-
-
-        if (result) {
-            // Status update logic
-            // We need to fetch the LATEST reservation data to check totals
-            const supabase = createClient()
-            const { data: updatedReservation } = await supabase
-                .from('reservations')
-                .select('prepaid_amount, total_amount, status')
-                .eq('id', selectedReservationId)
-                .single()
-
-            if (updatedReservation) {
-                // If prepaid_amount became > 0 (was 0), set to prepaid
-                // We can't easily check "was 0" without previous data, but logic is:
-                // If status is 'new'/'in_progress' and now has money -> 'prepaid'
-                // If fully paid -> 'paid'
-
-                let newStatus = updatedReservation.status
-
-                if (updatedReservation.prepaid_amount >= updatedReservation.total_amount) {
-                    newStatus = 'paid'
-                } else if (updatedReservation.prepaid_amount > 0 && (newStatus === 'new' || newStatus === 'in_progress')) {
-                    newStatus = 'prepaid'
-                }
-
-                if (newStatus !== updatedReservation.status) {
-                    await updateReservation.mutate(selectedReservationId, {
-                        status: newStatus
-                    })
-                }
-            }
-
-            setAmount(0)
-            setNotes('')
-            setPaymentMethod('card')
-            // Only clear ID if it wasn't fixed props
-            if (!reservationId) setSelectedReservationId('')
-
-            onOpenChange(false)
-            if (onSuccess) onSuccess()
         }
     }
 

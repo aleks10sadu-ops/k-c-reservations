@@ -140,7 +140,16 @@ export default function HomePage() {
     })
   }, [reservations, searchQuery, statusFilter, filters])
 
+  // Sync selected reservation with live data
+  useEffect(() => {
+    if (selectedReservation) {
+      const live = reservations.find(r => r.id === selectedReservation.id)
+      if (live) setSelectedReservation(live)
+    }
+  }, [reservations])
+
   // REMOVED: searchResults dropdown (now handled by global search)
+
 
   const handleReservationClick = (reservation: Reservation) => {
     setSelectedReservation(reservation)

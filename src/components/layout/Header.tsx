@@ -34,7 +34,6 @@ const navigationItems: { name: string; href: string; icon: any; roles: UserRole[
   { name: 'Меню', href: '/menu', icon: UtensilsCrossed, roles: ['admin', 'director', 'manager'] },
   { name: 'Гости', href: '/guests', icon: Users, roles: ['admin', 'director', 'manager'] },
   { name: 'Оплата', href: '/payments', icon: CreditCard, roles: ['admin', 'director', 'manager'] },
-  { name: 'Позиции', href: '/positions', icon: Table2, roles: ['waiter', 'admin', 'director', 'manager'] },
   { name: 'Персонал', href: '/staff', icon: Briefcase, roles: ['waiter', 'admin', 'director', 'manager'] },
   { name: 'Аудит', href: '/audit', icon: History, roles: ['director', 'manager'] },
 ]

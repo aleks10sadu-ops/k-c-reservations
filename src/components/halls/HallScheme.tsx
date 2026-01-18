@@ -50,18 +50,31 @@ export function HallScheme({
   const [panStart, setPanStart] = useState({ x: 0, y: 0 })
   const [lastPinchDistance, setLastPinchDistance] = useState<number | null>(null)
 
-  // Авто-масштаб при монтировании
+  // Авто-масштаб при монтировании и изменении размера
   useEffect(() => {
-    if (containerRef.current) {
-      const container = containerRef.current
-      const containerWidth = container.clientWidth - 40
-      const containerHeight = container.clientHeight - 40
-      const scaleX = containerWidth / CANVAS_WIDTH
-      const scaleY = containerHeight / CANVAS_HEIGHT
-      const autoScale = Math.min(scaleX, scaleY, 1)
-      setZoom(Math.max(0.3, autoScale))
-      setPan({ x: 0, y: 0 })
+    if (!containerRef.current) return
+
+    const updateScale = () => {
+      if (containerRef.current) {
+        const container = containerRef.current
+        const containerWidth = container.clientWidth - 40
+        const containerHeight = container.clientHeight - 40
+        const scaleX = containerWidth / CANVAS_WIDTH
+        const scaleY = containerHeight / CANVAS_HEIGHT
+        const autoScale = Math.min(scaleX, scaleY, 1)
+        setZoom(Math.max(0.3, autoScale))
+        setPan({ x: 0, y: 0 })
+      }
     }
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateScale()
+    })
+
+    resizeObserver.observe(containerRef.current)
+    updateScale() // Initial call
+
+    return () => resizeObserver.disconnect()
   }, [])
 
   // Reset view

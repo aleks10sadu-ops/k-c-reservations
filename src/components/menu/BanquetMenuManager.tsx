@@ -584,9 +584,9 @@ export function BanquetMenuManager() {
             <Dialog open={isAddMenuOpen} onOpenChange={setIsAddMenuOpen}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>{editingMenu ? 'Редактировать меню' : 'Новое меню'}</DialogTitle>
+                        <DialogTitle>{editingMenu ? 'Редактировать меню' : 'Создать меню'}</DialogTitle>
                         <DialogDescription>
-                            {editingMenu ? 'Измените параметры меню' : 'Создайте новое банкетное меню'}
+                            Заполните название меню и выберите его тип
                         </DialogDescription>
                     </DialogHeader>
 

@@ -5,7 +5,7 @@ export type ReservationStatus =
   | 'prepaid'       // Предоплата внесена - Нежный голубой
   | 'paid'          // Полностью оплачено - Нежный зелёный
   | 'canceled'      // Отмена брони - Нежный красный
-  | 'completed'     // Успешно - Приятный фиолетовый
+  | 'completed'     // Завершено - Приятный фиолетовый
 
 // Статусы гостей
 export type GuestStatus =
@@ -78,6 +78,29 @@ export interface LayoutItem {
   rotation?: number
   color?: string
   bg_color?: string
+  created_at: string
+  updated_at: string
+}
+
+// Шаблон планировки зала
+export interface HallLayoutTemplate {
+  id: string
+  hall_id: string
+  name: string
+  tables_data: Partial<Table>[]
+  layout_items_data: Partial<LayoutItem>[]
+  is_standard: boolean
+  created_at: string
+  updated_at: string
+}
+
+// Планировка зала на конкретную дату
+export interface HallDateLayout {
+  id: string
+  hall_id: string
+  date: string
+  tables_data: Partial<Table>[]
+  layout_items_data: Partial<LayoutItem>[]
   created_at: string
   updated_at: string
 }
@@ -245,6 +268,8 @@ export interface Reservation {
   payments: Payment[]
   comments?: string
   created_by?: string
+  waiter_id?: string
+  is_walk_in?: boolean
   created_at: string
   updated_at: string
 }
@@ -271,6 +296,8 @@ export interface CalendarDay {
 export interface StaffRole {
   id: string
   name: string
+  department: 'hall' | 'kitchen'
+  sort_order: number
   description?: string
   created_at?: string
 }
@@ -283,8 +310,23 @@ export interface StaffMember {
   role?: StaffRole
   name: string
   email?: string
+  phone?: string
   base_rate: number
   is_active: boolean
+  notes?: string
+  last_assigned_at?: string
+  created_at?: string
+  updated_at?: string
+}
+
+// Персонал: Медкнижка
+export interface HealthBook {
+  id: string
+  staff_id: string
+  staff?: StaffMember
+  issued_at: string
+  expires_at: string
+  notes?: string
   created_at?: string
   updated_at?: string
 }
@@ -319,10 +361,10 @@ export const RESERVATION_STATUS_CONFIG: Record<ReservationStatus, {
     borderColor: '#D1D5DB',
   },
   in_progress: {
-    label: 'Взято в работу',
-    color: '#92400E',
-    bgColor: '#FEF3C7',
-    borderColor: '#F59E0B',
+    label: 'За столом',
+    color: '#2563EB',
+    bgColor: '#EFF6FF',
+    borderColor: '#60A5FA',
   },
   prepaid: {
     label: 'Предоплата внесена',
@@ -343,7 +385,7 @@ export const RESERVATION_STATUS_CONFIG: Record<ReservationStatus, {
     borderColor: '#FCA5A5',
   },
   completed: {
-    label: 'Успешно',
+    label: 'Завершено',
     color: '#7C3AED',
     bgColor: '#EDE9FE',
     borderColor: '#C4B5FD',

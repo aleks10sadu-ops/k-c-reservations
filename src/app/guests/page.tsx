@@ -431,6 +431,9 @@ export default function GuestsPage() {
                       <DialogTitle className="text-xl">
                         {selectedGuest.last_name} {selectedGuest.first_name} {selectedGuest.middle_name}
                       </DialogTitle>
+                      <DialogDescription className="sr-only">
+                        Подробная информация о госте, история визитов и заметки.
+                      </DialogDescription>
                       <div className="flex items-center gap-2 mt-1">
                         <Badge
                           variant={selectedGuest.status === 'vip' ? 'vip' :

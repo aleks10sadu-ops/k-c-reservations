@@ -33,6 +33,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogPortal,
   DialogOverlay
 } from '@/components/ui/dialog'
@@ -60,7 +61,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import TimeWheelPicker from '@/components/TimeWheelPicker'
-import { useHalls, useMenus, useMenuItems, useMenuItemTypes, useGuests, useTables, useLayoutItems, useCreateMutation, useUpdateMutation, useDeleteMutation, useReservations } from '@/hooks/useSupabase'
+import { useHalls, useMenus, useMenuItems, useMenuItemTypes, useGuests, useTables, useLayoutItems, useCreateMutation, useUpdateMutation, useDeleteMutation, useReservations, useStaff } from '@/hooks/useSupabase'
 import { updateReservationServerAction, syncReservationTablesServerAction, syncReservationMenuItemsServerAction, syncReservationMainMenuItemsServerAction } from '@/lib/supabase/api'
 import { X } from 'lucide-react'
 import { HallScheme } from '@/components/halls/HallScheme'
@@ -116,7 +117,15 @@ export function ReservationModal({
   }, [mode])
 
   // Используем локальное состояние, если оно есть, иначе проп
-  const currentReservation = localReservation || reservation
+  const { data: reservations, refetch: refetchReservations } = useReservations()
+
+  const currentReservation = useMemo(() => {
+    if (reservation?.id) {
+      const live = reservations.find(r => r.id === reservation.id)
+      if (live) return live
+    }
+    return localReservation || reservation
+  }, [reservations, reservation, localReservation])
 
   // Инициализируем дату для копирования при загрузке бронирования
   useEffect(() => {
@@ -152,7 +161,9 @@ export function ReservationModal({
     status: 'new' as ReservationStatus,
     total_amount: 0,
     comments: '',
-    menu_type: 'banquet' as 'banquet' | 'main_menu'
+    menu_type: 'banquet' as 'banquet' | 'main_menu',
+    waiter_id: '',
+    is_walk_in: false
   })
 
   // Main Menu State
@@ -180,7 +191,6 @@ export function ReservationModal({
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false)
 
   // Fetch data
-  const { data: reservations, refetch: refetchReservations } = useReservations()
   const { data: halls } = useHalls()
   const { data: menus } = useMenus()
   const { data: menuItems } = useMenuItems()
@@ -198,6 +208,10 @@ export function ReservationModal({
       (formData.hall_id ? r.hall_id === formData.hall_id : true)
     )
   }, [reservations, formData.date, formData.hall_id])
+  const { data: staff } = useStaff()
+  const waiters = useMemo(() => {
+    return staff.filter(s => s.role?.name === 'Официант' && s.is_active)
+  }, [staff])
 
   // Вычисление вместимости выбранных столов
   const selectedCapacity = useMemo(() => {
@@ -276,7 +290,7 @@ export function ReservationModal({
   // Обновляем локальное состояние при изменении пропа reservation
   useEffect(() => {
     setLocalReservation(reservation)
-  }, [reservation])
+  }, [reservation?.id])
 
   // Автоматически выбираем первое меню, если menu_id пустой и есть доступные меню
   useEffect(() => {
@@ -305,7 +319,9 @@ export function ReservationModal({
           status: currentReservation.status,
           total_amount: currentReservation.total_amount,
           comments: currentReservation.comments || '',
-          menu_type: currentReservation.menu_type || 'banquet'
+          menu_type: currentReservation.menu_type || 'banquet',
+          waiter_id: currentReservation.waiter_id || '',
+          is_walk_in: currentReservation.is_walk_in || false
         })
         const initialTables =
           currentReservation.table_ids?.length
@@ -383,7 +399,9 @@ export function ReservationModal({
           status: 'new',
           total_amount: 0,
           comments: '',
-          menu_type: 'main_menu' // Default to Main Menu
+          menu_type: 'main_menu', // Default to Main Menu
+          waiter_id: '',
+          is_walk_in: false
         })
         // Устанавливаем выбранные столы если есть preselectedTableId
         if (preselectedTableId) {
@@ -584,7 +602,9 @@ export function ReservationModal({
         total_amount: Number(computedTotal),
         prepaid_amount: 0, // Reset payments for the copy
         comments: formData.comments,
-        menu_type: formData.menu_type
+        menu_type: formData.menu_type,
+        waiter_id: formData.waiter_id || undefined,
+        is_walk_in: formData.is_walk_in
       }
 
       const created = await createReservation.mutate(dataToSave)
@@ -774,7 +794,9 @@ export function ReservationModal({
       total_amount: Number(computedTotal),
       prepaid_amount: Number(currentReservation?.prepaid_amount || 0) + (mode === 'create' ? prepaymentAmount : 0), // Add new prepayment for create mode
       comments: formData.comments,
-      menu_type: formData.menu_type
+      menu_type: formData.menu_type,
+      waiter_id: formData.waiter_id || undefined,
+      is_walk_in: formData.is_walk_in
     }
 
     // Формируем selected_menu_items для обновления отображения
@@ -975,11 +997,14 @@ export function ReservationModal({
   if (showDesktopTablePicker && !isMobile) {
     return (
       <Dialog open={showDesktopTablePicker} onOpenChange={() => setShowDesktopTablePicker(false)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] w-full p-0">
-          <div className="flex flex-col h-[80vh]">
+        <DialogContent className="max-w-[95vw] w-[95vw] sm:max-w-[70vw] max-h-[95vh] h-[95vh] sm:max-h-[80vh] sm:h-[80vh] p-0 flex flex-col overflow-hidden">
+          <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b border-stone-200">
-              <h3 className="text-xl font-semibold">Выбор столов</h3>
+              <DialogTitle className="text-xl font-semibold">Выбор столов</DialogTitle>
+              <DialogDescription className="sr-only">
+                Выберите подходящие столы для бронирования на схеме зала
+              </DialogDescription>
               <Button
                 variant="ghost"
                 size="icon"
@@ -1062,6 +1087,10 @@ export function ReservationModal({
     return (
       <Dialog open={showMobileTablePicker} onOpenChange={() => setShowMobileTablePicker(false)}>
         <DialogContent className="max-w-[95vw] max-h-[95vh] w-[95vw] h-[95vh] p-0 [&>button]:hidden">
+          <DialogTitle className="sr-only">Схема зала (мобильная)</DialogTitle>
+          <DialogDescription className="sr-only">
+            Мобильный интерфейс выбора столов
+          </DialogDescription>
           <div className="flex flex-col h-full">
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b border-stone-200">
@@ -1164,6 +1193,9 @@ export function ReservationModal({
                 <DialogTitle className="text-sm sm:text-base font-black text-stone-900 uppercase tracking-tight truncate">
                   {mode === 'create' ? 'Новая' : 'Бронь'}
                 </DialogTitle>
+                <DialogDescription className="sr-only">
+                  Детальное управление бронированием, гостем и платежами.
+                </DialogDescription>
                 {currentReservation && (
                   <Badge variant={getStatusVariant(currentReservation?.status || formData.status)} className="text-[8px] sm:text-[9px] h-4 sm:h-5 font-black uppercase pt-0.5 shrink-0">
                     {RESERVATION_STATUS_CONFIG[currentReservation?.status || formData.status].label}
@@ -1299,6 +1331,7 @@ export function ReservationModal({
             </div>
           </div>
         </DialogHeader>
+
 
         <ScrollArea className={cn(
           "flex-1 w-full",
@@ -1492,7 +1525,63 @@ export function ReservationModal({
                   )}
                 </div>
 
-                {/* Reservation Details Card */}
+                {/* Waiter and Walk-in (New Section) */}
+                <div className="bg-white border border-stone-200 rounded-3xl p-4 sm:p-6 shadow-sm space-y-4">
+                  <h3 className="font-black text-stone-900 flex items-center gap-2 sm:gap-3 text-sm sm:text-base border-b border-stone-50 pb-3 sm:pb-4">
+                    <div className="p-1.5 sm:p-2 bg-amber-50 rounded-lg sm:rounded-xl">
+                      <Users className="h-4 w-4 sm:h-5 sm:w-5 text-amber-600" />
+                    </div>
+                    Обслуживание
+                  </h3>
+
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-3 bg-stone-50 rounded-2xl border border-stone-100">
+                      <div className="space-y-0.5">
+                        <Label className="font-bold text-stone-900 text-sm">Гость без брони</Label>
+                        <p className="text-[10px] text-stone-500 font-medium">Гость пришел по факту в день</p>
+                      </div>
+                      {mode === 'view' ? (
+                        <Badge variant={formData.is_walk_in ? 'paid' : 'outline'}>
+                          {formData.is_walk_in ? 'Да' : 'Нет'}
+                        </Badge>
+                      ) : (
+                        <Checkbox
+                          checked={formData.is_walk_in}
+                          onCheckedChange={(checked) => setFormData({ ...formData, is_walk_in: !!checked })}
+                          className="h-6 w-6 rounded-lg data-[state=checked]:bg-amber-600 data-[state=checked]:border-amber-600"
+                        />
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] font-black text-stone-400 uppercase tracking-widest px-1">Официант</Label>
+                      {mode === 'view' ? (
+                        <div className="h-11 flex items-center bg-stone-50 rounded-xl px-4 font-bold text-stone-900 text-sm border border-stone-100">
+                          {waiters.find(w => w.id === formData.waiter_id)?.name || 'Не назначен'}
+                        </div>
+                      ) : (
+                        <Select
+                          value={formData.waiter_id}
+                          onValueChange={(v) => setFormData({ ...formData, waiter_id: v })}
+                        >
+                          <SelectTrigger className="h-11 rounded-xl border-stone-200 font-bold bg-white text-sm">
+                            <SelectValue placeholder="Выберите официанта" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none" className="font-medium text-stone-400">Не назначен</SelectItem>
+                            {waiters.map(waiter => (
+                              <SelectItem key={waiter.id} value={waiter.id} className="font-medium">
+                                {waiter.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Reservation Details Card (Previous content continues) */}
                 <div className="bg-white border border-stone-200 rounded-3xl p-3.5 sm:p-6 shadow-sm space-y-4 sm:space-y-6">
                   <h3 className="font-black text-stone-900 flex items-center gap-2 sm:gap-3 text-sm sm:text-base border-b border-stone-50 pb-3 sm:pb-4">
                     <div className="p-1.5 sm:p-2 bg-amber-50 rounded-lg sm:rounded-xl">
@@ -2174,106 +2263,110 @@ export function ReservationModal({
         </ScrollArea>
 
         {/* Sticky Footer */}
-        {mode !== 'view' && (
-          <div className="sticky bottom-0 flex items-center justify-between gap-4 p-5 sm:p-6 border-t border-stone-100 bg-white/95 backdrop-blur-md z-50 rounded-b-3xl">
-            {mode === 'edit' && currentReservation ? (
-              <Button
-                variant="ghost"
-                onClick={handleDelete}
-                disabled={isLoading}
-                className="h-12 w-12 rounded-2xl text-stone-300 hover:text-red-500 hover:bg-red-50"
-              >
-                {deleteReservation.loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Trash2 className="h-5 w-5" />}
-              </Button>
-            ) : <div />}
+        {
+          mode !== 'view' && (
+            <div className="sticky bottom-0 flex items-center justify-between gap-4 p-5 sm:p-6 border-t border-stone-100 bg-white/95 backdrop-blur-md z-50 rounded-b-3xl">
+              {mode === 'edit' && currentReservation ? (
+                <Button
+                  variant="ghost"
+                  onClick={handleDelete}
+                  disabled={isLoading}
+                  className="h-12 w-12 rounded-2xl text-stone-300 hover:text-red-500 hover:bg-red-50"
+                >
+                  {deleteReservation.loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Trash2 className="h-5 w-5" />}
+                </Button>
+              ) : <div />}
 
-            <div className="flex items-center gap-2 sm:gap-3">
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  if (mode === 'edit') {
-                    setMode('view')
-                    // Reset to original data
-                    if (currentReservation) {
-                      setFormData({
-                        date: currentReservation.date,
-                        time: currentReservation.time,
-                        hall_id: currentReservation.hall_id,
-                        table_id: currentReservation.table_id || '',
-                        guest_id: currentReservation.guest_id,
-                        guests_count: currentReservation.guests_count,
-                        children_count: currentReservation.children_count,
-                        menu_id: currentReservation.menu_id || menus[0]?.id || '',
-                        color: currentReservation.color || '#f59e0b',
-                        status: currentReservation.status,
-                        total_amount: currentReservation.total_amount,
-                        comments: currentReservation.comments || '',
-                        menu_type: currentReservation.menu_type || 'banquet'
-                      })
-                      const initialTables =
-                        currentReservation.table_ids?.length
-                          ? currentReservation.table_ids
-                          : currentReservation.tables?.length
-                            ? currentReservation.tables.map((t) => t.id)
-                            : currentReservation.table_id
-                              ? [currentReservation.table_id]
-                              : []
-                      setSelectedTables(initialTables)
-                      setDraftTables(initialTables)
-
-                      if (currentReservation.selected_menu_items?.length) {
-                        const selectedIds = currentReservation.selected_menu_items
-                          .filter(rmi => rmi.is_selected && rmi.menu_item_id)
-                          .map(rmi => rmi.menu_item_id as string)
-                        setSelectedSalads(selectedIds)
-
-                        const overrides: Record<string, Partial<ReservationMenuItem>> = {}
-                        const adHoc: ReservationMenuItem[] = []
-
-                        currentReservation.selected_menu_items.forEach(rmi => {
-                          if (rmi.menu_item_id) {
-                            if (rmi.weight_per_person || rmi.name || rmi.order_index || rmi.price) {
-                              overrides[rmi.menu_item_id] = {
-                                weight_per_person: rmi.weight_per_person,
-                                name: rmi.name,
-                                order_index: rmi.order_index,
-                                price: rmi.price
-                              }
-                            }
-                          } else {
-                            adHoc.push(rmi)
-                          }
+              <div className="flex items-center gap-2 sm:gap-3">
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    if (mode === 'edit') {
+                      setMode('view')
+                      // Reset to original data
+                      if (currentReservation) {
+                        setFormData({
+                          date: currentReservation.date,
+                          time: currentReservation.time,
+                          hall_id: currentReservation.hall_id,
+                          table_id: currentReservation.table_id || '',
+                          guest_id: currentReservation.guest_id,
+                          guests_count: currentReservation.guests_count,
+                          children_count: currentReservation.children_count,
+                          menu_id: currentReservation.menu_id || menus[0]?.id || '',
+                          color: currentReservation.color || '#f59e0b',
+                          status: currentReservation.status,
+                          total_amount: currentReservation.total_amount,
+                          comments: currentReservation.comments || '',
+                          menu_type: currentReservation.menu_type || 'banquet',
+                          waiter_id: currentReservation.waiter_id || '',
+                          is_walk_in: currentReservation.is_walk_in || false
                         })
-                        setItemOverrides(overrides)
-                        setAdHocItems(adHoc)
+                        const initialTables =
+                          currentReservation.table_ids?.length
+                            ? currentReservation.table_ids
+                            : currentReservation.tables?.length
+                              ? currentReservation.tables.map((t) => t.id)
+                              : currentReservation.table_id
+                                ? [currentReservation.table_id]
+                                : []
+                        setSelectedTables(initialTables)
+                        setDraftTables(initialTables)
+
+                        if (currentReservation.selected_menu_items?.length) {
+                          const selectedIds = currentReservation.selected_menu_items
+                            .filter(rmi => rmi.is_selected && rmi.menu_item_id)
+                            .map(rmi => rmi.menu_item_id as string)
+                          setSelectedSalads(selectedIds)
+
+                          const overrides: Record<string, Partial<ReservationMenuItem>> = {}
+                          const adHoc: ReservationMenuItem[] = []
+
+                          currentReservation.selected_menu_items.forEach(rmi => {
+                            if (rmi.menu_item_id) {
+                              if (rmi.weight_per_person || rmi.name || rmi.order_index || rmi.price) {
+                                overrides[rmi.menu_item_id] = {
+                                  weight_per_person: rmi.weight_per_person,
+                                  name: rmi.name,
+                                  order_index: rmi.order_index,
+                                  price: rmi.price
+                                }
+                              }
+                            } else {
+                              adHoc.push(rmi)
+                            }
+                          })
+                          setItemOverrides(overrides)
+                          setAdHocItems(adHoc)
+                        }
+                        if (currentReservation.menu_type === 'main_menu' && currentReservation.main_menu_items) {
+                          setMainMenuSelections(currentReservation.main_menu_items)
+                        }
                       }
-                      if (currentReservation.menu_type === 'main_menu' && currentReservation.main_menu_items) {
-                        setMainMenuSelections(currentReservation.main_menu_items)
-                      }
+                    } else {
+                      onClose()
                     }
-                  } else {
-                    onClose()
-                  }
-                }}
-                className="h-11 sm:h-12 px-4 sm:px-6 rounded-2xl font-black text-[10px] sm:text-xs text-stone-400 uppercase tracking-widest hover:bg-stone-50 hover:text-stone-600 transition-all"
-              >
-                Отмена
-              </Button>
-              <Button
-                onClick={handleSave}
-                disabled={isLoading || isGuestBlacklisted}
-                className={cn(
-                  "h-11 sm:h-12 px-5 sm:px-8 rounded-2xl font-black text-[10px] sm:text-xs uppercase tracking-wider sm:tracking-[0.2em] shadow-lg shadow-amber-500/20 transition-all active:scale-95",
-                  isGuestBlacklisted ? "bg-stone-100 text-stone-400" : "bg-amber-600 hover:bg-amber-700 text-white"
-                )}
-              >
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1 sm:mr-2" /> : <Save className="h-4 w-4 mr-1 sm:mr-2" />}
-                {isGuestBlacklisted ? 'ЧС' : 'Сохранить'}
-              </Button>
+                  }}
+                  className="h-11 sm:h-12 px-4 sm:px-6 rounded-2xl font-black text-[10px] sm:text-xs text-stone-400 uppercase tracking-widest hover:bg-stone-50 hover:text-stone-600 transition-all"
+                >
+                  Отмена
+                </Button>
+                <Button
+                  onClick={handleSave}
+                  disabled={isLoading || isGuestBlacklisted}
+                  className={cn(
+                    "h-11 sm:h-12 px-5 sm:px-8 rounded-2xl font-black text-[10px] sm:text-xs uppercase tracking-wider sm:tracking-[0.2em] shadow-lg shadow-amber-500/20 transition-all active:scale-95",
+                    isGuestBlacklisted ? "bg-stone-100 text-stone-400" : "bg-amber-600 hover:bg-amber-700 text-white"
+                  )}
+                >
+                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1 sm:mr-2" /> : <Save className="h-4 w-4 mr-1 sm:mr-2" />}
+                  {isGuestBlacklisted ? 'ЧС' : 'Сохранить'}
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
-      </DialogContent>
+          )
+        }
+      </DialogContent >
 
       <AddPaymentDialog
         open={isPaymentDialogOpen}
@@ -2284,6 +2377,6 @@ export function ReservationModal({
           refetchReservations()
         }}
       />
-    </Dialog>
+    </Dialog >
   )
 }

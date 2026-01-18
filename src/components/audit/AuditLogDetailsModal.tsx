@@ -5,6 +5,7 @@ import {
     DialogContent,
     DialogHeader,
     DialogTitle,
+    DialogDescription,
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -120,6 +121,9 @@ export function AuditLogDetailsModal({ log, isOpen, onClose, onUndo, isUndoing }
                             <DialogTitle className="flex items-center gap-2 text-xl">
                                 Детали события
                             </DialogTitle>
+                            <DialogDescription>
+                                Подробная информация об изменениях в базе данных
+                            </DialogDescription>
                             <div className="flex items-center gap-2 text-sm text-stone-500">
                                 <span>{format(new Date(log.created_at), 'd MMMM yyyy, HH:mm', { locale: ru })}</span>
                                 <span>•</span>
