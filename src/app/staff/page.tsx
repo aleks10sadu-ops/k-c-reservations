@@ -782,8 +782,9 @@ function RolesManageDialog({ roles, onSuccess, createRole, updateRole }: any) {
 
             // Пакетное обновление порядковых номеров
             for (let i = 0; i < newOrderedRoles.length; i++) {
-                if (newOrderedRoles[i].sort_order !== i + 1) {
-                    await updateRole(newOrderedRoles[i].id, { sort_order: i + 1 });
+                const role = newOrderedRoles[i] as StaffRole;
+                if (role.sort_order !== i + 1) {
+                    await updateRole(role.id, { sort_order: i + 1 });
                 }
             }
             onSuccess();
