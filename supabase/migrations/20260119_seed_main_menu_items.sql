@@ -2,7 +2,9 @@
 -- Generated based on user request to add specific menu positions
 
 -- CLEANUP first to avoid duplicates (Cascade will delete items and variants)
-TRUNCATE TABLE main_menu_categories CASCADE;
+-- TRUNCATE removed to preserve existing data. 
+-- WARNING: Running this script multiple times may create duplicates if checks are not in place.
+
 
 DO $$ 
 DECLARE 
