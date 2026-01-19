@@ -1,6 +1,8 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 
+import { formatDateRu, formatTimeRu } from './date-utils';
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
@@ -15,13 +17,11 @@ export function formatCurrency(amount: number | undefined | null) {
 }
 
 export function formatDate(date: string | Date | undefined | null) {
-  if (!date) return ''
-  return new Date(date).toLocaleDateString('ru-RU')
+  return formatDateRu(date)
 }
 
 export function formatTime(time: string | undefined | null) {
-  if (!time) return ''
-  return time.slice(0, 5)
+  return formatTimeRu(time)
 }
 
 export function calculatePlates(guests: number) {

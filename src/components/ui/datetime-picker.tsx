@@ -7,6 +7,7 @@ import { Input } from './input'
 import { Popover, PopoverContent, PopoverTrigger } from './popover'
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
+import { getNowInMoscow, formatInMoscow } from '@/lib/date-utils'
 
 const isMobile = () => {
   if (typeof window === 'undefined') return false
@@ -47,7 +48,7 @@ export function DateTimePicker({
   const [isOpen, setIsOpen] = useState(false)
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [selectedTime, setSelectedTime] = useState<string>('')
-  const [currentMonth, setCurrentMonth] = useState(new Date())
+  const [currentMonth, setCurrentMonth] = useState(getNowInMoscow())
   const [viewMode, setViewMode] = useState<'calendar' | 'time'>('calendar')
   const timeInputRef = useRef<HTMLInputElement>(null)
 
@@ -207,7 +208,7 @@ export function DateTimePicker({
   }
 
   const goToToday = () => {
-    const today = new Date()
+    const today = getNowInMoscow()
     setCurrentMonth(today)
     setSelectedDate(today)
   }
@@ -217,7 +218,7 @@ export function DateTimePicker({
   }
 
   const isToday = (date: Date) => {
-    const today = new Date()
+    const today = getNowInMoscow()
     return date.toDateString() === today.toDateString()
   }
 

@@ -1,6 +1,7 @@
 import { getReservationById, getMenuItemTypes } from '@/lib/supabase/api'
 import { notFound } from 'next/navigation'
 import { formatCurrency, formatDate, formatTime, calculatePlates, calculateTotalWeight } from '@/lib/utils'
+import { getNowInMoscow, formatDateTimeRu } from '@/lib/date-utils'
 import { getMenuItemTypeLabel, MenuItemType, ReservationMenuItem } from '@/types'
 import { Clock, Users, MapPin, Phone, User, ChefHat, CreditCard, MessageSquare } from 'lucide-react'
 import { PrintAutoStart } from './PrintAutoStart'
@@ -225,7 +226,7 @@ export default async function PrintReservationPage({ params }: PageProps) {
             </div>
 
             <div className="mt-6 text-center text-[10px] text-stone-500 uppercase tracking-widest italic font-bold">
-                {new Date().toLocaleString('ru-RU')} • Kucher&Conga
+                {formatDateTimeRu(getNowInMoscow())} • Kucher&Conga
             </div>
 
             <style dangerouslySetInnerHTML={{

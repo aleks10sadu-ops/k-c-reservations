@@ -66,6 +66,7 @@ import { updateReservationServerAction, syncReservationTablesServerAction, syncR
 import { X } from 'lucide-react'
 import { HallScheme } from '@/components/halls/HallScheme'
 import { format } from 'date-fns'
+import { getNowInMoscow, formatInMoscow } from '@/lib/date-utils'
 import { AddPaymentDialog } from '@/components/payments/AddPaymentDialog'
 import { MainMenuSelector } from './MainMenuSelector'
 
@@ -400,7 +401,7 @@ export function ReservationModal({
         }
 
         setFormData({
-          date: preselectedDate || (initialDate ? format(initialDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd')),
+          date: preselectedDate || (initialDate ? formatInMoscow(initialDate, 'yyyy-MM-dd') : formatInMoscow(getNowInMoscow(), 'yyyy-MM-dd')),
           time: '18:00',
           hall_id: hallId,
           table_id: preselectedTableId || '',

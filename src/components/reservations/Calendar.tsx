@@ -2,21 +2,21 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { 
-  ChevronLeft, 
-  ChevronRight, 
+import {
+  ChevronLeft,
+  ChevronRight,
   Plus,
   Calendar as CalendarIcon
 } from 'lucide-react'
-import { 
-  startOfMonth, 
-  endOfMonth, 
-  startOfWeek, 
-  endOfWeek, 
-  eachDayOfInterval, 
-  format, 
-  isSameMonth, 
-  isSameDay, 
+import {
+  startOfMonth,
+  endOfMonth,
+  startOfWeek,
+  endOfWeek,
+  eachDayOfInterval,
+  format,
+  isSameMonth,
+  isSameDay,
   isToday,
   addMonths,
   subMonths,
@@ -26,6 +26,7 @@ import {
   subDays
 } from 'date-fns'
 import { ru } from 'date-fns/locale'
+import { getNowInMoscow, formatInMoscow } from '@/lib/date-utils'
 import { Reservation, RESERVATION_STATUS_CONFIG } from '@/types'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -33,12 +34,12 @@ import { Badge } from '@/components/ui/badge'
 import { ReservationCard } from './ReservationCard'
 
 // Mobile dots component to display reservation status indicators
-function ReservationDots({ 
-  reservations, 
-  maxDots = 4 
-}: { 
+function ReservationDots({
+  reservations,
+  maxDots = 4
+}: {
   reservations: Reservation[]
-  maxDots?: number 
+  maxDots?: number
 }) {
   const displayDots = reservations.slice(0, maxDots)
   const remaining = reservations.length - maxDots
@@ -89,7 +90,7 @@ export function Calendar({
   viewMode,
   onViewModeChange
 }: CalendarProps) {
-  const [currentDate, setCurrentDate] = useState(controlledDate ?? new Date())
+  const [currentDate, setCurrentDate] = useState(controlledDate ?? getNowInMoscow())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [isMobile, setIsMobile] = useState(false)
 
@@ -142,7 +143,7 @@ export function Calendar({
 
   const handlePrev = () => {
     let newDate: Date
-    
+
     if (viewMode === 'year') {
       newDate = subYears(currentDate, 1)
     } else if (viewMode === 'day' && selectedDate) {
@@ -152,14 +153,14 @@ export function Calendar({
     } else {
       newDate = subMonths(currentDate, 1)
     }
-    
+
     setCurrentDate(newDate)
     onMonthChange?.(newDate)
   }
-  
+
   const handleNext = () => {
     let newDate: Date
-    
+
     if (viewMode === 'year') {
       newDate = addYears(currentDate, 1)
     } else if (viewMode === 'day' && selectedDate) {
@@ -169,13 +170,13 @@ export function Calendar({
     } else {
       newDate = addMonths(currentDate, 1)
     }
-    
+
     setCurrentDate(newDate)
     onMonthChange?.(newDate)
   }
-  
+
   const handleToday = () => {
-    const today = new Date()
+    const today = getNowInMoscow()
     setCurrentDate(today)
     setSelectedDate(today)
     onViewModeChange?.('day')
@@ -214,7 +215,7 @@ export function Calendar({
               onClick={() => onViewModeChange?.('year')}
               className="text-base sm:text-lg font-semibold"
             >
-              {format(viewMode === 'day' && selectedDate ? selectedDate : currentDate, 'yyyy', { locale: ru })}
+              {formatInMoscow(viewMode === 'day' && selectedDate ? selectedDate : currentDate, 'yyyy')}
             </Button>
             <Button
               variant={viewMode === 'month' ? 'default' : 'ghost'}
@@ -222,7 +223,7 @@ export function Calendar({
               onClick={() => onViewModeChange?.('month')}
               className="text-base sm:text-lg font-semibold capitalize"
             >
-              {format(viewMode === 'day' && selectedDate ? selectedDate : currentDate, 'LLLL', { locale: ru })}
+              {formatInMoscow(viewMode === 'day' && selectedDate ? selectedDate : currentDate, 'LLLL')}
             </Button>
             {/* Day view indicator */}
             {viewMode === 'day' && selectedDate && (
@@ -231,7 +232,7 @@ export function Calendar({
                 size="sm"
                 className="text-base sm:text-lg font-semibold"
               >
-                {format(selectedDate, 'd', { locale: ru })}
+                {formatInMoscow(selectedDate, 'd')}
               </Button>
             )}
           </div>
@@ -284,7 +285,7 @@ export function Calendar({
                 >
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-semibold capitalize">
-                      {format(monthDate, 'LLLL', { locale: ru })}
+                      {formatInMoscow(monthDate, 'LLLL')}
                     </span>
                     <Badge variant="secondary" className="text-xs">
                       {monthReservations.length} брони
@@ -293,7 +294,7 @@ export function Calendar({
                   <div className="space-y-1 text-xs text-stone-600">
                     {sample.map((r) => (
                       <div key={r.id} className="truncate">
-                        {format(new Date(r.date), 'd MMM', { locale: ru })} · {r.guest?.last_name || 'Гость'}
+                        {formatInMoscow(new Date(r.date), 'd MMM')} · {r.guest?.last_name || 'Гость'}
                       </div>
                     ))}
                     {remaining > 0 && (
@@ -369,7 +370,7 @@ export function Calendar({
                         isSelected && !isTodayDate && "bg-stone-200"
                       )}
                     >
-                      {format(day, 'd')}
+                      {formatInMoscow(day, 'd')}
                     </span>
 
                     {isCurrentMonth && !isMobile && (
@@ -437,7 +438,7 @@ export function Calendar({
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-semibold text-stone-900">
-                  {format(selectedDate, 'd MMMM yyyy', { locale: ru })}
+                  {formatInMoscow(selectedDate, 'd MMMM yyyy')}
                 </h3>
                 <p className="text-sm text-stone-500">
                   Бронирований: {getReservationsForDate(selectedDate).length}
@@ -450,12 +451,12 @@ export function Calendar({
                 </Button>
               )}
             </div>
-            
+
             <div className="flex gap-2">
               {isMobile && (
-                <Button 
-                  variant="outline" 
-                  onClick={handleBackToMonth} 
+                <Button
+                  variant="outline"
+                  onClick={handleBackToMonth}
                   className="flex-1 gap-2"
                 >
                   <ChevronLeft className="h-4 w-4" />
