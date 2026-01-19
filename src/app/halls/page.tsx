@@ -61,6 +61,11 @@ export default function HallsPage() {
     color: '#1f2937',
     bg_color: '#ffffff',
   })
+  const [draftTables, setDraftTables] = useState<Table[]>([])
+  const [draftLayoutItems, setDraftLayoutItems] = useState<LayoutItem[]>([])
+  const [isDraftDirty, setIsDraftDirty] = useState(false)
+  const hasInitializedEditorDraft = useRef(false)
+
   const previewRef = useRef<HTMLDivElement | null>(null)
   const previewWrapperRef = useRef<HTMLDivElement | null>(null)
   const editorRef = useRef<HTMLDivElement | null>(null)
@@ -117,6 +122,9 @@ export default function HallsPage() {
   const updateTemplate = useUpdateMutation<HallLayoutTemplate>('hall_layout_templates')
   const deleteDateLayout = useDeleteMutation('hall_date_layouts')
 
+  const upsertTables = useUpsertMutation<Table>('tables', ['id'])
+  const upsertLayoutItems = useUpsertMutation<LayoutItem>('layout_items', ['id'])
+
   // Fixed sizes
   const CANVAS_WIDTH = 800
   const CANVAS_HEIGHT = 600
@@ -158,8 +166,8 @@ export default function HallsPage() {
   const cacheRef = useRef({
     editorZoom,
     editorPan,
-    tables,
-    layoutItems,
+    tables: draftTables,
+    layoutItems: draftLayoutItems,
     previewPos,
     previewSize,
     previewRotation,
@@ -170,14 +178,14 @@ export default function HallsPage() {
     cacheRef.current = {
       editorZoom,
       editorPan,
-      tables,
-      layoutItems,
+      tables: draftTables,
+      layoutItems: draftLayoutItems,
       previewPos,
       previewSize,
       previewRotation,
       baseEditorScale,
     }
-  }, [editorZoom, editorPan, tables, layoutItems, previewPos, previewSize, previewRotation, baseEditorScale])
+  }, [editorZoom, editorPan, draftTables, draftLayoutItems, previewPos, previewSize, previewRotation, baseEditorScale])
 
   const editorScale = baseEditorScale * editorZoom
 
@@ -215,6 +223,8 @@ export default function HallsPage() {
       }
     }
     updateScale()
+    const timer1 = setTimeout(updateScale, 100)
+    const timer2 = setTimeout(updateScale, 400)
     window.addEventListener('resize', updateScale)
     if (editorWrapperRef.current) {
       const observer = new ResizeObserver(() => {
@@ -224,9 +234,15 @@ export default function HallsPage() {
       return () => {
         window.removeEventListener('resize', updateScale)
         observer.disconnect()
+        clearTimeout(timer1)
+        clearTimeout(timer2)
       }
     }
-    return () => window.removeEventListener('resize', updateScale)
+    return () => {
+      window.removeEventListener('resize', updateScale)
+      clearTimeout(timer1)
+      clearTimeout(timer2)
+    }
   }, [isEditorOpen])
 
   const selectedHall = selectedHallId
@@ -243,12 +259,17 @@ export default function HallsPage() {
     if (!currentDateLayout || !currentDateLayout.tables_data || currentDateLayout.tables_data.length === 0) {
       return baseTables
     }
-    // Return tables from layout, but ensure they have required fields
-    return currentDateLayout.tables_data.map((td: any) => ({
-      ...td,
-      hall_id: selectedHall.id,
-      id: td.id || Math.random().toString(36).substr(2, 9) // Should have id if saved correctly
-    })) as Table[]
+
+    // Merge Strategy: Start with base tables, overlay data from snapshot if ID matches
+    const snapshotMap = new Map((currentDateLayout.tables_data as any[]).map(t => [t.id, t]))
+
+    return baseTables.map(bt => {
+      const snapshot = snapshotMap.get(bt.id)
+      if (snapshot) {
+        return { ...bt, ...snapshot }
+      }
+      return bt
+    }) as Table[]
   }, [selectedHall, tables, currentDateLayout])
 
   const activeLayoutItems = useMemo(() => {
@@ -257,12 +278,59 @@ export default function HallsPage() {
     if (!currentDateLayout || !currentDateLayout.layout_items_data || currentDateLayout.layout_items_data.length === 0) {
       return baseItems
     }
-    return currentDateLayout.layout_items_data.map((li: any) => ({
-      ...li,
-      hall_id: selectedHall.id,
-      id: li.id || Math.random().toString(36).substr(2, 9)
-    })) as LayoutItem[]
+
+    // Merge Strategy: Start with base items, overlay data from snapshot if ID matches
+    const snapshotMap = new Map((currentDateLayout.layout_items_data as any[]).map(li => [li.id, li]))
+
+    return baseItems.map(bi => {
+      const snapshot = snapshotMap.get(bi.id)
+      if (snapshot) {
+        return { ...bi, ...snapshot }
+      }
+      return bi
+    }) as LayoutItem[]
   }, [selectedHall, layoutItems, currentDateLayout])
+
+  useEffect(() => {
+    // Reset initialization flag when editor closes
+    if (!isEditorOpen) {
+      hasInitializedEditorDraft.current = false
+      return
+    }
+
+    // Only initialize draft state once when the editor opens AND data is available
+    // We check halls existence as a signal that basic data metadata is ready
+    if (isEditorOpen && !hasInitializedEditorDraft.current && halls && halls.length > 0) {
+      setDraftTables(activeTables)
+      setDraftLayoutItems(activeLayoutItems)
+      setIsDraftDirty(false)
+      hasInitializedEditorDraft.current = true
+    }
+    // We keep these dependencies to satisfy React hook size rules (3 items), 
+    // and rely on the Ref + halls check to ensure it only initializes once with real data.
+  }, [isEditorOpen, activeTables, activeLayoutItems])
+
+  // 3. Auto-save to Date Layout
+  useEffect(() => {
+    if (!isEditorOpen || !isDraftDirty || !selectedHall) return
+
+    const timer = setTimeout(async () => {
+      try {
+        await upsertDateLayout.mutate({
+          hall_id: selectedHall.id,
+          date: selectedDate,
+          tables_data: draftTables as any,
+          layout_items_data: draftLayoutItems as any
+        })
+        // After auto-save, we can mark as not dirty
+        setIsDraftDirty(false)
+      } catch (err) {
+        console.error('Auto-save error:', err)
+      }
+    }, 1500) // 1.5s debounce
+
+    return () => clearTimeout(timer)
+  }, [draftTables, draftLayoutItems, isDraftDirty, isEditorOpen, selectedHall, selectedDate, upsertDateLayout])
 
   // 3. Waiter Queue Logic
   const waiterQueue = useMemo(() => {
@@ -313,10 +381,21 @@ export default function HallsPage() {
   }, [staffMembers, staffShifts, staffRoles, selectedDate])
 
   const getTableReservation = (table: Table) => {
-    return dateReservations?.find(r =>
-      (r.id !== focusedReservationId && r.status !== 'canceled' && r.status !== 'completed' && (r.table_id === table.id || (r.table_ids && r.table_ids.includes(table.id)))) ||
-      (r.id === focusedReservationId && (r.table_id === table.id || (r.table_ids && r.table_ids.includes(table.id))))
-    )
+    // Composite Table Support: find all tables in this hall with the same number
+    const relatedTableIds = tables
+      .filter(t => t.hall_id === table.hall_id && t.number === table.number)
+      .map(t => t.id)
+
+    return dateReservations?.find(r => {
+      const isCanceled = r.status === 'canceled'
+      const isCompleted = r.status === 'completed'
+      if (isCanceled || isCompleted) return false
+
+      const matchesLink = r.table_id === table.id || (r.table_ids && r.table_ids.includes(table.id))
+      const matchesRelated = relatedTableIds.some(id => r.table_id === id || (r.table_ids && r.table_ids.includes(id)))
+
+      return matchesLink || matchesRelated
+    })
   }
 
   const handleAssignWaiter = async (reservationId: string, waiterId: string) => {
@@ -340,6 +419,10 @@ export default function HallsPage() {
       const now = new Date()
       const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`
 
+      // Composite Table Support: find ALL tables with the same number
+      const relatedTables = tables.filter(t => t.hall_id === table.hall_id && t.number === table.number)
+      const relatedIds = relatedTables.map(t => t.id)
+
       const dataToSave = {
         date: selectedDate,
         time: timeStr,
@@ -348,24 +431,34 @@ export default function HallsPage() {
         guest_id: WALK_IN_GUEST_ID,
         guests_count: table.capacity || 1,
         children_count: 0,
+        color: '#2563eb', // Blue for quick entry
         status: 'in_progress' as ReservationStatus,
-        color: '#2563EB', // Blue for walk-in
-        is_walk_in: true,
         menu_type: 'main_menu' as const,
         total_amount: 0,
         prepaid_amount: 0,
         balance: 0,
-        surplus: 0
+        surplus: 0,
+        is_walk_in: true
       }
 
       const created = await createReservation.mutate(dataToSave)
       if (created) {
-        // Link table in junction table
-        await createReservationTable.mutate({
-          reservation_id: created.id,
-          table_id: table.id
-        })
-        await refetchReservations()
+        // Link all related tables (for composite tables support)
+        if (relatedIds.length > 0) {
+          for (const tId of relatedIds) {
+            await createReservationTable.mutate({
+              reservation_id: created.id,
+              table_id: tId
+            })
+          }
+        } else {
+          // Fallback to main table
+          await createReservationTable.mutate({
+            reservation_id: created.id,
+            table_id: table.id
+          })
+        }
+        refetchReservations(true)
         setSelectedTableForInfo(null)
       }
     } catch (error) {
@@ -552,18 +645,22 @@ export default function HallsPage() {
             setPreviewSize(prev => ({ ...prev, [targetId]: { w: finalW, h: finalH } }))
           }
 
+          setIsDraftDirty(true)
+
           if (targetType === 'table') {
-            updateTable.mutate(targetId, {
+            setDraftTables(prev => prev.map(t => t.id === targetId ? {
+              ...t,
               position_x: finalX,
               position_y: finalY,
               ...(type === 'resize' ? { width: finalW, height: finalH } : {})
-            })
+            } : t))
           } else if (targetType === 'layout') {
-            updateLayoutItem.mutate(targetId, {
+            setDraftLayoutItems(prev => prev.map(li => li.id === targetId ? {
+              ...li,
               position_x: finalX,
               position_y: finalY,
               ...(type === 'resize' ? { width: finalW, height: finalH } : {})
-            })
+            } : li))
           }
         }
       }
@@ -1305,9 +1402,24 @@ export default function HallsPage() {
               <Button
                 variant="destructive"
                 onClick={async () => {
-                  await deleteLayoutItem.mutate(editingLayoutItem.id)
-                  setIsLayoutDialogOpen(false)
-                  setEditingLayoutItem(null)
+                  try {
+                    if (!editingLayoutItem) return
+                    const idToDelete = editingLayoutItem.id
+                    await deleteLayoutItem.mutate(idToDelete)
+
+                    // Sync draft state if editor is open
+                    if (isEditorOpen) {
+                      setDraftLayoutItems(prev => prev.filter(item => item.id !== idToDelete))
+                      setIsDraftDirty(true)
+                    }
+
+                    refetchLayoutItems(true)
+                    setIsLayoutDialogOpen(false)
+                    setEditingLayoutItem(null)
+                  } catch (err: any) {
+                    console.error('[Layout Delete Error]', err)
+                    alert('Ошибка при удалении элемента: ' + (err.message || 'Неизвестная ошибка'))
+                  }
                 }}
                 disabled={deleteLayoutItem.loading}
               >
@@ -1319,18 +1431,44 @@ export default function HallsPage() {
               <Button variant="outline" onClick={() => setIsLayoutDialogOpen(false)}>Отмена</Button>
               <Button
                 onClick={async () => {
-                  if (!selectedHall) return
-                  const payload = {
-                    ...layoutForm,
-                    hall_id: selectedHall.id,
+                  try {
+                    if (!selectedHall) return
+                    const payload = {
+                      ...layoutForm,
+                      hall_id: selectedHall.id,
+                    }
+
+                    if (editingLayoutItem) {
+                      // IF EDITOR IS OPEN: ONLY UPDATE DRAFT (BUFFER)
+                      if (isEditorOpen) {
+                        setDraftLayoutItems(prev => prev.map(item =>
+                          item.id === editingLayoutItem.id ? { ...item, ...payload } : item
+                        ))
+                        setIsDraftDirty(true)
+                      } else {
+                        // NORMAL VIEW: UPDATE DATABASE IMMEDIATELY
+                        const savedItem = await updateLayoutItem.mutate(editingLayoutItem.id, payload)
+                        if (!savedItem) throw new Error(updateLayoutItem.error || 'Не удалось обновить элемент')
+                        refetchLayoutItems(true)
+                      }
+                    } else {
+                      // NEW ITEM: MUST CREATE IN DB TO GET ID
+                      const savedItem = await createLayoutItem.mutate(payload as Partial<LayoutItem>)
+                      if (!savedItem) throw new Error(createLayoutItem.error || 'Не удалось создать элемент')
+
+                      if (isEditorOpen) {
+                        setDraftLayoutItems(prev => [...prev, savedItem!])
+                        setIsDraftDirty(true)
+                      }
+                      refetchLayoutItems(true)
+                    }
+
+                    setIsLayoutDialogOpen(false)
+                    setEditingLayoutItem(null)
+                  } catch (err: any) {
+                    console.error('[Layout Save Error]', err)
+                    alert('Ошибка при сохранении элемента: ' + (err.message || 'Неизвестная ошибка'))
                   }
-                  if (editingLayoutItem) {
-                    await updateLayoutItem.mutate(editingLayoutItem.id, payload)
-                  } else {
-                    await createLayoutItem.mutate(payload as Partial<LayoutItem>)
-                  }
-                  setIsLayoutDialogOpen(false)
-                  setEditingLayoutItem(null)
                 }}
               >
                 <Save className="h-4 w-4 mr-2" />
@@ -1432,9 +1570,24 @@ export default function HallsPage() {
                 <Button
                   variant="destructive"
                   onClick={async () => {
-                    await deleteTable.mutate(editingTable.id)
-                    setIsTableDialogOpen(false)
-                    setEditingTable(null)
+                    try {
+                      if (!editingTable) return
+                      const idToDelete = editingTable.id
+                      await deleteTable.mutate(idToDelete)
+
+                      // Sync draft state if editor is open
+                      if (isEditorOpen) {
+                        setDraftTables(prev => prev.filter(t => t.id !== idToDelete))
+                        setIsDraftDirty(true)
+                      }
+
+                      refetchTables(true)
+                      setIsTableDialogOpen(false)
+                      setEditingTable(null)
+                    } catch (err: any) {
+                      console.error('[Table Delete Error]', err)
+                      alert('Ошибка при удашении стола: ' + (err.message || 'Неизвестная ошибка'))
+                    }
                   }}
                   disabled={deleteTable.loading}
                 >
@@ -1447,13 +1600,40 @@ export default function HallsPage() {
               <Button variant="outline" onClick={() => setIsTableDialogOpen(false)}>Отмена</Button>
               <Button
                 onClick={async () => {
-                  if (editingTable) {
-                    await updateTable.mutate(editingTable.id, tableForm)
-                  } else {
-                    await createTable.mutate({ ...tableForm, hall_id: tableForm.hall_id || selectedHall?.id || '' })
+                  try {
+                    const finalForm = { ...tableForm, hall_id: tableForm.hall_id || selectedHall?.id || '' }
+
+                    if (editingTable) {
+                      // IF EDITOR IS OPEN: ONLY UPDATE DRAFT (BUFFER)
+                      if (isEditorOpen) {
+                        setDraftTables(prev => prev.map(t =>
+                          t.id === editingTable.id ? { ...t, ...finalForm } : t
+                        ))
+                        setIsDraftDirty(true)
+                      } else {
+                        // NORMAL VIEW: UPDATE DATABASE IMMEDIATELY
+                        const savedTable = await updateTable.mutate(editingTable.id, finalForm)
+                        if (!savedTable) throw new Error(updateTable.error || 'Не удалось обновить стол')
+                        refetchTables(true)
+                      }
+                    } else {
+                      // NEW TABLE: MUST CREATE IN DB TO GET ID
+                      const savedTable = await createTable.mutate(finalForm)
+                      if (!savedTable) throw new Error(createTable.error || 'Не удалось создать стол')
+
+                      if (isEditorOpen) {
+                        setDraftTables(prev => [...prev, savedTable!])
+                        setIsDraftDirty(true)
+                      }
+                      refetchTables(true)
+                    }
+
+                    setIsTableDialogOpen(false)
+                    setEditingTable(null)
+                  } catch (err: any) {
+                    console.error('[Table Save Error]', err)
+                    alert('Ошибка при сохранении стола: ' + (err.message || 'Неизвестная ошибка'))
                   }
-                  setIsTableDialogOpen(false)
-                  setEditingTable(null)
                 }}
                 disabled={!tableForm.number || !tableForm.capacity}
               >
@@ -1474,6 +1654,11 @@ export default function HallsPage() {
             setPreviewPos({})
             setPreviewSize({})
             setPreviewRotation({})
+            setIsDraftDirty(false)
+            setDraftTables([])
+            setDraftLayoutItems([])
+            setEditorZoom(1)
+            setEditorPan({ x: 0, y: 0 })
           }
         }}
       >
@@ -1542,15 +1727,63 @@ export default function HallsPage() {
                 )}
                 <Button
                   size={isMobile ? "sm" : "default"}
-                  className="flex-1 sm:flex-none gap-1 sm:gap-2 text-xs sm:text-sm"
+                  className="flex-1 sm:flex-none gap-1 sm:gap-2 text-xs sm:text-sm bg-amber-600 hover:bg-amber-700"
                   onClick={async () => {
-                    await Promise.all([refetchTables(), refetchLayoutItems()])
+                    if (isDraftDirty) {
+                      try {
+                        const tablesToUpdate = draftTables.map(t => ({
+                          ...t,
+                          position_x: previewPos[t.id]?.x ?? t.position_x,
+                          position_y: previewPos[t.id]?.y ?? t.position_y,
+                          width: previewSize[t.id]?.w ?? t.width,
+                          height: previewSize[t.id]?.h ?? t.height,
+                          rotation: previewRotation[t.id] ?? t.rotation
+                          // Note: draftTables already contains updated number, capacity, shape from dialogs
+                        }))
+
+                        const itemsToUpdate = draftLayoutItems.map(li => ({
+                          ...li,
+                          position_x: previewPos[li.id]?.x ?? li.position_x,
+                          position_y: previewPos[li.id]?.y ?? li.position_y,
+                          width: previewSize[li.id]?.w ?? li.width,
+                          height: previewSize[li.id]?.h ?? li.height,
+                          rotation: previewRotation[li.id] ?? li.rotation
+                          // Note: draftLayoutItems already contains updated text, type, color, bg_color
+                        }))
+
+                        await Promise.all([
+                          upsertTables.mutate(tablesToUpdate),
+                          upsertLayoutItems.mutate(itemsToUpdate)
+                        ])
+
+                        refetchTables(true)
+                        refetchLayoutItems(true)
+                        setIsDraftDirty(false)
+                      } catch (err) {
+                        alert('Ошибка при сохранении схемы')
+                        return
+                      }
+                    }
                     setIsEditorOpen(false)
                   }}
                 >
                   <Save className="h-4 w-4" />
-                  {isMobile ? 'ОК' : 'Закрыть редактор'}
+                  {isMobile ? 'ОК' : 'Сохранить стандарт'}
                 </Button>
+                {isDraftDirty && (
+                  <Button
+                    size={isMobile ? "sm" : "default"}
+                    variant="ghost"
+                    className="flex-1 sm:flex-none text-xs sm:text-sm text-stone-500"
+                    onClick={() => {
+                      if (confirm('Отменить все изменения?')) {
+                        setIsEditorOpen(false)
+                      }
+                    }}
+                  >
+                    Отмена
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -1564,32 +1797,15 @@ export default function HallsPage() {
                     if (!selectedHall) return
                     setIsSavingDateLayout(true)
                     try {
-                      // Get CURRENT state from the editor (using tables/layoutItems which are already being updated by mutations)
-                      // No, wait. The editor updates the database DIRECTLY on drag/rotate/resize via updateTable.mutate/updateLayoutItem.mutate.
-                      // This means the "Standard" layout is being modified.
-                      // WAIT. This is a problem in my logic.
-                      // If the editor modifications update the primary `tables` and `layout_items` table, then the "Standard" layout is lost if we don't save it first.
-
-                      // CORRECT LOGIC:
-                      // 1. The Hall Editor should work on a "Current Session" state if we want to support "Discard Changes" or "Save for Date".
-                      // 2. But the current implementation uses `updateTable.mutate` which hits the DB immediately.
-
-                      // TO SUPPORT THIS FEATURE PROPERLY:
-                      // We should either:
-                      // a) Only update DB on "Save" (requires refactoring the whole editor to use local state)
-                      // b) "Save for Date" copies the current "Standard" state to `hall_date_layouts`.
-
-                      // Given the current architecture, I'll stick to (b) for now, but with a twist:
-                      // When in Editor, if a Date is selected, we should maybe be editing THAT date's layout if it exists.
-
-                      const currentTables = tables.filter(t => t.hall_id === selectedHall.id)
-                      const currentItems = layoutItems.filter(li => li.hall_id === selectedHall.id)
+                      // Use draft state from the editor session
+                      const currentTables = draftTables
+                      const currentItems = draftLayoutItems
 
                       await upsertDateLayout.mutate({
                         hall_id: selectedHall.id,
                         date: selectedDate,
-                        tables_data: currentTables,
-                        layout_items_data: currentItems
+                        tables_data: currentTables as any,
+                        layout_items_data: currentItems as any
                       })
                       alert(`Расположение сохранено для ${format(new Date(selectedDate), 'd MMMM', { locale: ru })}`)
                     } catch (err) {
@@ -1728,7 +1944,7 @@ export default function HallsPage() {
                   }}
                 >
                   {/* Layout items */}
-                  {selectedHall && layoutItems.filter(li => li.hall_id === selectedHall.id).map((item) => {
+                  {selectedHall && draftLayoutItems.map((item) => {
                     const pos = previewPos[item.id] ?? { x: item.position_x, y: item.position_y }
                     const size = previewSize[item.id] ?? { w: item.width, h: item.height }
                     const rot = previewRotation[item.id] ?? item.rotation ?? 0
@@ -1809,7 +2025,8 @@ export default function HallsPage() {
                               e.stopPropagation()
                               const next = (rot + 90) % 360
                               setPreviewRotation(prev => ({ ...prev, [item.id]: next }))
-                              await updateLayoutItem.mutate(item.id, { rotation: next })
+                              setDraftLayoutItems(prev => prev.map(li => li.id === item.id ? { ...li, rotation: next } : li))
+                              setIsDraftDirty(true)
                             }}
                           >
                             <RotateCw className="h-4 w-4" />
@@ -1820,7 +2037,7 @@ export default function HallsPage() {
                   })}
 
                   {/* Tables */}
-                  {selectedHall && tables.filter(t => t.hall_id === selectedHall.id).map((table) => {
+                  {selectedHall && draftTables.map((table) => {
                     const reservation = getTableReservation(table)
                     const statusConfig = reservation ? RESERVATION_STATUS_CONFIG[reservation.status as keyof typeof RESERVATION_STATUS_CONFIG] : null
                     const pos = previewPos[table.id] ?? { x: table.position_x, y: table.position_y }
@@ -1914,7 +2131,8 @@ export default function HallsPage() {
                               e.stopPropagation()
                               const next = (rot + 90) % 360
                               setPreviewRotation(prev => ({ ...prev, [table.id]: next }))
-                              await updateTable.mutate(table.id, { rotation: next })
+                              setDraftTables(prev => prev.map(t => t.id === table.id ? { ...t, rotation: next } : t))
+                              setIsDraftDirty(true)
                             }}
                           >
                             <RotateCw className="h-4 w-4" />
@@ -2093,7 +2311,7 @@ export default function HallsPage() {
                     onClick={async () => {
                       if (confirm('Освободить стол (завершить обслуживание)?')) {
                         await updateReservation.mutate(res.id, { status: 'completed' })
-                        await refetchReservations()
+                        refetchReservations(true)
                         setSelectedTableForInfo(null)
                       }
                     }}
@@ -2142,8 +2360,9 @@ export default function HallsPage() {
             <Button
               onClick={async () => {
                 if (!selectedHall || !templateName.trim()) return
-                const currentTables = tables.filter(t => t.hall_id === selectedHall.id)
-                const currentItems = layoutItems.filter(li => li.hall_id === selectedHall.id)
+                // Prefer draft state if editor is open, otherwise use current tables
+                const currentTables = isEditorOpen ? draftTables : tables.filter(t => t.hall_id === selectedHall.id)
+                const currentItems = isEditorOpen ? draftLayoutItems : layoutItems.filter(li => li.hall_id === selectedHall.id)
 
                 await createTemplate.mutate({
                   hall_id: selectedHall.id,
@@ -2166,7 +2385,7 @@ export default function HallsPage() {
       </Dialog>
 
       {/* ReservationModal */}
-      < ReservationModal
+      <ReservationModal
         isOpen={reservationModalOpen}
         onClose={() => {
           setReservationModalOpen(false)
@@ -2180,6 +2399,6 @@ export default function HallsPage() {
         preselectedHallId={preselectedHallId}
         preselectedDate={selectedDate}
       />
-    </PageTransition >
+    </PageTransition>
   )
 }

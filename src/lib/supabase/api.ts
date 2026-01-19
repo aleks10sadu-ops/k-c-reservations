@@ -28,7 +28,6 @@ export async function getHalls(): Promise<Hall[]> {
     .order('name')
 
   if (error) {
-    console.error('Error fetching halls:', error)
     return []
   }
 
@@ -47,7 +46,6 @@ export async function getHallById(id: string): Promise<Hall | null> {
     .single()
 
   if (error) {
-    console.error('Error fetching hall:', error)
     return null
   }
 
@@ -63,7 +61,6 @@ export async function createHall(hall: Omit<Hall, 'id' | 'created_at' | 'updated
     .single()
 
   if (error) {
-    console.error('Error creating hall:', error)
     return null
   }
 
@@ -80,7 +77,6 @@ export async function updateHall(id: string, updates: Partial<Hall>): Promise<Ha
     .single()
 
   if (error) {
-    console.error('Error updating hall:', error)
     return null
   }
 
@@ -95,7 +91,6 @@ export async function deleteHall(id: string): Promise<boolean> {
     .eq('id', id)
 
   if (error) {
-    console.error('Error deleting hall:', error)
     return false
   }
 
@@ -115,7 +110,6 @@ export async function getTables(hallId?: string): Promise<Table[]> {
   const { data, error } = await query.order('number')
 
   if (error) {
-    console.error('Error fetching tables:', error)
     return []
   }
 
@@ -136,7 +130,6 @@ export async function getMenus(): Promise<Menu[]> {
     .order('name')
 
   if (error) {
-    console.error('Error fetching menus:', error)
     return []
   }
 
@@ -155,7 +148,6 @@ export async function getMenuById(id: string): Promise<Menu | null> {
     .single()
 
   if (error) {
-    console.error('Error fetching menu:', error)
     return null
   }
 
@@ -177,7 +169,6 @@ export async function createMenu(menu: {
     .single()
 
   if (error) {
-    console.error('Error creating menu:', error)
     return null
   }
 
@@ -194,7 +185,6 @@ export async function updateMenu(id: string, updates: Partial<Menu>): Promise<Me
     .single()
 
   if (error) {
-    console.error('Error updating menu:', error)
     return null
   }
 
@@ -209,7 +199,6 @@ export async function deleteMenu(id: string): Promise<boolean> {
     .eq('id', id)
 
   if (error) {
-    console.error('Error deleting menu:', error)
     return false
   }
 
@@ -229,7 +218,6 @@ export async function getMenuItems(menuId?: string): Promise<MenuItem[]> {
   const { data, error } = await query.order('order_index')
 
   if (error) {
-    console.error('Error fetching menu items:', error)
     return []
   }
 
@@ -255,7 +243,6 @@ export async function createMenuItem(item: {
     .single()
 
   if (error) {
-    console.error('Error creating menu item:', error)
     return null
   }
 
@@ -272,7 +259,6 @@ export async function updateMenuItem(id: string, updates: Partial<MenuItem>): Pr
     .single()
 
   if (error) {
-    console.error('Error updating menu item:', error)
     return null
   }
 
@@ -290,12 +276,6 @@ export async function updateMenuItemsByType(menuId: string, oldType: string, new
       .eq('type', oldType)
 
     if (error) {
-      console.error('[updateMenuItemsByType] Error:', {
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint
-      })
       throw new Error(error.message || 'Не удалось обновить тип блюд')
     }
 
@@ -316,7 +296,6 @@ export async function deleteMenuItem(id: string): Promise<boolean> {
     .eq('id', id)
 
   if (error) {
-    console.error('Error deleting menu item:', error)
     return false
   }
 
@@ -342,12 +321,6 @@ export async function getMenuItemTypes(menuId?: string): Promise<CustomMenuItemT
   const { data, error } = await query
 
   if (error) {
-    console.error('[getMenuItemTypes] Error fetching menu item types:', {
-      code: error.code,
-      message: error.message,
-      details: error.details,
-      hint: error.hint
-    })
     return []
   }
 
@@ -363,7 +336,6 @@ export async function getMenuItemTypeById(id: string): Promise<CustomMenuItemTyp
     .single()
 
   if (error) {
-    console.error('Error fetching menu item type:', error)
     return null
   }
 
@@ -390,66 +362,32 @@ export async function createMenuItemType(type: {
 
 
     if (error) {
-      // Логируем полную информацию об ошибке для отладки
-      console.error('[createMenuItemType] Error details:', {
-        errorCode: error.code,
-        errorMessage: error.message,
-        errorDetails: error.details,
-        errorHint: error.hint,
-        type
-      })
-
       // Более детальные сообщения об ошибках для пользователя
       if (error.code === '42501' || error.message?.includes('row-level security') || error.message?.includes('RLS')) {
-        const err = new Error('Ошибка доступа: недостаточно прав для создания типа блюда. Убедитесь, что вы вошли в систему.')
-        console.error('[createMenuItemType] RLS error:', err)
-        throw err
+        throw new Error('Ошибка доступа: недостаточно прав для создания типа блюда. Убедитесь, что вы вошли в систему.')
       }
       if (error.code === '23505' || error.message?.includes('duplicate') || error.message?.includes('unique')) {
-        const err = new Error(`Тип блюда с названием "${type.label}" уже существует для этого меню`)
-        console.error('[createMenuItemType] Duplicate error:', err)
-        throw err
+        throw new Error(`Тип блюда с названием "${type.label}" уже существует для этого меню`)
       }
       if (error.code === '23503' || error.message?.includes('foreign key')) {
-        const err = new Error('Ошибка: указанное меню не найдено')
-        console.error('[createMenuItemType] Foreign key error:', err)
-        throw err
+        throw new Error('Ошибка: указанное меню не найдено')
       }
 
       // Для других ошибок возвращаем понятное сообщение
-      const errorMessage = error.message || 'Не удалось создать тип блюда'
-      const err = new Error(errorMessage)
-      console.error('[createMenuItemType] Generic error:', err)
-      throw err
+      throw new Error(error.message || 'Не удалось создать тип блюда')
     }
 
     if (!data) {
-      const err = new Error('Тип блюда не был создан')
-      console.error('[createMenuItemType] No data returned:', err)
-      throw err
+      throw new Error('Тип блюда не был создан')
     }
 
     return data
   } catch (error: any) {
-    // Перехватываем и перебрасываем ошибку с понятным сообщением
-    console.error('[createMenuItemType] Caught error:', {
-      error,
-      message: error?.message,
-      stack: error?.stack,
-      name: error?.name
-    })
-
     if (error instanceof Error) {
-      // Сохраняем оригинальное сообщение
-      const err = new Error(error.message)
-      err.name = error.name
-      err.stack = error.stack
-      throw err
+      throw error
     }
 
-    const err = new Error(error?.message || 'Неизвестная ошибка при создании типа блюда')
-    console.error('[createMenuItemType] Unknown error:', err)
-    throw err
+    throw new Error(error?.message || 'Неизвестная ошибка при создании типа блюда')
   }
 }
 
@@ -466,12 +404,6 @@ export async function updateMenuItemType(id: string, updates: Partial<CustomMenu
       .single()
 
     if (error) {
-      console.error('[updateMenuItemType] Error:', {
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint
-      })
       throw new Error(error.message || 'Не удалось обновить тип блюда')
     }
 
@@ -499,12 +431,6 @@ export async function deleteMenuItemType(id: string): Promise<boolean> {
       .eq('id', id)
 
     if (error) {
-      console.error('[deleteMenuItemType] Error:', {
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint
-      })
       throw new Error(error.message || 'Не удалось удалить тип блюда')
     }
 
@@ -527,7 +453,6 @@ export async function getGuests(): Promise<Guest[]> {
     .order('last_name')
 
   if (error) {
-    console.error('Error fetching guests:', error)
     return []
   }
 
@@ -543,7 +468,6 @@ export async function getGuestById(id: string): Promise<Guest | null> {
     .single()
 
   if (error) {
-    console.error('Error fetching guest:', error)
     return null
   }
 
@@ -560,7 +484,6 @@ export async function searchGuests(query: string): Promise<Guest[]> {
     .limit(10)
 
   if (error) {
-    console.error('Error searching guests:', error)
     return []
   }
 
@@ -584,7 +507,6 @@ export async function createGuest(guest: {
     .single()
 
   if (error) {
-    console.error('Error creating guest:', error)
     return null
   }
 
@@ -601,7 +523,6 @@ export async function updateGuest(id: string, updates: Partial<Guest>): Promise<
     .single()
 
   if (error) {
-    console.error('Error updating guest:', error)
     return null
   }
 
@@ -622,7 +543,6 @@ export async function deleteGuest(id: string): Promise<boolean> {
     .eq('guest_id', id)
 
   if (reservationsError) {
-    console.error('Error fetching guest reservations:', reservationsError)
     return false
   }
 
@@ -637,7 +557,6 @@ export async function deleteGuest(id: string): Promise<boolean> {
       .in('reservation_id', reservationIds)
 
     if (paymentsError) {
-      console.error('Error deleting payments:', paymentsError)
       // Продолжаем удаление, даже если есть ошибка с платежами
     }
 
@@ -648,7 +567,6 @@ export async function deleteGuest(id: string): Promise<boolean> {
       .eq('guest_id', id)
 
     if (deleteReservationsError) {
-      console.error('Error deleting reservations:', deleteReservationsError)
       return false
     }
   }
@@ -660,7 +578,6 @@ export async function deleteGuest(id: string): Promise<boolean> {
     .eq('id', id)
 
   if (error) {
-    console.error('Error deleting guest:', error)
     return false
   }
 
@@ -699,7 +616,6 @@ export async function findOrCreateGuestByPhone(
     .single()
 
   if (createError) {
-    console.error('Error creating guest:', createError)
     return null
   }
 
@@ -711,7 +627,6 @@ export async function updateReservationServerAction(id: string, updates: Partial
     const result = await updateReservation(id, updates)
     return { success: true, data: result }
   } catch (error) {
-    console.error('Server action update error:', error)
     return { success: false, error: error }
   }
 }
@@ -743,7 +658,6 @@ export async function syncReservationTablesServerAction(reservationId: string, t
 
     return { success: true }
   } catch (error: any) {
-    console.error('syncReservationTablesServerAction error:', error)
     return { success: false, error: error.message || 'Unknown error' }
   }
 }
@@ -955,7 +869,6 @@ export async function getReservations(filters?: {
   const { data, error } = await query.order('date').order('time')
 
   if (error) {
-    console.error('Error fetching reservations:', error)
     return []
   }
 
@@ -991,7 +904,6 @@ export async function getReservationById(id: string): Promise<Reservation | null
     .single()
 
   if (error) {
-    console.error('Error fetching reservation:', error)
     return null
   }
 
@@ -1039,7 +951,6 @@ export async function createReservation(reservation: {
     .single()
 
   if (error) {
-    console.error('Error creating reservation:', error)
     return null
   }
 
@@ -1081,7 +992,6 @@ export async function updateReservation(id: string, updates: Partial<Reservation
 
 
   if (error) {
-    console.error('Error updating reservation:', error)
     return null
   }
 
@@ -1096,7 +1006,6 @@ export async function deleteReservation(id: string): Promise<boolean> {
     .eq('id', id)
 
   if (error) {
-    console.error('Error deleting reservation:', error)
     return false
   }
 
@@ -1116,7 +1025,6 @@ export async function getPayments(reservationId?: string): Promise<Payment[]> {
   const { data, error } = await query.order('payment_date', { ascending: false })
 
   if (error) {
-    console.error('Error fetching payments:', error)
     return []
   }
 
@@ -1140,7 +1048,6 @@ export async function createPayment(payment: {
     .single()
 
   if (error) {
-    console.error('Error creating payment:', error)
     return null
   }
 
@@ -1155,7 +1062,6 @@ export async function deletePayment(id: string): Promise<boolean> {
     .eq('id', id)
 
   if (error) {
-    console.error('Error deleting payment:', error)
     return false
   }
 
@@ -1202,7 +1108,6 @@ export async function syncReservationMainMenuItemsServerAction(
 
     return { success: true }
   } catch (error: any) {
-    console.error('syncReservationMainMenuItemsServerAction error:', error)
     return { success: false, error: error.message || 'Unknown error' }
   }
 }

@@ -61,7 +61,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import TimeWheelPicker from '@/components/TimeWheelPicker'
-import { useHalls, useMenus, useMenuItems, useMenuItemTypes, useGuests, useTables, useLayoutItems, useCreateMutation, useUpdateMutation, useDeleteMutation, useReservations, useStaff } from '@/hooks/useSupabase'
+import { useHalls, useMenus, useMenuItems, useMenuItemTypes, useGuests, useTables, useLayoutItems, useCreateMutation, useUpdateMutation, useDeleteMutation, useReservations, useStaff, notifyDataChange } from '@/hooks/useSupabase'
 import { updateReservationServerAction, syncReservationTablesServerAction, syncReservationMenuItemsServerAction, syncReservationMainMenuItemsServerAction } from '@/lib/supabase/api'
 import { X } from 'lucide-react'
 import { HallScheme } from '@/components/halls/HallScheme'
@@ -326,7 +326,7 @@ export function ReservationModal({
           waiter_id: currentReservation.waiter_id || '',
           is_walk_in: currentReservation.is_walk_in || false
         })
-        const initialTables =
+        const initialLinkIds =
           currentReservation.table_ids?.length
             ? currentReservation.table_ids
             : currentReservation.tables?.length
@@ -334,8 +334,18 @@ export function ReservationModal({
               : currentReservation.table_id
                 ? [currentReservation.table_id]
                 : []
-        setSelectedTables(initialTables)
-        setDraftTables(initialTables)
+
+        // Composite Table Support: Expand selections to all related segments by number
+        const linkedTableObjects = tables.filter(t => initialLinkIds.includes(t.id))
+        const linkedNumbers = Array.from(new Set(linkedTableObjects.map(t => t.number)))
+        const expandedIds = tables
+          .filter(t => linkedNumbers.includes(t.number) || initialLinkIds.includes(t.id))
+          .map(t => t.id)
+
+        const finalInitialTables = Array.from(new Set([...initialLinkIds, ...expandedIds]))
+
+        setSelectedTables(finalInitialTables)
+        setDraftTables(finalInitialTables)
 
         // Инициализируем выбранные салаты и переопределения из сохраненных данных
         if (currentReservation.selected_menu_items?.length) {
@@ -408,8 +418,13 @@ export function ReservationModal({
         })
         // Устанавливаем выбранные столы если есть preselectedTableId
         if (preselectedTableId) {
-          setSelectedTables([preselectedTableId])
-          setDraftTables([preselectedTableId])
+          const table = tables.find(t => t.id === preselectedTableId)
+          const relatedIds = table
+            ? tables.filter(t => t.hall_id === table.hall_id && t.number === table.number).map(t => t.id)
+            : [preselectedTableId]
+
+          setSelectedTables(relatedIds)
+          setDraftTables(relatedIds)
         } else {
           setSelectedTables([])
           setDraftTables([])
@@ -557,12 +572,22 @@ export function ReservationModal({
   }, [mainMenuSelections])
 
   const handleMobileTableClick = (tableId: string) => {
+    const table = tables.find(t => t.id === tableId)
+    if (!table) return
+
+    // Composite Table Support: find IDs of all tables with the same number in this hall
+    const relatedTableIds = tables
+      .filter(t => t.hall_id === table.hall_id && t.number === table.number)
+      .map(t => t.id)
+
     setDraftTables((prev) => {
       const exists = prev.includes(tableId)
       if (exists) {
-        return prev.filter((id) => id !== tableId)
+        // Deselect all related
+        return prev.filter((id) => !relatedTableIds.includes(id))
       }
-      return [...prev, tableId]
+      // Select all related
+      return [...prev, ...relatedTableIds.filter(id => !prev.includes(id))]
     })
   }
 
@@ -633,7 +658,6 @@ export function ReservationModal({
         onClose()
       }
     } catch (error) {
-      console.error('Error duplicating reservation:', error)
       alert('Ошибка при копировании: ' + (error as any)?.message)
     } finally {
       setIsDuplicating(false)
@@ -713,14 +737,12 @@ export function ReservationModal({
     // Validate time format
     const timeStr = formatTime(formData.time)
     if (!timeStr || !timeStr.match(/^\d{2}:\d{2}$/)) {
-      console.error('Invalid time format:', formData.time, 'formatted to:', timeStr)
       alert('Неверный формат времени')
       return
     }
 
     // Validate total amount
     if (isNaN(computedTotal) || computedTotal < 0) {
-      console.error('Invalid total amount:', computedTotal)
       alert('Неверная сумма заказа')
       return
     }
@@ -728,17 +750,14 @@ export function ReservationModal({
     // Validate UUIDs
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
     if (!uuidRegex.test(formData.hall_id)) {
-      console.error('Invalid hall_id:', formData.hall_id)
       alert('Неверный идентификатор зала')
       return
     }
     if (!uuidRegex.test(guestId)) {
-      console.error('Invalid guest_id:', guestId)
       alert('Неверный идентификатор гостя')
       return
     }
     if (formData.menu_id && !uuidRegex.test(formData.menu_id)) {
-      console.error('Invalid menu_id:', formData.menu_id)
       alert('Неверный идентификатор меню')
       return
     }
@@ -767,19 +786,16 @@ export function ReservationModal({
         if (!isNaN(parsedDate.getTime())) {
           dateToSave = parsedDate.toISOString().split('T')[0]
         } else {
-          console.error('Invalid date format:', formData.date)
           alert('Неверный формат даты')
           return
         }
       }
     } else {
-      console.error('No date selected')
       alert('Выберите дату')
       return
     }
 
     if (!dateToSave) {
-      console.error('dateToSave is empty')
       alert('Ошибка с датой')
       return
     }
@@ -872,9 +888,6 @@ export function ReservationModal({
         if (created) {
           const tablesToSync = selectedTables
 
-          console.log('--- Creating Reservation Sync ---')
-          console.log('Tables to sync:', tablesToSync)
-
           const [tablesSyncResult, menuSyncResult] = await Promise.all([
             syncReservationTablesServerAction(created.id, tablesToSync),
             formData.menu_type === 'banquet'
@@ -893,12 +906,10 @@ export function ReservationModal({
           ])
 
           if (!tablesSyncResult.success) {
-            console.error('Tables sync failed:', tablesSyncResult.error)
             alert(`Ошибка при привязке столов: ${tablesSyncResult.error}`)
           }
 
           if (!menuSyncResult.success) {
-            console.error('Menu sync failed:', menuSyncResult.error)
             alert(`Ошибка при сохранении меню: ${menuSyncResult.error}`)
           }
 
@@ -923,23 +934,17 @@ export function ReservationModal({
           } as Reservation;
           setLocalReservation(finalReservation)
           setFormData(prev => ({ ...prev, status: statusToSave }))
+          notifyDataChange('reservations')
           onSaveSuccess?.(finalReservation)
         }
       } catch (error) {
-        console.error('Error creating reservation:', error);
         alert('Ошибка при создании бронирования: ' + (error as any)?.message);
       }
     } else if (currentReservation) {
       try {
-        console.log('Save Debug - Original formData.date:', formData.date)
-        console.log('Save Debug - Processed dateToSave:', dateToSave)
-        console.log('Save Debug - Final dataToSave:', dataToSave)
-
         const updateResult = await updateReservationServerAction(currentReservation.id, dataToSave as any)
-        console.log('Server action update result:', updateResult)
 
         if (!updateResult.success) {
-          console.error('Server action failed:', updateResult.error)
           alert('Ошибка сохранения: ' + ((updateResult.error as any)?.message || 'Неизвестная ошибка'))
           return
         }
@@ -947,9 +952,6 @@ export function ReservationModal({
         const result = updateResult.data
         if (result) {
           const tablesToSync = selectedTables
-
-          console.log('--- Updating Reservation Sync ---')
-          console.log('Tables to sync:', tablesToSync)
 
           const [tablesSyncResult, menuSyncResult] = await Promise.all([
             syncReservationTablesServerAction(currentReservation.id, tablesToSync),
@@ -969,12 +971,10 @@ export function ReservationModal({
           ])
 
           if (!tablesSyncResult.success) {
-            console.error('Tables sync failed:', tablesSyncResult.error)
             alert(`Ошибка при привязке столов: ${tablesSyncResult.error}`)
           }
 
           if (!menuSyncResult.success) {
-            console.error('Menu sync failed:', menuSyncResult.error)
             alert(`Ошибка при сохранении меню: ${menuSyncResult.error}`)
           }
 
@@ -989,10 +989,10 @@ export function ReservationModal({
           } as Reservation;
           setLocalReservation(finalReservation)
           setFormData(prev => ({ ...prev, status: statusToSave }))
+          notifyDataChange('reservations')
           onSaveSuccess?.(finalReservation)
         }
       } catch (error) {
-        console.error('Error updating reservation:', error);
         alert('Ошибка при сохранении изменений: ' + (error as any)?.message);
       }
     }
@@ -1043,7 +1043,7 @@ export function ReservationModal({
                   Выбрано столов: {draftTables.length}
                   {draftTables.length > 0 && (
                     <span className="ml-2">
-                      (№{tables.filter(t => draftTables.includes(t.id)).map(t => t.number).join(', ')})
+                      (№{Array.from(new Set(tables.filter(t => draftTables.includes(t.id)).map(t => t.number))).join(', ')})
                     </span>
                   )}
                 </div>

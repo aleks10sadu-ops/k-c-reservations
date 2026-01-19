@@ -55,7 +55,7 @@ export function useSupabaseQuery<T>(
   const filterStr = JSON.stringify(filters)
   const orderStr = JSON.stringify(orderBy)
 
-  const fetchData = useCallback(async (signal?: AbortSignal) => {
+  const fetchData = useCallback(async (signal?: AbortSignal, silent: boolean = false) => {
     // Пропускаем запрос если skip=true
     if (skip) {
       setData([])
@@ -63,7 +63,9 @@ export function useSupabaseQuery<T>(
       return
     }
 
-    setLoading(true)
+    if (!silent) {
+      setLoading(true)
+    }
     setError(null)
 
     try {
@@ -87,17 +89,7 @@ export function useSupabaseQuery<T>(
       }
 
       const { data: result, error: queryError } = await query
-
       if (queryError) {
-        // Check if this is actually an AbortError reported as a PostgREST error
-        if (queryError.message?.includes('AbortError') || queryError.details?.includes('AbortError')) {
-          throw queryError // Throw to catch block which ignores it
-        }
-
-        // Detailed error logging for REAL errors
-        console.error(`[useSupabaseQuery] PostgREST Error fetching ${primaryTable}:`,
-          JSON.stringify(queryError, Object.getOwnPropertyNames(queryError), 2)
-        )
         throw queryError
       }
 
@@ -111,12 +103,10 @@ export function useSupabaseQuery<T>(
         err.details?.includes('AbortError')
 
       if (isAbort) {
-        // console.log(`[useSupabaseQuery] Request aborted for ${tableName}`)
         return
       }
 
       setError(err.message)
-      console.error(`[useSupabaseQuery] Exception fetching ${tableName}:`, err)
     } finally {
       if (!signal?.aborted) {
         setLoading(false)
@@ -180,7 +170,12 @@ export function useSupabaseQuery<T>(
     }
   }, [memoizedTableName, fetchData])
 
-  return { data, loading, error, refetch: fetchData }
+  return {
+    data,
+    loading,
+    error,
+    refetch: (silent: boolean = false) => fetchData(undefined, silent)
+  }
 }
 
 // ==================== HALLS ====================
@@ -329,8 +324,10 @@ export function useReservations(filters?: {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchData = useCallback(async () => {
-    setLoading(true)
+  const fetchData = useCallback(async (silent: boolean = false) => {
+    if (!silent) {
+      setLoading(true)
+    }
     setError(null)
 
     try {
@@ -393,7 +390,6 @@ export function useReservations(filters?: {
         .order('time')
 
       if (queryError) {
-        console.error('[useReservations] Query Error:', queryError)
         throw queryError
       }
 
@@ -442,7 +438,6 @@ export function useReservations(filters?: {
       setData(normalized as Reservation[])
     } catch (err: any) {
       setError(err.message)
-      console.error('Error fetching reservations:', err)
     } finally {
       setLoading(false)
     }
@@ -504,7 +499,12 @@ export function useReservations(filters?: {
     }
   }, [fetchData])
 
-  return { data, loading, error, refetch: fetchData }
+  return {
+    data,
+    loading,
+    error,
+    refetch: (silent: boolean = false) => fetchData(silent)
+  }
 }
 
 export async function searchReservations(query: string) {
@@ -574,7 +574,6 @@ export async function searchReservations(query: string) {
       return { ...row, main_menu_items, prepaid_amount }
     })
   } catch (err) {
-    console.error('Error in searchReservations:', err)
     return []
   }
 }
@@ -649,8 +648,10 @@ export function useStaffShifts(filters?: {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchData = useCallback(async () => {
-    setLoading(true)
+  const fetchData = useCallback(async (silent: boolean = false) => {
+    if (!silent) {
+      setLoading(true)
+    }
     setError(null)
 
     try {
@@ -713,7 +714,12 @@ export function useStaffShifts(filters?: {
     }
   }, [fetchData])
 
-  return { data, loading, error, refetch: fetchData }
+  return {
+    data,
+    loading,
+    error,
+    refetch: (silent: boolean = false) => fetchData(silent)
+  }
 }
 
 export function useHealthBooks() {
@@ -738,11 +744,6 @@ export function useCreateMutation<T>(tableName: string) {
     try {
       const supabase = createClient()
 
-      // Логируем для menu_items
-      if (tableName === 'menu_items') {
-        console.log(`[useCreateMutation] Creating ${tableName}:`, data)
-      }
-
       const { data: result, error: mutationError } = await supabase
         .from(tableName)
         .insert(data)
@@ -750,14 +751,8 @@ export function useCreateMutation<T>(tableName: string) {
         .single()
 
       if (mutationError) {
-        console.error(`[useCreateMutation] Error creating ${tableName}:`, JSON.stringify(mutationError, null, 2))
         setError(mutationError.message || `Не удалось создать запись в ${tableName}`)
         throw mutationError
-      }
-
-      // Логируем для menu_items
-      if (tableName === 'menu_items') {
-        console.log(`[useCreateMutation] Created ${tableName}:`, result)
       }
 
       notifyDataChange(tableName)
@@ -765,7 +760,6 @@ export function useCreateMutation<T>(tableName: string) {
     } catch (err: any) {
       const errorMessage = err?.message || err?.error?.message || `Не удалось создать запись в ${tableName}`
       setError(errorMessage)
-      console.error(`Error creating ${tableName}:`, JSON.stringify(err, Object.getOwnPropertyNames(err), 2))
       return null
     } finally {
       setLoading(false)
@@ -785,11 +779,6 @@ export function useUpdateMutation<T>(tableName: string) {
 
     try {
       const supabase = createClient()
-
-      // Логируем для menu_items
-      if (tableName === 'menu_items') {
-        console.log(`[useUpdateMutation] Updating ${tableName}:`, { id, data })
-      }
 
       const { data: result, error: mutationError } = await supabase
         .from(tableName)
@@ -839,7 +828,6 @@ export function useUpsertMutation<T>(tableName: string, conflictColumns: string[
         .select()
 
       if (mutationError) {
-        console.error(`[useUpsertMutation] Error in ${tableName}:`, mutationError)
         throw mutationError
       }
 
@@ -877,8 +865,6 @@ export function useDeleteMutation(tableName: string) {
     } catch (err: any) {
       const errorMessage = err?.message || err?.error?.message || `Не удалось удалить запись из ${tableName}`
       setError(errorMessage)
-      console.error(`Error deleting ${tableName}:`, err)
-      console.error('Error details:', JSON.stringify(err, null, 2))
       return false
     } finally {
       setLoading(false)
