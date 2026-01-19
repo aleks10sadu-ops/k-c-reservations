@@ -159,7 +159,8 @@ export default function HallsPage() {
     prevMouseY: 0,
     lastPinchDist: null as number | null,
     lastTransform: { x: 0, y: 0 },
-    rafId: null as number | null
+    rafId: null as number | null,
+    lastTap: { time: 0, targetId: null as string | null, x: 0, y: 0 }
   })
 
   // Cache latest values for the native interaction loop
@@ -398,6 +399,48 @@ export default function HallsPage() {
     })
   }
 
+  const handleOpenTableEditor = (table: Table) => {
+    if (!selectedHall) return
+    const id = table.id
+    const pos = cacheRef.current.previewPos[id] || { x: table.position_x, y: table.position_y }
+    const size = cacheRef.current.previewSize[id] || { w: table.width, h: table.height }
+
+    setEditingTable(table)
+    setTableForm({
+      hall_id: selectedHall.id,
+      number: table.number,
+      capacity: table.capacity,
+      position_x: pos.x,
+      position_y: pos.y,
+      width: size.w,
+      height: size.h,
+      shape: table.shape,
+    })
+    setIsTableDialogOpen(true)
+  }
+
+  const handleOpenLayoutEditor = (item: LayoutItem) => {
+    const id = item.id
+    const pos = cacheRef.current.previewPos[id] || { x: item.position_x, y: item.position_y }
+    const size = cacheRef.current.previewSize[id] || { w: item.width, h: item.height }
+    const rot = cacheRef.current.previewRotation[id] ?? item.rotation ?? 0
+
+    setEditingLayoutItem(item)
+    setLayoutForm({
+      hall_id: item.hall_id,
+      type: item.type,
+      text: item.text || '',
+      position_x: pos.x,
+      position_y: pos.y,
+      width: size.w,
+      height: size.h,
+      rotation: rot,
+      color: item.color || '#1f2937',
+      bg_color: item.bg_color || '#ffffff',
+    })
+    setIsLayoutDialogOpen(true)
+  }
+
   const handleAssignWaiter = async (reservationId: string, waiterId: string) => {
     try {
       await updateReservation.mutate(reservationId, { waiter_id: waiterId })
@@ -517,6 +560,32 @@ export default function HallsPage() {
       interactionRef.current.targetType = (type as any) || null
       interactionRef.current.prevMouseX = clientX
       interactionRef.current.prevMouseY = clientY
+
+      // Double-tap detection for mobile
+      if (isTouch && id && e.touches.length === 1) {
+        const now = Date.now()
+        // Safeguard against HMR persistence where lastTap might not be in the ref yet
+        const lastTap = interactionRef.current.lastTap || { time: 0, targetId: null, x: 0, y: 0 }
+
+        // Euclidean distance between taps
+        const dist = Math.hypot(clientX - lastTap.x, clientY - lastTap.y)
+
+        // Check time threshold (500ms) and distance threshold (20px) to allow for slight finger drift
+        if (lastTap.targetId === id && now - lastTap.time < 500 && dist < 20) {
+          e.preventDefault() // Prevent zoom/default browser double-tap behavior
+          if (type === 'table') {
+            const table = cacheRef.current.tables.find(t => t.id === id)
+            if (table) handleOpenTableEditor(table)
+          } else if (type === 'layout') {
+            const item = cacheRef.current.layoutItems.find(li => li.id === id)
+            if (item) handleOpenLayoutEditor(item)
+          }
+          // Reset lastTap to prevent triple-tap triggering another double-tap immediately
+          interactionRef.current.lastTap = { time: 0, targetId: null, x: 0, y: 0 }
+        } else {
+          interactionRef.current.lastTap = { time: now, targetId: id, x: clientX, y: clientY }
+        }
+      }
 
       const editor = editorRef.current
       if (action === 'pan') {
@@ -1770,26 +1839,12 @@ export default function HallsPage() {
                   <Save className="h-4 w-4" />
                   {isMobile ? 'ОК' : 'Сохранить стандарт'}
                 </Button>
-                {isDraftDirty && (
-                  <Button
-                    size={isMobile ? "sm" : "default"}
-                    variant="ghost"
-                    className="flex-1 sm:flex-none text-xs sm:text-sm text-stone-500"
-                    onClick={() => {
-                      if (confirm('Отменить все изменения?')) {
-                        setIsEditorOpen(false)
-                      }
-                    }}
-                  >
-                    Отмена
-                  </Button>
-                )}
               </div>
             </div>
 
             {/* Date Specific & Template Actions */}
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-4 px-4 py-2 bg-stone-50 rounded-lg border border-stone-200">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 mb-4 px-3 sm:px-4 py-3 bg-stone-50 rounded-lg border border-stone-200">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1">
                 <Button
                   variant="outline"
                   size="sm"
@@ -1816,10 +1871,12 @@ export default function HallsPage() {
                     }
                   }}
                   disabled={isSavingDateLayout || !selectedHall}
-                  className="text-amber-700 border-amber-200 hover:bg-amber-50"
+                  className="text-amber-700 border-amber-200 hover:bg-amber-50 h-9 px-3 flex-1 sm:flex-none"
                 >
-                  <History className="h-4 w-4 mr-2" />
-                  Сохранить для {format(new Date(selectedDate), 'd MMM', { locale: ru })}
+                  <History className="h-4 w-4 mr-2 flex-shrink-0" />
+                  <span className="whitespace-nowrap">
+                    {isMobile ? 'Сохранить' : `Сохранить для ${format(new Date(selectedDate), 'd MMM', { locale: ru })}`}
+                  </span>
                 </Button>
 
                 {currentDateLayout && (
@@ -1830,26 +1887,21 @@ export default function HallsPage() {
                       if (!confirm('Вернуть стандартное расположение для этой даты? Все изменения для этой конкретной даты будут удалены.')) return
                       await deleteDateLayout.mutate(currentDateLayout.id)
                     }}
-                    className="text-stone-500 hover:text-rose-600"
+                    className="text-stone-500 hover:text-rose-600 h-9 px-3 flex-1 sm:flex-none justify-start sm:justify-center"
                   >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Сбросить до стандарта
+                    <Trash2 className="h-4 w-4 mr-2 flex-shrink-0" />
+                    <span className="whitespace-nowrap">{isMobile ? 'Сбросить' : 'Сбросить до станд.'}</span>
                   </Button>
                 )}
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                 <Select
                   onValueChange={async (templateId) => {
                     const template = templates?.find(t => t.id === templateId)
                     if (!template || !selectedHall) return
 
                     if (!confirm(`Применить шаблон "${template.name}"? Это изменит текущее стандартное расположение столов в зале.`)) return
-
-                    // Apply template by updating standard tables/items
-                    // This is complex because we need to match tables or re-create them.
-                    // For now, let's assume standard layout editing is what the user wants.
-                    // Actually, a better "Apply" would be to just set it as the Date Layout.
 
                     await upsertDateLayout.mutate({
                       hall_id: selectedHall.id,
@@ -1860,8 +1912,8 @@ export default function HallsPage() {
                     alert('Шаблон применен к выбранной дате')
                   }}
                 >
-                  <SelectTrigger className="w-[180px] h-9">
-                    <SelectValue placeholder="Применить шаблон" />
+                  <SelectTrigger className="w-full sm:w-[180px] h-9 bg-white">
+                    <SelectValue placeholder={isMobile ? "Шаблон" : "Применить шаблон"} />
                   </SelectTrigger>
                   <SelectContent>
                     {templates?.map(t => (
@@ -1877,9 +1929,10 @@ export default function HallsPage() {
                   variant="outline"
                   size="sm"
                   onClick={() => setIsTemplateDialogOpen(true)}
+                  className="h-9 px-3 bg-white flex-1 sm:flex-none"
                 >
-                  <Copy className="h-4 w-4 mr-2" />
-                  Сохранить как шаблон
+                  <Copy className="h-4 w-4 mr-2 flex-shrink-0" />
+                  <span className="whitespace-nowrap">{isMobile ? 'В шаблон' : 'Сохранить в шаблон'}</span>
                 </Button>
               </div>
             </div>
@@ -1963,22 +2016,7 @@ export default function HallsPage() {
                           transform: `rotate(${rot}deg)`,
                           transformOrigin: 'center center',
                         }}
-                        onDoubleClick={() => {
-                          setEditingLayoutItem(item)
-                          setLayoutForm({
-                            hall_id: item.hall_id,
-                            type: item.type,
-                            text: item.text || '',
-                            position_x: pos.x,
-                            position_y: pos.y,
-                            width: size.w,
-                            height: size.h,
-                            rotation: rot,
-                            color: item.color || '#1f2937',
-                            bg_color: item.bg_color || '#ffffff',
-                          })
-                          setIsLayoutDialogOpen(true)
-                        }}
+                        onDoubleClick={() => handleOpenLayoutEditor(item)}
                       >
                         <div
                           className="w-full h-full flex items-center justify-center text-sm text-stone-800 pointer-events-none"
@@ -2066,20 +2104,7 @@ export default function HallsPage() {
                           transform: `rotate(${rot}deg)`,
                           transformOrigin: 'center center',
                         }}
-                        onDoubleClick={() => {
-                          setEditingTable(table)
-                          setTableForm({
-                            hall_id: selectedHall.id,
-                            number: table.number,
-                            capacity: table.capacity,
-                            position_x: pos.x,
-                            position_y: pos.y,
-                            width: size.w,
-                            height: size.h,
-                            shape: table.shape,
-                          })
-                          setIsTableDialogOpen(true)
-                        }}
+                        onDoubleClick={() => handleOpenTableEditor(table)}
                       >
                         {reservation && (
                           <span
