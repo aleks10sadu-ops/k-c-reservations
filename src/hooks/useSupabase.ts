@@ -20,7 +20,8 @@ import {
   StaffShift,
   HealthBook,
   HallLayoutTemplate,
-  HallDateLayout
+  HallDateLayout,
+  ReservationSetting
 } from '@/types'
 
 // Global Event for cross-hook synchronization
@@ -728,6 +729,17 @@ export function useHealthBooks() {
     '*, staff:staff (*)',
     undefined,
     { column: 'expires_at' }
+  )
+}
+
+// ==================== SETTINGS ====================
+
+export function useReservationSettings() {
+  return useSupabaseQuery<ReservationSetting>(
+    'reservation_settings',
+    '*',
+    undefined,
+    { column: 'key' }
   )
 }
 

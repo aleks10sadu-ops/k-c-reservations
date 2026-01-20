@@ -12,7 +12,8 @@ import {
   ReservationStatus,
   GuestStatus,
   MenuItemType,
-  CustomMenuItemType
+  CustomMenuItemType,
+  ReservationSetting
 } from '@/types'
 
 // ==================== HALLS ====================
@@ -1110,4 +1111,34 @@ export async function syncReservationMainMenuItemsServerAction(
   } catch (error: any) {
     return { success: false, error: error.message || 'Unknown error' }
   }
+}
+// ==================== SETTINGS ====================
+
+export async function getReservationSettings(): Promise<ReservationSetting[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('reservation_settings')
+    .select('*')
+
+  if (error) {
+    return []
+  }
+
+  return data || []
+}
+
+export async function updateReservationSetting(key: string, value: any): Promise<ReservationSetting | null> {
+  const supabase = createServiceRoleClient()
+  const { data, error } = await supabase
+    .from('reservation_settings')
+    .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' })
+    .select()
+    .single()
+
+  if (error) {
+    console.error('Error updating reservation setting:', error)
+    return null
+  }
+
+  return data
 }

@@ -36,6 +36,7 @@ const navigationItems: { name: string; href: string; icon: any; roles: UserRole[
   { name: 'Оплата', href: '/payments', icon: CreditCard, roles: ['admin', 'director', 'manager'] },
   { name: 'Персонал', href: '/staff', icon: Briefcase, roles: ['waiter', 'admin', 'director', 'manager'] },
   { name: 'Аудит', href: '/audit', icon: History, roles: ['director', 'manager'] },
+  { name: 'Настройки', href: '/reservations/settings', icon: Table2, roles: ['admin', 'director', 'manager'] },
 ]
 
 export function Header() {

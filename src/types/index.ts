@@ -274,6 +274,14 @@ export interface Reservation {
   updated_at: string
 }
 
+// Настройки бронирования
+export interface ReservationSetting {
+  id: string
+  key: string
+  value: any
+  updated_at: string
+}
+
 // Пользователь (админ)
 export interface User {
   id: string

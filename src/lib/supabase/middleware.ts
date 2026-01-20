@@ -39,11 +39,13 @@ export async function updateSession(request: NextRequest) {
     console.error('Middleware auth error:', e)
   }
 
-  // Protect all routes except login
+  // Protect all routes except login and public API
   if (
     !user &&
     !request.nextUrl.pathname.startsWith('/login') &&
-    !request.nextUrl.pathname.startsWith('/auth')
+    !request.nextUrl.pathname.startsWith('/auth') &&
+    !request.nextUrl.pathname.startsWith('/api/reservations/public') &&
+    !request.nextUrl.pathname.startsWith('/api/settings/public')
   ) {
     // no user, redirect to login page
     const url = request.nextUrl.clone()
@@ -51,18 +53,15 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // IMPORTANT: You *must* return the supabaseResponse object as it is. If you're
-  // creating a new response object with NextResponse.next() make sure to:
-  // 1. Pass the request in it, like so:
-  //    const myNewResponse = NextResponse.next({ request })
-  // 2. Copy over the cookies, like so:
-  //    myNewResponse.cookies.setAll(supabaseResponse.cookies.getAll())
-  // 3. Change the myNewResponse object to fit your needs, but avoid changing
-  //    the cookies!
-  // 4. Finally:
-  //    return myNewResponse
-  // If this is not done, you may be causing the browser and server to go out
-  // of sync and terminate the user's session prematurely!
+  // Add CORS headers for public API routes
+  if (
+    request.nextUrl.pathname.startsWith('/api/reservations/public') ||
+    request.nextUrl.pathname.startsWith('/api/settings/public')
+  ) {
+    supabaseResponse.headers.set('Access-Control-Allow-Origin', '*')
+    supabaseResponse.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, DELETE, PUT')
+    supabaseResponse.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  }
 
   return supabaseResponse
 }
