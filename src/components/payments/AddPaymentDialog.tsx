@@ -101,11 +101,15 @@ export function AddPaymentDialog({
 
                     let newStatus = updatedReservation.status
 
-                    if (updatedReservation.prepaid_amount >= updatedReservation.total_amount) {
+
+                    if (updatedReservation.prepaid_amount > 0 && (newStatus === 'new' || newStatus === 'confirmed')) {
+                        // Любая оплата переводит в статус "Оплата внесена" (paid)
+                        // Если уже completed/canceled/in_progress, наверно не стоит менять?
+                        // Пользователь просил: "Статус Предоплата внесена убери пусть останется только статус Оплата внесена"
+                        // И "необходимо поменять функционал статуса Полностью оплачено чтобы этот статус применялся и при первой оплате"
                         newStatus = 'paid'
-                    } else if (updatedReservation.prepaid_amount > 0 && (newStatus === 'new' || newStatus === 'in_progress')) {
-                        newStatus = 'prepaid'
                     }
+
 
                     if (newStatus !== updatedReservation.status) {
                         await updateReservation.mutate(selectedReservationId, {

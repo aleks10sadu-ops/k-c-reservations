@@ -1,11 +1,13 @@
 // Статусы бронирования
 export type ReservationStatus =
   | 'new'           // Новая бронь - Серый
-  | 'in_progress'   // Взято в работу - Бежевый
-  | 'prepaid'       // Предоплата внесена - Нежный голубой
-  | 'paid'          // Полностью оплачено - Нежный зелёный
-  | 'canceled'      // Отмена брони - Нежный красный
-  | 'completed'     // Завершено - Приятный фиолетовый
+  | 'confirmed'     // Взято в работу - Бежевый
+  | 'in_progress'   // За столом - Синий
+  | 'paid'          // Оплата внесена - Зелёный
+  | 'canceled'      // Отмена брони - Красный
+  | 'completed'     // Завершено - Фиолетовый
+
+// ... (existing code)
 
 // Статусы гостей
 export type GuestStatus =
@@ -368,20 +370,20 @@ export const RESERVATION_STATUS_CONFIG: Record<ReservationStatus, {
     bgColor: '#F3F4F6',
     borderColor: '#D1D5DB',
   },
+  confirmed: {
+    label: 'Взято в работу',
+    color: '#A16207',
+    bgColor: '#FEF9C3',
+    borderColor: '#FDE047',
+  },
   in_progress: {
     label: 'За столом',
     color: '#2563EB',
     bgColor: '#EFF6FF',
     borderColor: '#60A5FA',
   },
-  prepaid: {
-    label: 'Предоплата внесена',
-    color: '#1E40AF',
-    bgColor: '#DBEAFE',
-    borderColor: '#3B82F6',
-  },
   paid: {
-    label: 'Полностью оплачено',
+    label: 'Оплата внесена',
     color: '#166534',
     bgColor: '#DCFCE7',
     borderColor: '#22C55E',

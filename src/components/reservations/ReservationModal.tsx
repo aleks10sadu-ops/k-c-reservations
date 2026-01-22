@@ -139,8 +139,8 @@ export function ReservationModal({
   const getStatusVariant = (status: ReservationStatus) => {
     const variants = {
       new: 'new' as const,
+      confirmed: 'inProgress' as const, // Using inProgress variant style for confirmed if no specific one exists
       in_progress: 'inProgress' as const,
-      prepaid: 'prepaid' as const,
       paid: 'paid' as const,
       canceled: 'canceled' as const,
       completed: 'completed' as const,
@@ -446,7 +446,7 @@ export function ReservationModal({
     })
   }, [currentReservation, initialMode, isOpen, initialDate, halls, menus, preselectedTableId, preselectedHallId, preselectedDate])
 
-  const statusOptions: ReservationStatus[] = ['new', 'in_progress', 'prepaid', 'paid', 'canceled', 'completed']
+  const statusOptions: ReservationStatus[] = ['new', 'confirmed', 'in_progress', 'paid', 'canceled', 'completed']
 
   // Инициализируем selectedSalads при переходе в режим редактирования или при выборе меню
   useEffect(() => {
@@ -763,15 +763,21 @@ export function ReservationModal({
       return
     }
 
-    // Автоматически меняем статус с "new" на "in_progress" при любом изменении
+
+    // Автоматические переходы статусов
     let statusToSave = formData.status
-    if (currentReservation && currentReservation.status === 'new' && formData.status === 'new') {
-      // Если статус был "new" и мы что-то изменяем, автоматически переводим в "in_progress"
-      statusToSave = 'in_progress'
-    }
-    // If prepayment is added for a new reservation, set status to 'prepaid'
-    if (mode === 'create' && prepaymentAmount > 0 && statusToSave === 'new') {
-      statusToSave = 'prepaid'
+
+    if (mode === 'create') {
+      if (formData.is_walk_in) {
+        // Быстрая бронь -> Сразу "За столом"
+        statusToSave = 'in_progress'
+      }
+    } else {
+      // Редактирование
+      if (currentReservation && currentReservation.status === 'new' && formData.status === 'new') {
+        // Если статус был "new" и мы что-то изменяем, переводим в "confirmed" (Взято в работу)
+        statusToSave = 'confirmed'
+      }
     }
 
 
