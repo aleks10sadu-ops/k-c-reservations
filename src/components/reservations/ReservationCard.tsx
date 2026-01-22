@@ -17,8 +17,8 @@ export function ReservationCard({ reservation, onClick, compact = false }: Reser
 
   const statusVariant = {
     new: 'new' as const,
+    confirmed: 'confirmed' as const,
     in_progress: 'inProgress' as const,
-    prepaid: 'prepaid' as const,
     paid: 'paid' as const,
     canceled: 'canceled' as const,
     completed: 'completed' as const,

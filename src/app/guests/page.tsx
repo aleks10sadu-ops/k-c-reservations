@@ -534,7 +534,7 @@ export default function GuestsPage() {
                                   <Badge
                                     variant={reservation.status === 'new' ? 'new' :
                                       reservation.status === 'in_progress' ? 'inProgress' :
-                                        reservation.status === 'prepaid' ? 'prepaid' : 'paid'}
+                                        reservation.status === 'confirmed' ? 'inProgress' : 'paid'}
                                   >
                                     {statusConfig.label}
                                   </Badge>

@@ -94,9 +94,9 @@ export function AddPaymentDialog({
                     .single()
 
                 if (updatedReservation) {
-                    // If prepaid_amount became > 0 (was 0), set to prepaid
+                    // If prepaid_amount became > 0 (was 0)
                     // We can't easily check "was 0" without previous data, but logic is:
-                    // If status is 'new'/'in_progress' and now has money -> 'prepaid'
+                    // If status is 'new'/'confirmed' and now has money -> 'paid'
                     // If fully paid -> 'paid'
 
                     let newStatus = updatedReservation.status

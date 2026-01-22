@@ -201,9 +201,9 @@ body {
   border-color: #F59E0B;
 }
 
-.status-prepaid {
-  background-color: #DBEAFE;
-  border-color: #3B82F6;
+.status-confirmed {
+  background-color: #FEF9C3;
+  border-color: #FDE047;
 }
 
 .status-paid {
@@ -940,6 +940,7 @@ body[style*="position: fixed"] div[style*="height: 200px"] {
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }

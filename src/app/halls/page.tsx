@@ -986,7 +986,7 @@ export default function HallsPage() {
                                     key={table.id}
                                     variant={reservation ?
                                       (reservation.status === 'paid' ? 'paid' :
-                                        reservation.status === 'prepaid' ? 'prepaid' :
+                                        reservation.status === 'confirmed' ? 'confirmed' :
                                           reservation.status === 'in_progress' ? 'inProgress' :
                                             reservation.status === 'canceled' ? 'canceled' : 'new')
                                       : 'outline'
@@ -1313,8 +1313,8 @@ export default function HallsPage() {
                                     </div>
                                     <Badge
                                       variant={reservation.status === 'new' ? 'new' :
-                                        reservation.status === 'in_progress' ? 'inProgress' :
-                                          reservation.status === 'prepaid' ? 'prepaid' :
+                                        reservation.status === 'confirmed' ? 'confirmed' :
+                                          reservation.status === 'in_progress' ? 'inProgress' :
                                             reservation.status === 'paid' ? 'paid' :
                                               reservation.status === 'completed' ? 'completed' : 'canceled'}
                                     >

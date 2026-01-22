@@ -314,7 +314,7 @@ export default function PaymentsPage() {
                                 <Badge
                                   variant={reservation.status === 'new' ? 'new' :
                                     reservation.status === 'in_progress' ? 'inProgress' :
-                                      reservation.status === 'prepaid' ? 'prepaid' : 'canceled'}
+                                      reservation.status === 'confirmed' ? 'confirmed' : 'canceled'}
                                 >
                                   {statusConfig.label}
                                 </Badge>

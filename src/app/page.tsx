@@ -206,8 +206,8 @@ export default function HomePage() {
   const stats = useMemo(() => ({
     total: reservations.length,
     new: reservations.filter(r => r.status === 'new').length,
+    confirmed: reservations.filter(r => r.status === 'confirmed').length,
     inProgress: reservations.filter(r => r.status === 'in_progress').length,
-    prepaid: reservations.filter(r => r.status === 'prepaid').length,
     paid: reservations.filter(r => r.status === 'paid').length,
     canceled: reservations.filter(r => r.status === 'canceled').length,
     completed: reservations.filter(r => r.status === 'completed').length,
@@ -349,8 +349,8 @@ export default function HomePage() {
                   <Loader2 className="h-5 w-5 sm:h-6 sm:w-6 animate-spin" />
                 ) : (
                   status === 'new' ? stats.new :
-                    status === 'in_progress' ? stats.inProgress :
-                      status === 'prepaid' ? stats.prepaid :
+                    status === 'confirmed' ? stats.confirmed :
+                      status === 'in_progress' ? stats.inProgress :
                         status === 'paid' ? stats.paid : stats.canceled
                 )}
               </p>
@@ -479,8 +479,8 @@ export default function HomePage() {
                                   <Badge
                                     variant={
                                       reservation.status === 'new' ? 'new' :
-                                        reservation.status === 'in_progress' ? 'inProgress' :
-                                          reservation.status === 'prepaid' ? 'prepaid' :
+                                        reservation.status === 'confirmed' ? 'confirmed' :
+                                          reservation.status === 'in_progress' ? 'inProgress' :
                                             reservation.status === 'paid' ? 'paid' : 'canceled'
                                     }
                                     className="text-[10px] px-1.5 py-0.5 flex-shrink-0"
@@ -529,8 +529,9 @@ export default function HomePage() {
                   {statusFilter !== 'all' && (
                     <Badge
                       variant={statusFilter === 'new' ? 'new' :
-                        statusFilter === 'in_progress' ? 'inProgress' :
-                          statusFilter === 'prepaid' ? 'prepaid' : 'paid'}
+                        statusFilter === 'confirmed' ? 'confirmed' :
+                          statusFilter === 'in_progress' ? 'inProgress' :
+                            statusFilter === 'paid' ? 'paid' : 'canceled'}
                       className="cursor-pointer text-xs px-2 py-1 gap-1 h-7 border-0"
                       onClick={() => setStatusFilter('all')}
                     >
