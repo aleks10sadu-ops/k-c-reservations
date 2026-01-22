@@ -18,7 +18,7 @@ import {
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { useAuth, UserRole } from '@/hooks/use-auth'
-import { History, Briefcase, Table2 } from 'lucide-react'
+import { History, Briefcase } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,7 +36,6 @@ const navigationItems: { name: string; href: string; icon: any; roles: UserRole[
   { name: 'Оплата', href: '/payments', icon: CreditCard, roles: ['admin', 'director', 'manager'] },
   { name: 'Персонал', href: '/staff', icon: Briefcase, roles: ['waiter', 'admin', 'director', 'manager'] },
   { name: 'Аудит', href: '/audit', icon: History, roles: ['director', 'manager'] },
-  { name: 'Настройки', href: '/reservations/settings', icon: Table2, roles: ['admin', 'director', 'manager'] },
 ]
 
 export function Header() {
