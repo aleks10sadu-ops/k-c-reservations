@@ -1,4 +1,17 @@
 // Статусы бронирования
+export interface Notification {
+  id: string
+  type: string
+  title: string
+  message: string
+  recipient_role_id?: string
+  recipient_staff_id?: string
+  link?: string
+  is_read: boolean
+  data?: any
+  created_at: string
+}
+
 export type ReservationStatus =
   | 'new'           // Новая бронь - Серый
   | 'confirmed'     // Взято в работу - Бежевый

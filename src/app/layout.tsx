@@ -3,6 +3,8 @@ import { Onest } from "next/font/google"
 import "./globals.css"
 import { Header } from "@/components/layout/Header"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { Toaster } from "@/components/ui/sonner"
+import { NotificationProvider } from "@/components/providers/NotificationProvider"
 
 const onest = Onest({
   subsets: ["latin", "cyrillic"],
@@ -38,12 +40,15 @@ export default function RootLayout({
       <body className="min-h-screen bg-background font-sans antialiased">
         <AuthProvider>
           <TooltipProvider>
-            <div className="relative flex min-h-screen flex-col">
-              <Header />
-              <main className="flex-1">
-                {children}
-              </main>
-            </div>
+            <NotificationProvider>
+              <div className="relative flex min-h-screen flex-col">
+                <Header />
+                <main className="flex-1">
+                  {children}
+                </main>
+              </div>
+              <Toaster />
+            </NotificationProvider>
           </TooltipProvider>
         </AuthProvider>
       </body>

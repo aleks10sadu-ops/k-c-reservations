@@ -27,6 +27,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { NotificationBell } from '@/components/notifications/NotificationBell'
 
 const navigationItems: { name: string; href: string; icon: any; roles: UserRole[] }[] = [
   { name: 'Бронирования', href: '/', icon: CalendarDays, roles: ['admin', 'director', 'manager'] },
@@ -115,6 +116,7 @@ export function Header() {
 
         {/* User Menu & Mobile Button */}
         <div className="flex items-center gap-3">
+          <NotificationBell />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-10 w-10 rounded-full">
