@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { toast } from 'sonner'
@@ -34,6 +34,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     const [isLoading, setIsLoading] = useState(true)
     const supabase = createClient()
 
+    // Use ref to track the latest notification ID to avoid stale closures in subscription
+    const lastNotificationIdRef = useRef<string | null>(null)
+    const lastPollTimeRef = useRef(new Date().toISOString())
+    const [isRealtimeConnected, setIsRealtimeConnected] = useState(false)
+
     // Initial fetch
     const fetchState = async () => {
         try {
@@ -43,6 +48,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             ])
             setUnreadCount(count)
             setNotifications(list)
+
+            // Update ref
+            if (list.length > 0) {
+                lastNotificationIdRef.current = list[0].id
+            }
         } catch (error) {
             console.error('Error fetching notification state:', error)
         } finally {
@@ -62,7 +72,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
         // Subscribe to changes
         const channel = supabase
-            .channel('public:notifications')
+            .channel(`notifications:${user.id}`)
             .on(
                 'postgres_changes',
                 {
@@ -70,45 +80,80 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
                     schema: 'public',
                     table: 'notifications',
                 },
-                async (payload) => {
-                    // Optimization: Realtime broadcasts to everyone. We must filter.
-                    // Since we don't have all IDs handy to filter efficiently client-side without leaks,
-                    // we rely on the server action (which obeys RLS) to tell us if we have something new.
+                (payload: any) => {
+                    const newNotification = payload.new as Notification
 
-                    const previousTopId = notifications.length > 0 ? notifications[0].id : null
+                    if (!newNotification || !newNotification.id) return
 
-                    // Refetch state from server (secure)
-                    const [count, list] = await Promise.all([
-                        getUnreadCount(),
-                        getNotifications(1) // Just need the top one to check
-                    ])
+                    // Deduplicate events
+                    if (newNotification.id === lastNotificationIdRef.current) return
+                    lastNotificationIdRef.current = newNotification.id
 
-                    // If we have a new item at the top that wasn't there before, it's a new notification FOR US
-                    const newTopItem = list.length > 0 ? list[0] : null
+                    // Update lastPollTime to prevent polling overlap
+                    lastPollTimeRef.current = newNotification.created_at
 
-                    if (newTopItem && newTopItem.id !== previousTopId) {
-                        // It's a new, relevant notification!
-                        toast(newTopItem.title, {
-                            description: newTopItem.message,
-                            action: newTopItem.link ? {
-                                label: 'Перейти',
-                                onClick: () => window.location.href = newTopItem.link!
-                            } : undefined
-                        })
+                    toast(newNotification.title, {
+                        description: newNotification.message,
+                        action: newNotification.link ? {
+                            label: 'Перейти',
+                            onClick: () => window.location.href = newNotification.link!
+                        } : undefined
+                    })
 
-                        // Update full state
-                        setUnreadCount(count)
-                        // We could optimize and just unshift, but let's do a full fetch to be safe or just trigger the full fetch now
-                        fetchState()
-                    }
+                    fetchState()
                 }
             )
-            .subscribe()
+            .subscribe((status: any) => {
+                setIsRealtimeConnected(status === 'SUBSCRIBED')
+            })
 
         return () => {
             supabase.removeChannel(channel)
         }
     }, [user, role])
+
+    // Fallback polling for notifications
+    useEffect(() => {
+        if (isRealtimeConnected || !user) return
+
+        const interval = setInterval(async () => {
+            try {
+                // Fetch notifications created AFTER the last known time
+                const { data } = await supabase
+                    .from('notifications')
+                    .select('*')
+                    .gt('created_at', lastPollTimeRef.current)
+                    // If multiple notifications in 2s, sort by oldest first to update LastPollTime incrementally?
+                    // No, sort by created_at ASC so we process them in order
+                    .order('created_at', { ascending: true })
+
+                if (data && data.length > 0) {
+                    // Update timestamp to the newest one
+                    lastPollTimeRef.current = data[data.length - 1].created_at
+
+                    data.forEach((newNotification: any) => {
+                        // Dedup
+                        if (newNotification.id === lastNotificationIdRef.current) return
+                        lastNotificationIdRef.current = newNotification.id
+
+                        toast(newNotification.title, {
+                            description: newNotification.message,
+                            action: newNotification.link ? {
+                                label: 'Перейти',
+                                onClick: () => window.location.href = newNotification.link!
+                            } : undefined
+                        })
+                    })
+
+                    fetchState()
+                }
+            } catch (err) {
+                console.error('Polling notifications error:', err)
+            }
+        }, 2000)
+
+        return () => clearInterval(interval)
+    }, [isRealtimeConnected, user])
 
     const markAllAsReadClient = async () => {
         // Optimistic update

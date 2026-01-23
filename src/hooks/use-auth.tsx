@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { User } from '@supabase/supabase-js'
+import { User, AuthChangeEvent, Session } from '@supabase/supabase-js'
 
 export type UserRole = 'guest' | 'waiter' | 'admin' | 'director' | 'manager'
 
@@ -111,7 +111,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // We use onAuthStateChange with initial session instead of manual getUser
         // this is more reliable in newer supabase-js versions
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
-            async (event, session) => {
+            async (event: AuthChangeEvent, session: Session | null) => {
                 console.log('[Auth] onAuthStateChange event:', event)
 
                 // Only process major auth events or the initial session

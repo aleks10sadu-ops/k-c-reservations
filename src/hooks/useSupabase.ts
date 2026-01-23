@@ -45,6 +45,9 @@ export function useSupabaseQuery<T>(
   const [loading, setLoading] = useState(!skip)
   const [error, setError] = useState<string | null>(null)
 
+  // Use stable client instance
+  const supabase = useMemo(() => createClient(), [])
+
   const tableNames = useMemo(() =>
     Array.isArray(tableName) ? tableName : [tableName],
     [JSON.stringify(tableName)]
@@ -70,7 +73,6 @@ export function useSupabaseQuery<T>(
     setError(null)
 
     try {
-      const supabase = createClient()
       let query = supabase.from(primaryTable).select(selectQuery)
 
       if (filters) {
@@ -113,7 +115,7 @@ export function useSupabaseQuery<T>(
         setLoading(false)
       }
     }
-  }, [primaryTable, selectQuery, filterStr, orderStr, skip])
+  }, [primaryTable, selectQuery, filterStr, orderStr, skip, supabase])
 
   const fetchTimerRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -138,7 +140,6 @@ export function useSupabaseQuery<T>(
   useEffect(() => {
     if (skip) return
 
-    const supabase = createClient()
     const channel = supabase.channel(`${primaryTable}_multi_changes`)
 
     tableNames.forEach((table: string) => {
@@ -149,12 +150,14 @@ export function useSupabaseQuery<T>(
       )
     })
 
-    channel.subscribe()
+    channel.subscribe((status: any) => {
+      // console.log(`Subscription status for ${primaryTable}:`, status)
+    })
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [memoizedTableName, fetchData, skip, primaryTable])
+  }, [memoizedTableName, debouncedFetch, skip, primaryTable, supabase])
 
   // Subscribe to global data change events (manual triggers)
   useEffect(() => {
@@ -169,7 +172,7 @@ export function useSupabaseQuery<T>(
       window.addEventListener(DATA_CHANGE_EVENT, handleGlobalChange)
       return () => window.removeEventListener(DATA_CHANGE_EVENT, handleGlobalChange)
     }
-  }, [memoizedTableName, fetchData])
+  }, [memoizedTableName, debouncedFetch]) // debouncedFetch stable? yes
 
   return {
     data,
@@ -324,6 +327,10 @@ export function useReservations(filters?: {
   const [data, setData] = useState<Reservation[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isRealtimeConnected, setIsRealtimeConnected] = useState(false)
+
+  // Use stable client instance
+  const supabase = useMemo(() => createClient(), [])
 
   const fetchData = useCallback(async (silent: boolean = false) => {
     if (!silent) {
@@ -436,54 +443,85 @@ export function useReservations(filters?: {
 
         return { ...row, tables, table_ids, selected_menu_items, main_menu_items, prepaid_amount }
       })
-      setData(normalized as Reservation[])
+
+      setData(prev => {
+        // Deep comparison to prevent unnecessary re-renders
+        if (JSON.stringify(prev) === JSON.stringify(normalized)) return prev
+        return normalized as Reservation[]
+      })
     } catch (err: any) {
       setError(err.message)
     } finally {
       setLoading(false)
     }
-  }, [JSON.stringify(filters)])
+  }, [JSON.stringify(filters), supabase])
+
+  // Debounce fetch for realtime updates to prevent spamming
+  const fetchTimerRef = useRef<NodeJS.Timeout | null>(null)
+
+  const debouncedFetch = useCallback(() => {
+    if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current)
+    fetchTimerRef.current = setTimeout(() => {
+      fetchData(true) // Silent refresh
+    }, 100)
+  }, [fetchData])
 
   useEffect(() => {
     fetchData()
+    return () => {
+      if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current)
+    }
   }, [fetchData])
 
   // Subscribe to changes
   useEffect(() => {
-    const supabase = createClient()
+    // Use a stable channel name to prevent excessive reconnections
     const channel = supabase
-      .channel('reservations_realtime')
+      .channel('reservations_updates')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'reservations' },
-        () => fetchData()
+        () => debouncedFetch()
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'payments' },
-        () => fetchData()
+        () => debouncedFetch()
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'reservation_tables' },
-        () => fetchData()
+        () => debouncedFetch()
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'reservation_menu_items' },
-        () => fetchData()
+        () => debouncedFetch()
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'reservation_main_menu_items' },
-        () => fetchData()
+        () => debouncedFetch()
       )
-      .subscribe()
+      .subscribe((status: any) => {
+        setIsRealtimeConnected(status === 'SUBSCRIBED')
+      })
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [fetchData])
+  }, [debouncedFetch, supabase])
+
+  // Fallback polling if realtime fails (e.g. Yandex Browser blocking WebSocket)
+  useEffect(() => {
+    if (isRealtimeConnected) return
+
+    const interval = setInterval(() => {
+      fetchData(true)
+    }, 2000)
+
+    return () => clearInterval(interval)
+  }, [isRealtimeConnected, fetchData])
 
   // Subscribe to global data change events (manual triggers)
   useEffect(() => {
@@ -521,7 +559,7 @@ export async function searchReservations(query: string) {
       .or(`last_name.ilike.%${trimmedQuery}%,first_name.ilike.%${trimmedQuery}%,phone.ilike.%${trimmedQuery}%`)
 
     if (guestError) throw guestError
-    const guestIds = guests?.map(g => g.id) || []
+    const guestIds = guests?.map((g: { id: string }) => g.id) || []
 
     // 2. Then search reservations matching comments OR the found guest IDs
     let queryBuilder = supabase

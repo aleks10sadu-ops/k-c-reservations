@@ -117,6 +117,13 @@ export function ReservationModal({
     }
   }, [mode])
 
+  // Reset mode when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setMode(initialMode)
+    }
+  }, [isOpen, initialMode])
+
   // Используем локальное состояние, если оно есть, иначе проп
   const { data: reservations, refetch: refetchReservations } = useReservations()
 
@@ -191,6 +198,32 @@ export function ReservationModal({
   // Payment state for new reservations
   const [prepaymentAmount, setPrepaymentAmount] = useState<number>(0)
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false)
+
+  // State for change tracking
+  const [hasChanges, setHasChanges] = useState(false)
+  const [initialStateJson, setInitialStateJson] = useState('')
+
+  // Helper to serialize current form state
+  const serializeState = () => {
+    return JSON.stringify({
+      formData,
+      selectedTables: [...selectedTables].sort(),
+      selectedSalads: [...selectedSalads].sort(),
+      itemOverrides,
+      adHocItems,
+      mainMenuSelections: mainMenuSelections.map(i => ({ ...i, id: undefined })), // Exclude IDs which might be temp
+      newGuestData
+    })
+  }
+
+  // Update change status
+  useEffect(() => {
+    // Skip check if still initializing
+    if (!initialStateJson) return
+
+    const currentState = serializeState()
+    setHasChanges(currentState !== initialStateJson)
+  }, [formData, selectedTables, selectedSalads, itemOverrides, adHocItems, mainMenuSelections, newGuestData, initialStateJson])
 
   // Fetch data
   const { data: halls } = useHalls()
@@ -306,12 +339,24 @@ export function ReservationModal({
 
   // Reset form when modal opens or reservation changes
   useEffect(() => {
-    if (!isOpen) return
-    queueMicrotask(() => {
-      setMode(initialMode)
+    if (!isOpen) {
+      setHasChanges(false) // Reset changes on close
+      return
+    }
+
+    // We use a small timeout to let the modal open animation start smoothly
+    const timer = setTimeout(() => {
+      // setMode(initialMode) // REMOVED: This was causing the reset bug on background updates
+
+      let newFormData = { ...formData }
+      let newSelectedTables: string[] = []
+      let newSelectedSalads: string[] = []
+      let newItemOverrides: Record<string, Partial<ReservationMenuItem>> = {}
+      let newAdHocItems: ReservationMenuItem[] = []
+      let newMainMenuSelections: ReservationMainMenuItem[] = []
 
       if (currentReservation && initialMode !== 'create') {
-        setFormData({
+        newFormData = {
           date: currentReservation.date,
           time: currentReservation.time,
           hall_id: currentReservation.hall_id,
@@ -327,7 +372,8 @@ export function ReservationModal({
           menu_type: currentReservation.menu_type || 'banquet',
           waiter_id: currentReservation.waiter_id || '',
           is_walk_in: currentReservation.is_walk_in || false
-        })
+        }
+
         const initialLinkIds =
           currentReservation.table_ids?.length
             ? currentReservation.table_ids
@@ -344,17 +390,14 @@ export function ReservationModal({
           .filter(t => linkedNumbers.includes(t.number) || initialLinkIds.includes(t.id))
           .map(t => t.id)
 
-        const finalInitialTables = Array.from(new Set([...initialLinkIds, ...expandedIds]))
-
-        setSelectedTables(finalInitialTables)
-        setDraftTables(finalInitialTables)
+        newSelectedTables = Array.from(new Set([...initialLinkIds, ...expandedIds]))
 
         // Инициализируем выбранные салаты и переопределения из сохраненных данных
         if (currentReservation.selected_menu_items?.length) {
           const selectedIds = currentReservation.selected_menu_items
             .filter(rmi => rmi.is_selected && rmi.menu_item_id)
             .map(rmi => rmi.menu_item_id as string)
-          setSelectedSalads(selectedIds)
+          newSelectedSalads = selectedIds
 
           const overrides: Record<string, Partial<ReservationMenuItem>> = {}
           const adHoc: ReservationMenuItem[] = []
@@ -374,34 +417,28 @@ export function ReservationModal({
               adHoc.push(rmi)
             }
           })
-          setItemOverrides(overrides)
-          setAdHocItems(adHoc)
+          newItemOverrides = overrides
+          newAdHocItems = adHoc
           setWasSaladsInitialized(true)
         } else {
-          setSelectedSalads([])
-          setItemOverrides({})
-          setAdHocItems([])
           setWasSaladsInitialized((initialMode as string) !== 'create')
         }
 
         // Initialize Main Menu Items
         if (currentReservation.menu_type === 'main_menu' && currentReservation.main_menu_items) {
-          setMainMenuSelections(currentReservation.main_menu_items)
-        } else {
-          setMainMenuSelections([])
+          newMainMenuSelections = currentReservation.main_menu_items
         }
       } else if (initialMode === 'create') {
-        // Определяем hall_id - приоритет preselectedHallId, затем hall стола, затем первый зал
+        // Определяем hall_id
         let hallId = preselectedHallId || ''
         if (!hallId && preselectedTableId) {
-          // Находим зал по столу (tables загружаются позже, поэтому используем halls[0])
           hallId = halls[0]?.id || ''
         }
         if (!hallId) {
           hallId = halls[0]?.id || ''
         }
 
-        setFormData({
+        newFormData = {
           date: preselectedDate || (initialDate ? formatInMoscow(initialDate, 'yyyy-MM-dd') : formatInMoscow(getNowInMoscow(), 'yyyy-MM-dd')),
           time: '18:00',
           hall_id: hallId,
@@ -414,38 +451,55 @@ export function ReservationModal({
           status: 'new',
           total_amount: 0,
           comments: '',
-          menu_type: 'main_menu', // Default to Main Menu
+          menu_type: 'main_menu',
           waiter_id: '',
           is_walk_in: false
-        })
-        // Устанавливаем выбранные столы если есть preselectedTableId
+        }
+
+        // Устанавливаем выбранные столы
         if (preselectedTableId) {
           const table = tables.find(t => t.id === preselectedTableId)
           const relatedIds = table
             ? tables.filter(t => t.hall_id === table.hall_id && t.number === table.number).map(t => t.id)
             : [preselectedTableId]
 
-          setSelectedTables(relatedIds)
-          setDraftTables(relatedIds)
-        } else {
-          setSelectedTables([])
-          setDraftTables([])
+          newSelectedTables = relatedIds
         }
-        setSelectedSalads([])
-        setMainMenuSelections([])
-        setItemOverrides({})
-        setAdHocItems([])
         setWasSaladsInitialized(false)
       }
+
+      setFormData(newFormData)
+      setSelectedTables(newSelectedTables)
+      setDraftTables(newSelectedTables)
+      setSelectedSalads(newSelectedSalads)
+      setItemOverrides(newItemOverrides)
+      setAdHocItems(newAdHocItems)
+      setMainMenuSelections(newMainMenuSelections)
+
       setShowSchemePicker(false)
       setShowMobileTablePicker(false)
       setShowDesktopTablePicker(false)
-      // Reset new guest form when modal opens/closes
       setShowNewGuest(false)
       setNewGuestData({ first_name: '', last_name: '', phone: '' })
       setPrepaymentAmount(0)
-    })
-  }, [currentReservation, initialMode, isOpen, initialDate, halls, menus, preselectedTableId, preselectedHallId, preselectedDate])
+
+      // SNAPSHOT INITIAL STATE
+      const initialState = JSON.stringify({
+        formData: newFormData,
+        selectedTables: [...newSelectedTables].sort(),
+        selectedSalads: [...newSelectedSalads].sort(),
+        itemOverrides: newItemOverrides,
+        adHocItems: newAdHocItems,
+        mainMenuSelections: newMainMenuSelections.map(i => ({ ...i, id: undefined })),
+        newGuestData: { first_name: '', last_name: '', phone: '' }
+      })
+      setInitialStateJson(initialState)
+      setHasChanges(false)
+
+    }, 0)
+
+    return () => clearTimeout(timer)
+  }, [currentReservation, initialMode, isOpen, initialDate, halls, menus, preselectedTableId, preselectedHallId, preselectedDate, tables])
 
   const statusOptions: ReservationStatus[] = ['new', 'confirmed', 'in_progress', 'paid', 'canceled', 'completed']
 
@@ -604,6 +658,7 @@ export function ReservationModal({
     if (currentReservation && confirm('Вы уверены что хотите удалить это бронирование?')) {
       const result = await deleteReservation.mutate(currentReservation.id)
       if (result) {
+        onClose() // Close modal immediately
         onSaveSuccess?.()
       }
     }
@@ -952,6 +1007,19 @@ export function ReservationModal({
           } as Reservation;
           setLocalReservation(finalReservation)
           setFormData(prev => ({ ...prev, status: statusToSave }))
+
+          // Update change tracking snapshot
+          const newSnapshot = JSON.stringify({
+            formData: { ...formData, status: statusToSave },
+            selectedTables: [...selectedTables].sort(),
+            selectedSalads: [...selectedSalads].sort(),
+            itemOverrides,
+            adHocItems,
+            mainMenuSelections: mainMenuSelections.map(i => ({ ...i, id: undefined })),
+            newGuestData: { first_name: '', last_name: '', phone: '' }
+          })
+          setInitialStateJson(newSnapshot)
+
           notifyDataChange('reservations')
           onSaveSuccess?.(finalReservation)
         }
@@ -1007,6 +1075,19 @@ export function ReservationModal({
           } as Reservation;
           setLocalReservation(finalReservation)
           setFormData(prev => ({ ...prev, status: statusToSave }))
+
+          // Update change tracking snapshot
+          const newSnapshot = JSON.stringify({
+            formData: { ...formData, status: statusToSave },
+            selectedTables: [...selectedTables].sort(),
+            selectedSalads: [...selectedSalads].sort(),
+            itemOverrides,
+            adHocItems,
+            mainMenuSelections: mainMenuSelections.map(i => ({ ...i, id: undefined })),
+            newGuestData: { first_name: '', last_name: '', phone: '' }
+          })
+          setInitialStateJson(newSnapshot)
+
           notifyDataChange('reservations')
           onSaveSuccess?.(finalReservation)
         }
@@ -2376,17 +2457,19 @@ export function ReservationModal({
                 >
                   Отмена
                 </Button>
-                <Button
-                  onClick={handleSave}
-                  disabled={isLoading || isGuestBlacklisted}
-                  className={cn(
-                    "h-11 sm:h-12 px-5 sm:px-8 rounded-2xl font-black text-[10px] sm:text-xs uppercase tracking-wider sm:tracking-[0.2em] shadow-lg shadow-amber-500/20 transition-all active:scale-95",
-                    isGuestBlacklisted ? "bg-stone-100 text-stone-400" : "bg-amber-600 hover:bg-amber-700 text-white"
-                  )}
-                >
-                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1 sm:mr-2" /> : <Save className="h-4 w-4 mr-1 sm:mr-2" />}
-                  {isGuestBlacklisted ? 'ЧС' : 'Сохранить'}
-                </Button>
+                {(hasChanges || (mode === 'create' && !currentReservation?.id)) && (
+                  <Button
+                    onClick={handleSave}
+                    disabled={isLoading || isGuestBlacklisted}
+                    className={cn(
+                      "h-11 sm:h-12 px-5 sm:px-8 rounded-2xl font-black text-[10px] sm:text-xs uppercase tracking-wider sm:tracking-[0.2em] shadow-lg shadow-amber-500/20 transition-all active:scale-95",
+                      isGuestBlacklisted ? "bg-stone-100 text-stone-400" : "bg-amber-600 hover:bg-amber-700 text-white"
+                    )}
+                  >
+                    {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1 sm:mr-2" /> : <Save className="h-4 w-4 mr-1 sm:mr-2" />}
+                    {isGuestBlacklisted ? 'ЧС' : 'Сохранить'}
+                  </Button>
+                )}
               </div>
             </div>
           )

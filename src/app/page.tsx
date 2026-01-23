@@ -1,5 +1,7 @@
 "use client"
 
+import { Suspense } from 'react'
+
 import { useMemo, useState, useEffect, useRef } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Plus, Filter, Search, Loader2, X, Clock, MapPin, Users } from 'lucide-react'
@@ -17,21 +19,30 @@ import { endOfMonth, format, startOfMonth, startOfYear, endOfYear } from 'date-f
 import { ru } from 'date-fns/locale'
 
 import { useAuth } from '@/hooks/use-auth'
-import { redirect } from 'next/navigation'
+/* eslint-disable @typescript-eslint/no-unused-vars */
+import { useRouter, useSearchParams, redirect } from 'next/navigation'
+/* eslint-enable @typescript-eslint/no-unused-vars */
 
-export default function HomePage() {
+function DashboardContent() {
   const { user, role, isLoading, signOut } = useAuth()
+  const searchParams = useSearchParams()
+  const router = useRouter()
+
   const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [modalMode, setModalMode] = useState<'view' | 'edit' | 'create'>('view')
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<ReservationStatus | 'all'>('all')
-  const [currentDate, setCurrentDate] = useState(new Date())
+  const [currentDate, setCurrentDate] = useState(() => {
+    const dateParam = searchParams.get('date')
+    return dateParam ? new Date(dateParam) : new Date()
+  })
   const [viewMode, setViewMode] = useState<'year' | 'month' | 'day' | 'list'>('month')
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [isFiltersOpen, setIsFiltersOpen] = useState(false)
   const [isSearchFocused, setIsSearchFocused] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
+  const processedIdRef = useRef<string | null>(null)
   const { data: searchResults, loading: searchLoading, search: performSearch, clear: clearSearchResults, hasSearched } = useReservationSearch()
   const [filters, setFilters] = useState({
     hallId: 'all',
@@ -121,12 +132,12 @@ export default function HomePage() {
         (reservation.payments || []).some((p) => p.payment_method === filters.paymentMethod)
 
       const matchesGuests =
-        (filters.minGuests === '' || reservation.guests_count >= Number(filters.minGuests)) &&
-        (filters.maxGuests === '' || reservation.guests_count <= Number(filters.maxGuests))
+        (filters.minGuests === '' || (reservation.guests_count || 0) >= Number(filters.minGuests)) &&
+        (filters.maxGuests === '' || (reservation.guests_count || 0) <= Number(filters.maxGuests))
 
       const matchesChildren =
-        (filters.minChildren === '' || reservation.children_count >= Number(filters.minChildren)) &&
-        (filters.maxChildren === '' || reservation.children_count <= Number(filters.maxChildren))
+        (filters.minChildren === '' || (reservation.children_count || 0) >= Number(filters.minChildren)) &&
+        (filters.maxChildren === '' || (reservation.children_count || 0) <= Number(filters.maxChildren))
 
       return (
         matchesSearch &&
@@ -147,6 +158,28 @@ export default function HomePage() {
       if (live) setSelectedReservation(live)
     }
   }, [reservations])
+
+  // Handle deep linking to reservation via URL params
+  useEffect(() => {
+    const reservationId = searchParams.get('id')
+    const dateParam = searchParams.get('date')
+
+    if (!reservationId) {
+      processedIdRef.current = null
+      return
+    }
+
+    if (reservationId && reservations.length > 0 && !isModalOpen && processedIdRef.current !== reservationId) {
+      const target = reservations.find(r => r.id === reservationId)
+      if (target) {
+        setSelectedReservation(target)
+        setModalMode('view')
+        setIsModalOpen(true)
+        processedIdRef.current = reservationId
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reservations, searchParams])
 
   // REMOVED: searchResults dropdown (now handled by global search)
 
@@ -172,12 +205,17 @@ export default function HomePage() {
     setIsModalOpen(false)
     setSelectedReservation(null)
     setSelectedDate(null)
+
+    // Clear ID from URL to prevent re-opening
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete('id')
+    router.replace(`/?${params.toString()}`)
   }
 
   const handleSaveSuccess = (saved?: any) => {
     if (saved) {
       setSelectedReservation(saved)
-      setModalMode('view')
+      setModalMode('edit')
       setIsModalOpen(true)
       // Navigate to the month of the saved reservation
       const reservationDate = new Date(saved.date)
@@ -731,5 +769,17 @@ export default function HomePage() {
         />
       </div >
     </PageTransition >
+  )
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-screen w-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    }>
+      <DashboardContent />
+    </Suspense>
   )
 }
