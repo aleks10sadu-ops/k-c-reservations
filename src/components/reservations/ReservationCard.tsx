@@ -20,6 +20,7 @@ export function ReservationCard({ reservation, onClick, compact = false }: Reser
     confirmed: 'confirmed' as const,
     in_progress: 'inProgress' as const,
     paid: 'paid' as const,
+    prepaid: 'paid' as const,
     canceled: 'canceled' as const,
     completed: 'completed' as const,
   }[reservation.status]
