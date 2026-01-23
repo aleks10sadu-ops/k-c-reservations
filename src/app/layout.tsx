@@ -50,7 +50,7 @@ export default function RootLayout({
                 <footer className="w-full py-6 mt-12">
                   <div className="container mx-auto px-4 flex justify-center items-center">
                     <p className="text-sm text-neutral-400 font-medium">
-                      Сайт сделан{' '}
+                      Сайт разработан{' '}
                       <a
                         href="https://t.me/Kvazar27"
                         target="_blank"
