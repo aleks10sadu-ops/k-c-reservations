@@ -17,6 +17,7 @@ export type ReservationStatus =
   | 'confirmed'     // Взято в работу - Бежевый
   | 'in_progress'   // За столом - Синий
   | 'paid'          // Оплата внесена - Зелёный
+  | 'prepaid'       // Предоплата - Бирюзовый
   | 'canceled'      // Отмена брони - Красный
   | 'completed'     // Завершено - Фиолетовый
 
@@ -400,6 +401,12 @@ export const RESERVATION_STATUS_CONFIG: Record<ReservationStatus, {
     color: '#166534',
     bgColor: '#DCFCE7',
     borderColor: '#22C55E',
+  },
+  prepaid: {
+    label: 'Предоплата',
+    color: '#0D9488', // Teal 600
+    bgColor: '#CCFBF1', // Teal 100
+    borderColor: '#14B8A6', // Teal 500
   },
   canceled: {
     label: 'Отмена брони',

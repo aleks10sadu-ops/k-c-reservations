@@ -331,31 +331,33 @@ export default function HomePage() {
             </p>
           </motion.div>
 
-          {(Object.entries(RESERVATION_STATUS_CONFIG) as [ReservationStatus, typeof RESERVATION_STATUS_CONFIG[ReservationStatus]][]).map(([status, config]) => (
-            <motion.div
-              key={status}
-              whileHover={{ scale: 1.02 }}
-              onClick={() => setStatusFilter(statusFilter === status ? 'all' : status)}
-              className={`rounded-2xl border-2 p-3 sm:p-4 shadow-sm cursor-pointer transition-all touch-manipulation ${statusFilter === status ? 'ring-2 ring-offset-2 ring-amber-500' : ''
-                }`}
-              style={{
-                backgroundColor: config.bgColor,
-                borderColor: config.borderColor
-              }}
-            >
-              <p className="text-xs sm:text-sm" style={{ color: config.color }}>{config.label}</p>
-              <p className="text-2xl sm:text-3xl font-bold" style={{ color: config.color }}>
-                {loading ? (
-                  <Loader2 className="h-5 w-5 sm:h-6 sm:w-6 animate-spin" />
-                ) : (
-                  status === 'new' ? stats.new :
-                    status === 'confirmed' ? stats.confirmed :
-                      status === 'in_progress' ? stats.inProgress :
-                        status === 'paid' ? stats.paid : stats.canceled
-                )}
-              </p>
-            </motion.div>
-          ))}
+          {(Object.entries(RESERVATION_STATUS_CONFIG) as [ReservationStatus, typeof RESERVATION_STATUS_CONFIG[ReservationStatus]][])
+            .filter(([status]) => status !== 'prepaid')
+            .map(([status, config]) => (
+              <motion.div
+                key={status}
+                whileHover={{ scale: 1.02 }}
+                onClick={() => setStatusFilter(statusFilter === status ? 'all' : status)}
+                className={`rounded-2xl border-2 p-3 sm:p-4 shadow-sm cursor-pointer transition-all touch-manipulation ${statusFilter === status ? 'ring-2 ring-offset-2 ring-amber-500' : ''
+                  }`}
+                style={{
+                  backgroundColor: config.bgColor,
+                  borderColor: config.borderColor
+                }}
+              >
+                <p className="text-xs sm:text-sm" style={{ color: config.color }}>{config.label}</p>
+                <p className="text-2xl sm:text-3xl font-bold" style={{ color: config.color }}>
+                  {loading ? (
+                    <Loader2 className="h-5 w-5 sm:h-6 sm:w-6 animate-spin" />
+                  ) : (
+                    status === 'new' ? stats.new :
+                      status === 'confirmed' ? stats.confirmed :
+                        status === 'in_progress' ? stats.inProgress :
+                          status === 'paid' ? stats.paid : stats.canceled
+                  )}
+                </p>
+              </motion.div>
+            ))}
         </motion.div>
 
         {/* Filters */}

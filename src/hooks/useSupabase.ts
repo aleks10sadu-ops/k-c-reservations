@@ -770,6 +770,13 @@ export function useCreateMutation<T>(tableName: string) {
       notifyDataChange(tableName)
       return result
     } catch (err: any) {
+      // LOG FULL ERROR DETAILS
+      console.error(`ERROR INSERTING INTO ${tableName}:`, err)
+      if (err?.code) console.error('Error Code:', err.code)
+      if (err?.details) console.error('Error Details:', err.details)
+      if (err?.hint) console.error('Error Hint:', err.hint)
+      if (err?.message) console.error('Error Message:', err.message)
+
       const errorMessage = err?.message || err?.error?.message || `Не удалось создать запись в ${tableName}`
       setError(errorMessage)
       return null

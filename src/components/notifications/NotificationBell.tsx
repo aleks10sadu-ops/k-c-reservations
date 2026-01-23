@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Bell, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useRouter } from 'next/navigation'
 import {
     Popover,
     PopoverContent,
@@ -15,11 +16,22 @@ import { format } from 'date-fns'
 import { ru } from 'date-fns/locale'
 
 export function NotificationBell() {
-    const { unreadCount, notifications, markAllAsRead, isLoading } = useNotifications()
+    const { unreadCount, notifications, markAllAsRead, markAsRead, isLoading } = useNotifications()
     const [open, setOpen] = useState(false)
+    const router = useRouter()
 
     const handleMarkAllRead = async () => {
         await markAllAsRead()
+    }
+
+    const handleNotificationClick = async (notification: any) => {
+        if (!notification.is_read) {
+            await markAsRead(notification.id)
+        }
+        if (notification.link) {
+            setOpen(false)
+            router.push(notification.link)
+        }
     }
 
     return (
@@ -28,7 +40,7 @@ export function NotificationBell() {
                 <Button variant="ghost" size="icon" className="relative h-10 w-10 rounded-full">
                     <Bell className="h-5 w-5 text-stone-600" />
                     {unreadCount > 0 && (
-                        <span className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-sm ring-2 ring-white">
+                        <span className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-amber-600 text-[10px] font-bold text-white shadow-sm ring-2 ring-white">
                             {unreadCount > 99 ? '99+' : unreadCount}
                         </span>
                     )}
@@ -64,13 +76,14 @@ export function NotificationBell() {
                             {notifications.map((notification) => (
                                 <div
                                     key={notification.id}
+                                    onClick={() => handleNotificationClick(notification)}
                                     className={cn(
-                                        "flex flex-col gap-1 px-4 py-3 transition-colors hover:bg-stone-50",
+                                        "flex flex-col gap-1 px-4 py-3 cursor-pointer transition-colors hover:bg-stone-50",
                                         !notification.is_read && "bg-amber-50/50"
                                     )}
                                 >
                                     <div className="flex items-start justify-between gap-2">
-                                        <span className="text-sm font-medium text-stone-900">
+                                        <span className={cn("text-sm font-medium text-stone-900", !notification.is_read && "font-bold")}>
                                             {notification.title}
                                         </span>
                                         <span className="shrink-0 text-[10px] text-stone-400">
@@ -81,13 +94,11 @@ export function NotificationBell() {
                                         {notification.message}
                                     </p>
                                     {notification.link && (
-                                        <a
-                                            href={notification.link}
-                                            className="mt-1 self-start text-xs font-medium text-amber-600 hover:underline"
-                                            onClick={() => setOpen(false)}
-                                        >
-                                            Перейти →
-                                        </a>
+                                        <div className="mt-1">
+                                            <span className="text-xs font-medium text-amber-600 hover:underline">
+                                                Перейти к событию →
+                                            </span>
+                                        </div>
                                     )}
                                 </div>
                             ))}

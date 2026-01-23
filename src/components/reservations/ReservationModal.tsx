@@ -142,6 +142,7 @@ export function ReservationModal({
       confirmed: 'inProgress' as const, // Using inProgress variant style for confirmed if no specific one exists
       in_progress: 'inProgress' as const,
       paid: 'paid' as const,
+      prepaid: 'paid' as const, // Treat prepaid similarly to paid for badge variant
       canceled: 'canceled' as const,
       completed: 'completed' as const,
     }
@@ -811,24 +812,34 @@ export function ReservationModal({
     const timeFormatted = formatTime(formData.time)
     const timeForDB = timeFormatted.match(/^\d{2}:\d{2}$/) ? `${timeFormatted}:00` : timeFormatted
 
+    // Helper to sanitize UUID fields
+    const sanitizeUuid = (val?: string) => {
+      if (!val) return null
+      if (val === 'none') return null
+      if (val.trim() === '') return null
+      return val
+    }
+
     const dataToSave = {
       date: dateToSave,
       time: timeForDB,
       hall_id: formData.hall_id,
-      table_id: selectedTables.length > 0 ? selectedTables[0] : (formData.table_id && formData.table_id.trim() ? formData.table_id : undefined),
+      table_id: selectedTables.length > 0 ? selectedTables[0] : sanitizeUuid(formData.table_id),
       guest_id: guestId,
       guests_count: Number(formData.guests_count) || 1,
       children_count: Number(formData.children_count) || 0,
-      menu_id: formData.menu_id || undefined,
+      menu_id: sanitizeUuid(formData.menu_id),
       color: formData.color,
       status: statusToSave,
       total_amount: Number(computedTotal),
-      prepaid_amount: Number(currentReservation?.prepaid_amount || 0) + (mode === 'create' ? prepaymentAmount : 0), // Add new prepayment for create mode
+      prepaid_amount: Number(currentReservation?.prepaid_amount || 0) + (mode === 'create' ? prepaymentAmount : 0),
       comments: formData.comments,
       menu_type: formData.menu_type,
-      waiter_id: formData.waiter_id || undefined,
+      waiter_id: sanitizeUuid(formData.waiter_id),
       is_walk_in: formData.is_walk_in
     }
+
+    console.log('Saving reservation payload:', dataToSave) // Debug log
 
     // Формируем selected_menu_items для обновления отображения
     const buildSelectedMenuItems = (reservationId: string): ReservationMenuItem[] => {
@@ -1361,7 +1372,7 @@ export function ReservationModal({
                   <div className="bg-white border border-stone-200 rounded-2xl p-6 shadow-sm space-y-4">
                     <Label className="text-xs font-bold text-stone-500 uppercase tracking-widest pl-1">Статус бронирования</Label>
                     <div className="grid grid-cols-2 gap-2">
-                      {statusOptions.map((status) => {
+                      {statusOptions.filter(s => s !== 'prepaid').map((status) => {
                         const config = RESERVATION_STATUS_CONFIG[status]
                         const isSelected = formData.status === status
                         return (

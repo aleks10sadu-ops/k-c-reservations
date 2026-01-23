@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { toast } from 'sonner'
-import { getUnreadCount, markAllNotificationsAsRead, getNotifications } from '@/lib/notifications'
+import { getUnreadCount, markAllNotificationsAsRead, getNotifications, markNotificationAsRead } from '@/lib/notifications'
 import type { Notification } from '@/types'
 
 interface NotificationContextType {
@@ -13,6 +13,7 @@ interface NotificationContextType {
     isLoading: boolean
     refetch: () => Promise<void>
     markAllAsRead: () => Promise<void>
+    markAsRead: (id: string) => Promise<void>
 }
 
 const NotificationContext = createContext<NotificationContextType>({
@@ -21,6 +22,7 @@ const NotificationContext = createContext<NotificationContextType>({
     isLoading: true,
     refetch: async () => { },
     markAllAsRead: async () => { },
+    markAsRead: async () => { },
 })
 
 export const useNotifications = () => useContext(NotificationContext)
@@ -117,13 +119,23 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         await fetchState() // Sync
     }
 
+    const markAsReadClient = async (id: string) => {
+        // Optimistic update
+        setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n))
+        setUnreadCount(prev => Math.max(0, prev - 1))
+
+        await markNotificationAsRead(id)
+        // No full refetch needed usually
+    }
+
     return (
         <NotificationContext.Provider value={{
             unreadCount,
             notifications,
             isLoading,
             refetch: fetchState,
-            markAllAsRead: markAllAsReadClient
+            markAllAsRead: markAllAsReadClient,
+            markAsRead: markAsReadClient
         }}>
             {children}
         </NotificationContext.Provider>
