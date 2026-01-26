@@ -152,6 +152,7 @@ export function ReservationModal({
       prepaid: 'paid' as const, // Treat prepaid similarly to paid for badge variant
       canceled: 'canceled' as const,
       completed: 'completed' as const,
+      waitlist: 'waitlist' as const,
     }
     return variants[status]
   }

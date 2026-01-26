@@ -15,3 +15,4 @@ CHECK (status::text = ANY (ARRAY[
   'canceled'::character varying,
   'completed'::character varying
 ]::text[]));
+ 

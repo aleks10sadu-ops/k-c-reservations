@@ -23,6 +23,7 @@ export function ReservationCard({ reservation, onClick, compact = false }: Reser
     prepaid: 'paid' as const,
     canceled: 'canceled' as const,
     completed: 'completed' as const,
+    waitlist: 'waitlist' as const,
   }[reservation.status]
 
   // Получаем номера столов

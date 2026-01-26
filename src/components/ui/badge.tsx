@@ -22,6 +22,7 @@ const badgeVariants = cva(
         vip: "border-amber-300 bg-amber-100 text-amber-800",
         frequent: "border-purple-200 bg-purple-50 text-purple-700",
         completed: "border-purple-300 bg-purple-50 text-purple-700",
+        waitlist: "border-orange-300 bg-orange-50 text-orange-700",
       },
     },
     defaultVariants: {

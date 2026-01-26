@@ -20,6 +20,7 @@ export type ReservationStatus =
   | 'prepaid'       // Предоплата - Бирюзовый
   | 'canceled'      // Отмена брони - Красный
   | 'completed'     // Завершено - Фиолетовый
+  | 'waitlist'      // Лист ожидания - Оранжевый
 
 // ... (existing code)
 
@@ -70,7 +71,9 @@ export interface Hall {
 export interface Table {
   id: string
   hall_id: string
-  number: number
+  number: number | null // Number might be null if it has a name
+  name?: string         // Custom name for banquet rooms etc
+  type?: 'table' | 'room' // Type of the item
   capacity: number
   position_x: number
   position_y: number
@@ -419,6 +422,12 @@ export const RESERVATION_STATUS_CONFIG: Record<ReservationStatus, {
     color: '#7C3AED',
     bgColor: '#EDE9FE',
     borderColor: '#C4B5FD',
+  },
+  waitlist: {
+    label: 'Лист ожидания',
+    color: '#EA580C', // Orange 600
+    bgColor: '#FFEDD5', // Orange 100
+    borderColor: '#F97316', // Orange 500
   },
 }
 

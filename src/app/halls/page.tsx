@@ -34,15 +34,28 @@ export default function HallsPage() {
   const [editingHall, setEditingHall] = useState<Hall | null>(null)
   const [hallForm, setHallForm] = useState({ name: '', capacity: 0, description: '' })
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'))
-  const [tableForm, setTableForm] = useState({
+  const [tableForm, setTableForm] = useState<{
+    hall_id: string
+    number: number | null
+    name: string
+    type: 'table' | 'room'
+    capacity: number
+    position_x: number
+    position_y: number
+    width: number
+    height: number
+    shape: Table['shape']
+  }>({
     hall_id: '',
     number: 1,
+    name: '',
+    type: 'table',
     capacity: 4,
     position_x: 50,
     position_y: 50,
     width: 100,
     height: 100,
-    shape: 'rectangle' as Table['shape'],
+    shape: 'rectangle',
   })
 
   const [previewPos, setPreviewPos] = useState<Record<string, { x: number; y: number }>>({})
@@ -409,6 +422,8 @@ export default function HallsPage() {
     setTableForm({
       hall_id: selectedHall.id,
       number: table.number,
+      name: table.name || '',
+      type: table.type || 'table',
       capacity: table.capacity,
       position_x: pos.x,
       position_y: pos.y,
@@ -978,7 +993,7 @@ export default function HallsPage() {
                           <h4 className="font-medium text-stone-900 mb-2">Столы ({activeTables.length})</h4>
                           <div className="flex flex-wrap gap-2">
                             {activeTables
-                              .sort((a, b) => a.number - b.number)
+                              .sort((a, b) => (a.number || 0) - (b.number || 0))
                               .map((table) => {
                                 const reservation = getTableReservation(table)
                                 return (
@@ -996,6 +1011,8 @@ export default function HallsPage() {
                                       setTableForm({
                                         hall_id: hall.id,
                                         number: table.number,
+                                        name: table.name || '',
+                                        type: table.type || 'table',
                                         capacity: table.capacity,
                                         position_x: table.position_x,
                                         position_y: table.position_y,
@@ -1007,7 +1024,7 @@ export default function HallsPage() {
                                     }}
                                     className="cursor-pointer"
                                   >
-                                    Стол {table.number} ({table.capacity} чел.)
+                                    {table.type === 'room' ? table.name : `Стол ${table.number}`} ({table.capacity} чел.)
                                   </Badge>
                                 )
                               })}
@@ -1556,16 +1573,52 @@ export default function HallsPage() {
             <DialogDescription>Настройте расположение и параметры стола</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Номер *</Label>
-                <Input
-                  type="number"
-                  value={tableForm.number || ''}
-                  onChange={(e) => setTableForm({ ...tableForm, number: parseInt(e.target.value) || 1 })}
-                  className="mt-1"
+            <div className="flex gap-4 mb-4">
+              <div className="flex items-center space-x-2">
+                <input
+                  type="radio"
+                  id="type-table"
+                  checked={tableForm.type === 'table'}
+                  onChange={() => setTableForm({ ...tableForm, type: 'table' })}
+                  className="cursor-pointer"
                 />
+                <Label htmlFor="type-table" className="cursor-pointer">Стол</Label>
               </div>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="radio"
+                  id="type-room"
+                  checked={tableForm.type === 'room'}
+                  onChange={() => setTableForm({ ...tableForm, type: 'room', number: null })}
+                  className="cursor-pointer"
+                />
+                <Label htmlFor="type-room" className="cursor-pointer">Зал / Комната</Label>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {tableForm.type === 'table' ? (
+                <div>
+                  <Label>Номер *</Label>
+                  <Input
+                    type="number"
+                    value={tableForm.number || ''}
+                    onChange={(e) => setTableForm({ ...tableForm, number: parseInt(e.target.value) || 1 })}
+                    className="mt-1"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <Label>Название *</Label>
+                  <Input
+                    type="text"
+                    value={tableForm.name || ''}
+                    onChange={(e) => setTableForm({ ...tableForm, name: e.target.value })}
+                    placeholder="Например: VIP Зал"
+                    className="mt-1"
+                  />
+                </div>
+              )}
               <div>
                 <Label>Вместимость *</Label>
                 <Input
@@ -1670,7 +1723,13 @@ export default function HallsPage() {
               <Button
                 onClick={async () => {
                   try {
-                    const finalForm = { ...tableForm, hall_id: tableForm.hall_id || selectedHall?.id || '' }
+                    const finalForm = {
+                      ...tableForm,
+                      hall_id: tableForm.hall_id || selectedHall?.id || '',
+                      // Ensure logic consistency
+                      number: tableForm.type === 'table' ? (tableForm.number || 1) : null,
+                      name: tableForm.type === 'room' ? (tableForm.name || 'Room') : undefined
+                    }
 
                     if (editingTable) {
                       // IF EDITOR IS OPEN: ONLY UPDATE DRAFT (BUFFER)
@@ -1704,7 +1763,11 @@ export default function HallsPage() {
                     alert('Ошибка при сохранении стола: ' + (err.message || 'Неизвестная ошибка'))
                   }
                 }}
-                disabled={!tableForm.number || !tableForm.capacity}
+                disabled={
+                  (tableForm.type === 'table' && !tableForm.number) ||
+                  (tableForm.type === 'room' && !tableForm.name) ||
+                  !tableForm.capacity
+                }
               >
                 <Save className="h-4 w-4 mr-2" />
                 Сохранить
@@ -1754,6 +1817,8 @@ export default function HallsPage() {
                       setTableForm({
                         hall_id: selectedHall.id,
                         number: (tables.filter(t => t.hall_id === selectedHall.id).length || 0) + 1,
+                        name: '',
+                        type: 'table',
                         capacity: 4,
                         position_x: 50,
                         position_y: 50,
