@@ -1242,7 +1242,7 @@ export default function HallsPage() {
                                     />
                                   )}
                                   <span className="font-bold text-lg leading-tight" style={{ color: textColor }}>
-                                    {table.number}
+                                    {table.type === 'room' ? table.name : table.number}
                                   </span>
                                   {table.capacity > 0 && (
                                     <span className="text-[10px] text-stone-500 leading-tight">
