@@ -500,7 +500,7 @@ export function ReservationModal({
     }, 0)
 
     return () => clearTimeout(timer)
-  }, [currentReservation, initialMode, isOpen, initialDate, halls, menus, preselectedTableId, preselectedHallId, preselectedDate, tables])
+  }, [currentReservation?.id, initialMode, isOpen, initialDate, preselectedTableId, preselectedHallId, preselectedDate])
 
   const statusOptions: ReservationStatus[] = ['new', 'confirmed', 'in_progress', 'paid', 'canceled', 'completed']
 
