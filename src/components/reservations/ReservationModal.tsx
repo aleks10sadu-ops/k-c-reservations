@@ -332,11 +332,12 @@ export function ReservationModal({
   }, [reservation?.id])
 
   // Автоматически выбираем первое меню, если menu_id пустой и есть доступные меню
+  // НО: не назначаем банкетное меню, если тип меню — Основное меню (main_menu)
   useEffect(() => {
-    if (mode !== 'view' && !formData.menu_id && menus.length > 0) {
+    if (mode !== 'view' && !formData.menu_id && menus.length > 0 && formData.menu_type !== 'main_menu') {
       setFormData(prev => ({ ...prev, menu_id: menus[0].id }))
     }
-  }, [mode, formData.menu_id, menus])
+  }, [mode, formData.menu_id, menus, formData.menu_type])
 
   // Reset form when modal opens or reservation changes
   useEffect(() => {
